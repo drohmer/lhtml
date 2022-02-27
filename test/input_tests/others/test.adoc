@@ -1,0 +1,110 @@
+
+= A title
+
+* A point
+* Another point
+** A subpoint
+** A second subpoint
+*** A subsubpoint
+* A third point
+
+* I pursue
+
+I stop 
+
+* A new ul
+** With a subpoint
+
+
+== A subtitle
+
+div::[with:500px; height:300px]
+basic
+::
+
+div::[with:500px; height:300px]
+basic
+::
+
+div::[with:height:80px;]
+element
+::
+
+
+::[background-color: red;]
+anonymous
+::
+
+
+div::[width:500px; height:300px;background-color:red](.a #b){pure inline stuff}
+This is a pararagph
+::
+
+::[width:500px; height:300px;background-color:red](.a #b){pure inline stuff}
+This is the same
+::
+
+
+::(.class_only)
+this is a class
+::
+
+::(.class_only)
+    ::(.subclass)
+        element
+    ::
+::
+
+::{class="my_class"}
+anonymous
+::
+
+In **Bold** Bold and in __italic__.
+
+link::www.google.com{ some inline stuff}[a link]
+link::www.google.com[a link]
+
+
+div::{style="background-color:red;"}
+element link::www.google.com[my link]
+::
+
+div::text_inline_div[width=500px;]::
+div::[width:500px;]text_inline_div::
+
+verbatim::[]
+div::text_inline_div[width=500px;]::
+div::[width:500px;]text_inline_div::
+**This should stay like that**
+== test verbatim
+verbatim::[-]
+
+div::[height:50px;]::
+
+img::fig.jpg
+
+
+This is a link::(a)www.google.com(b .e #c .d)(.f){.a}[link][link2 link3]
+* d
+
+
+
+== Comments
+
+#This is a commented line
+
+this is a line #followed by a comment
+
+
+== Include
+
+include::input_tests/text_external.adoc
+
+== Tricky
+
+div::[text-with:{4.5}[y](g)]{or{inside}[u](v)}([a](b){c d}) ::
+
+div::[a] div::[b] ::[c]
+::
+::
+::

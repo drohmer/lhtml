@@ -1,0 +1,21 @@
+
+* Some __stuff__
+include::04b_to_include.lhtml
+Something ::# this is a comment
+
+verbatim::[]
+= This is a title ::# followed by a comment
+* Some __stuff__ div::[color:red] color ::
+include::04b_to_include.lhtml
+verbatim::[-]
+
+verbatim::[] **This is bold** verbatim::[-]
+
+
+= This is __a__ title ::# followed by a comment
+* Some __stuff__ in **bold** div::[color:red] color ::
+include::04b_to_include.lhtml
+
+= This is a title with **bold** and verbatim::[]**verbatim** verbatim::[-]
+
+**__bold italic__ b-only**

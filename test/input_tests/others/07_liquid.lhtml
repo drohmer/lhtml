@@ -1,0 +1,10 @@
+
+{% assign a = 7 %}
+
+div::[with:500px;height:300px]
+basic
+::
+
+{% for i in range(a) %}
+{{i}} / {{a}} in **bold** <br> 
+{%- endfor -%}

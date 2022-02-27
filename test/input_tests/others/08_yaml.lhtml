@@ -1,0 +1,13 @@
+---
+title:  "Members"
+css: "css/member-main-page.css"
+keywords: "Permanent Researchers, Postdocs, PhD, Visitors"
+description: "Members of the Geometric and Visual Computing at LIX"
+---
+
+::[color:red;] My title ::
+
+{% assign a = 2 %}
+{% assign b = 3 %}
+
+**Some Liquid: a+b={{a+b}}**
