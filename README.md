@@ -16,7 +16,7 @@ lhtml.py [-w] inputFile [-o outputFile]
 ```python
 import lhtml
 
-lhtml.run(text, meta_arg={}):
+lhtml.run(text, meta_arg={})
 ```
 
 Default meta arguments
