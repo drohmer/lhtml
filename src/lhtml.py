@@ -13,7 +13,6 @@ meta_default = {
   'title': 'Webpage',
   'css': [],
   'js': [],
-  'title': '',
   'wrap-custom-pre': '',
   'wrap-custom-post': '',
   'directory_include': [os.getcwd()+'/'],  
@@ -79,7 +78,6 @@ def run(text, meta_arg={}):
 
 
 if __name__== '__main__':
-
   parser = argparse.ArgumentParser(description='Lightweight HTML')
   parser.add_argument('inputFile', help='Input filepath')
   parser.add_argument('-w','--wrapAuto', help='Wrap content in basic HTML template', action='store_true')
@@ -99,8 +97,14 @@ if __name__== '__main__':
       meta_main['directory_include'].append(os.getcwd()+'/'+dir_to_include+'/')
     
     with open(f_in) as fid_in:
-      html = run(fid_in.read(), meta_main)
-      
+      txt_in = fid_in.read()
+      if txt_in[-1]!='\n':
+        txt_in = txt_in+'\n'
+
+      html = run(txt_in, meta_main)
+
+      if html[-1]!='\n':
+        html = html+'\n'
       if args.outputFile:
         with open(args.outputFile,'w') as f_out:
           f_out.write(html)

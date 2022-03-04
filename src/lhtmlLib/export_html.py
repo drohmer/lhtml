@@ -91,6 +91,12 @@ def export_html_img(elements):
 
 
 def export_html_video(elements, default_inline=''):
+
+  source = elements['text']
+  extension = source.split('.')[-1]
+
+  candidate_poster = source.replace(f'.{extension}',f'-poster.jpg')
+
   html = '<video'
 
   html += export_html_element_inline(elements['{}'])
@@ -99,11 +105,15 @@ def export_html_video(elements, default_inline=''):
   html += export_html_element_class_and_id(elements['()'])
   html += export_html_element_style(elements['[]'])
 
+  if os.path.isfile(candidate_poster):
+    html += f' poster="{candidate_poster}"'
+
   html += '>\n'
 
-  source = elements['text']
-  extension = source.split('.')[-1]
+
   html += f'\t<source src="{source}" type="video/{extension}">\n'
+  
+  
 
   html += f'\t Cannot play video {source}\n'
   html += '</video>'
