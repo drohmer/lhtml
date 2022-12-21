@@ -18,6 +18,9 @@ meta_default = {
   'directory_include': [os.getcwd()+'/'],  
 }
 
+def analyse_tag(text_in):
+  return lhtmlLib.extract_bracket_elements(text_in, len('videoplay::'))
+  
 
 
 

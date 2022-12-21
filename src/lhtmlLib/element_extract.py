@@ -35,6 +35,8 @@ def extract_bracket_elements(text, index_start):
     idx = idx-1
     current_char = text[idx]
   
+  if idx==0: # special case if the beginning of the file
+    idx = -1
   elements['tag'] = text[idx+1:index_start-2]
   elements['index_start'] = idx+1
 
@@ -56,8 +58,11 @@ def extract_bracket_elements(text, index_start):
         elements[tag] = elements[tag] + text[index_start+1:idx]
 
         idx = idx+1
-        current_char = text[idx]
-        index_start = idx
+        if idx<len(text):
+          current_char = text[idx]
+          index_start = idx
+        else:
+          element_finished=True
 
         if already_met_text==True:
           text_finished=True
