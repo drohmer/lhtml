@@ -19,7 +19,8 @@ meta_default = {
 }
 
 def analyse_tag(text_in):
-  return lhtmlLib.extract_bracket_elements(text_in, len('videoplay::'))
+
+  return lhtmlLib.extract_bracket_elements(text_in, text_in.find('::')+2)
   
 
 
