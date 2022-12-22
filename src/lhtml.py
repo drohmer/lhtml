@@ -42,6 +42,9 @@ def run(text, meta_arg={}):
   code_index_store = []
   found_include = True
   nbr_iteration = 0
+  current_directory = ''
+  if 'current_directory' in meta:
+    current_directory = meta['current_directory']
 
   # Handle verbatim, comments and includes
   while found_include:
@@ -62,7 +65,7 @@ def run(text, meta_arg={}):
   # Handle standard inline elements
   text = lhtmlLib.process_bold(text)
   text = lhtmlLib.process_italic(text)
-  text = lhtmlLib.process_tag(text)
+  text = lhtmlLib.process_tag(text, current_directory)
   
   # Fill back code
   text = lhtmlLib.insert_element_from_index(text, r'code::\[(.*?)\]', code_index_store)

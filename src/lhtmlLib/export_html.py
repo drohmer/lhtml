@@ -1,6 +1,9 @@
 import re
 import os
 
+
+default_cache_video_directory = 'cache_video_codecs/'
+
 def export_html_element_style(text):
   if len(text)==0:
     return ''
@@ -90,7 +93,7 @@ def export_html_img(elements):
   return html
 
 
-def export_html_video(elements, default_inline=''):
+def export_html_video(elements, default_inline='', current_directory=''):
 
   source = elements['text']
   extension = source.split('.')[-1]
@@ -111,8 +114,41 @@ def export_html_video(elements, default_inline=''):
   html += '>\n'
 
 
-  html += f'\t<source src="{source}" type="video/{extension}">\n'
-  
+
+
+
+
+  source_name, source_extension = os.path.splitext(source)
+  source_basename = os.path.basename(source_name)
+  source_dirname = os.path.dirname(source_name)
+  source_base_dirname = os.path.basename(source_dirname)
+
+  cache_video_directory = default_cache_video_directory
+  found_video_codecs = False
+  if current_directory!='' and source_base_dirname=='assets':
+    dir_video_codecs = source_dirname+'/'+cache_video_directory
+    if os.path.isdir(current_directory+dir_video_codecs):
+      attempt = dir_video_codecs+source_basename+'-vp9.webm'
+
+      if os.path.isfile(current_directory+attempt):
+        html += f'\t<source src="{attempt}" type="video/webm">\n'
+        found_video_codecs = True
+
+      attempt = dir_video_codecs+source_basename+'-h265.mp4'
+      if os.path.isfile(current_directory+attempt):
+        html += f'\t<source src="{attempt}" type="video/mp4">\n'
+        found_video_codecs = True
+
+      attempt = dir_video_codecs+source_basename+'-h264.mp4'
+      if os.path.isfile(current_directory+attempt):
+        html += f'\t<source src="{attempt}" type="video/mp4">\n'
+        found_video_codecs = True
+
+  if found_video_codecs == False:
+    html += f'\t<source src="{source}" type="video/{extension}">\n'
+
+
+
   
 
   html += f'\t Cannot play video {source}\n'

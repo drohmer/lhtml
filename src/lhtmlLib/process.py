@@ -136,7 +136,7 @@ def process_italic(text):
   return new_text
 
 
-def export_tag_element_to_html(element, tag_to_close):
+def export_tag_element_to_html(element, tag_to_close, current_directory=''):
   tag = element['tag']
   html = ''
   if tag=='div' or tag=='span':
@@ -146,9 +146,9 @@ def export_tag_element_to_html(element, tag_to_close):
   elif tag == 'img':
     html = export_html_img(element)
   elif tag == 'video':
-    html = export_html_video(element,'')
+    html = export_html_video(element,'', current_directory)
   elif tag == 'videoplay':
-    html = export_html_video(element, 'autoplay loop muted')
+    html = export_html_video(element, 'autoplay loop muted', current_directory)
   elif tag == '':
     if check_is_closing_tag(element):
       if not len(tag_to_close)>0:
@@ -165,7 +165,7 @@ def export_tag_element_to_html(element, tag_to_close):
     return ('', False)
   return (html, True)
 
-def process_tag(text):
+def process_tag(text, current_directory=''):
   new_text = ''
   index_previous = 0
   tag_to_close = []
@@ -175,7 +175,7 @@ def process_tag(text):
   for it in match:
     if it.span()[0]>index_previous: # do not overlap previously treated element
       element = extract_bracket_elements(text, it.span()[0]+len(r_tag))
-      html, is_real_tag = export_tag_element_to_html(element, tag_to_close)
+      html, is_real_tag = export_tag_element_to_html(element, tag_to_close, current_directory)
       tag = element['tag']
       index_end = element['index_end']
 
