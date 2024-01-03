@@ -65,6 +65,7 @@ def run(text, meta_arg={}):
   # Handle standard inline elements
   text = lhtmlLib.process_bold(text)
   text = lhtmlLib.process_italic(text)
+  text = lhtmlLib.process_code_inline(text)
   text = lhtmlLib.process_tag(text, current_directory)
   
   # Fill back code

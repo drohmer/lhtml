@@ -102,6 +102,21 @@ def process_include(text, directory):
 
   return (new_text,found_include)
 
+def process_code_inline(text):
+  new_text = ''
+  index_previous = 0
+
+  r_code = r'`(.*?)`'
+  match = re.finditer(r_code, text)
+  for it in match:
+    new_text += text[index_previous:it.span()[0]]
+    text_to_add = it.group(0)[1:-1]
+    new_text += f'<code class="code-inline">{text_to_add}</code>'
+    index_previous = it.span()[1]
+  new_text += text[index_previous:]
+
+  return new_text
+
 
 def process_bold(text):
   new_text = ''
