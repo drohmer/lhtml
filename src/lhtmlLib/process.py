@@ -172,6 +172,8 @@ def export_tag_element_to_html(element, tag_to_close, current_directory=''):
         return ('::??ERROR', True)
 
       html = '</'+tag_to_close.pop()+">"
+    elif element['text']=='nl':
+        html = '<div style="height:1em;"></div>'
     elif element['[]']!='' or element['()'] or element['{}'] or element['text']!='':
       html = export_html_generic(element, 'div', tag_to_close)
     else:
@@ -208,17 +210,28 @@ def process_tag(text, current_directory=''):
 
 
 
+
 def process_title(text):
   new_text = ''
   index_previous = 0
 
-  r_title = r'^(=+) (.*?)$'
+  r_title = r'^(=+)\(?(.*?)\) (.*?)$'
   regex_title = re.compile(r_title,  re.DOTALL | re.MULTILINE)
   match = re.finditer(regex_title, text)
   for it in match:
+    
     n = str(len(it.group(1)))
-    title = it.group(2)
-    html = f'<h{n}>{title}</h{n}>\n'
+    class_id= it.group(2)
+    title = it.group(3)
+    
+    if len(class_id) == 0:
+      html = f'<h{n}>{title}</h{n}>\n'
+    else:
+      class_id_txt = export_html_element_class_and_id(class_id)
+      html = f'<h{n} {class_id_txt}>{title}</h{n}>\n'
+
+   
+
     new_text += text[index_previous:it.span()[0]]
     new_text += html
 

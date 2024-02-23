@@ -26,7 +26,7 @@ def export_html_element_class_and_id(text):
         html_class += ' '
       html_class += e[1:]
     if e.startswith('#'):
-      if len(html_class)>0:
+      if len(html_id)>0:
         html_id += ' '
       html_id += e[1:]
   html = ""
