@@ -208,6 +208,118 @@ class TestPluginSystem:
 
 
 # ---------------------------------------------------------------------------
+# Code blocks
+# ---------------------------------------------------------------------------
+
+class TestCodeBlocks:
+    def test_python_code_block(self):
+        r = lhtml.run('\ncode::[python]\ndef hello():\n    pass\ncode::[-]\n')
+        assert '<pre>' in r
+        assert 'hello' in r
+
+    def test_cpp_code_block(self):
+        r = lhtml.run('\ncode::[c++]\nint x = 0;\ncode::[-]\n')
+        assert '<pre>' in r
+
+    def test_text_code_block(self):
+        r = lhtml.run('\ncode::[text]\nplain text\ncode::[-]\n')
+        assert 'plain text' in r
+
+
+# ---------------------------------------------------------------------------
+# Unnamed div (::() syntax)
+# ---------------------------------------------------------------------------
+
+class TestUnnamedDiv:
+    def test_unnamed_div_with_class(self):
+        r = lhtml.run('\n::(.highlight)[padding:10px;]\ncontent\n::\n')
+        assert 'class="highlight"' in r
+        assert 'style="padding:10px;"' in r
+        assert 'content' in r
+
+    def test_unnamed_div_style_only(self):
+        r = lhtml.run('\n::[color:red;]\ntext\n::\n')
+        assert '<div style="color:red;">' in r
+
+    def test_unnamed_div_wrapping_list(self):
+        r = lhtml.run('\n::(.box)\n* item one\n* item two\n::\n')
+        assert 'class="box"' in r
+        assert '<ul>' in r
+        assert '<li>' in r
+
+
+# ---------------------------------------------------------------------------
+# Inline close (:: on same line)
+# ---------------------------------------------------------------------------
+
+class TestInlineClose:
+    def test_empty_div_inline_close(self):
+        r = lhtml.run('\ndiv::[height:25px;]::\n')
+        assert '<div style="height:25px;"></div>' in r
+
+    def test_span_inline_close_with_class(self):
+        r = lhtml.run('\nspan::(.tag)[color:white;] label ::\n')
+        assert '<span class="tag" style="color:white;"> label </span>' in r
+
+    def test_unnamed_inline_close(self):
+        r = lhtml.run('\n::[margin:5px;]::\n')
+        assert '<div style="margin:5px;"></div>' in r
+
+
+# ---------------------------------------------------------------------------
+# Complex nesting
+# ---------------------------------------------------------------------------
+
+class TestComplexNesting:
+    def test_nested_divs_three_levels(self):
+        r = lhtml.run('\n::[padding:20px;]\n::[background:#eee;]\ndiv::[color:red;] deep ::\n::\n::\n')
+        assert '<div style="padding:20px;">' in r
+        assert '<div style="background:#eee;">' in r
+        assert '<div style="color:red;"> deep </div>' in r
+        assert r.count('</div>') == 3
+
+    def test_formatting_inside_nested_div(self):
+        r = lhtml.run('\n::[border:1px solid;]\n**bold** and __italic__\n::\n')
+        assert '<strong>bold</strong>' in r
+        assert '<em>italic</em>' in r
+        assert '<div style="border:1px solid;">' in r
+
+    def test_link_inside_div(self):
+        r = lhtml.run('\n::[padding:5px;]\nlink::https://example.com[click]\n::\n')
+        assert '<a href="https://example.com">click</a>' in r
+
+
+# ---------------------------------------------------------------------------
+# Mixed content (real-world patterns)
+# ---------------------------------------------------------------------------
+
+class TestMixedContent:
+    def test_heading_with_bold(self):
+        r = lhtml.run('\n= Title with **bold** word\n')
+        assert '<h1>Title with <strong>bold</strong> word</h1>' in r
+
+    def test_list_with_inline_code(self):
+        r = lhtml.run('\n* Use `printf` to print\n')
+        assert '<li>' in r
+        assert '<code class="code-inline">printf</code>' in r
+
+    def test_list_with_link(self):
+        r = lhtml.run('\n* See link::https://example.com[docs]\n')
+        assert '<li>' in r
+        assert '<a href="https://example.com">docs</a>' in r
+
+    def test_code_inside_styled_div(self):
+        r = lhtml.run('\n::[font-size:80%;]\ncode::[c++]\nint x;\ncode::[-]\n::\n')
+        assert '<div style="font-size:80%;">' in r
+        assert '<pre>' in r
+
+    def test_raw_html_passthrough_with_lhtml(self):
+        r = lhtml.run('\n<p>HTML</p>\ndiv::[color:red;] lhtml ::\n')
+        assert '<p>HTML</p>' in r
+        assert '<div style="color:red;"> lhtml </div>' in r
+
+
+# ---------------------------------------------------------------------------
 # Non-regression: real-world lab_website examples
 # ---------------------------------------------------------------------------
 
