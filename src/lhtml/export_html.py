@@ -145,3 +145,12 @@ def export_html_video(elements, default_inline='', current_directory=''):
 def check_is_closing_tag(elements):
     """A bare :: (empty tag, span of exactly 2) is a closing tag."""
     return elements['tag'] == '' and elements['index_end'] - elements['index_start'] == 2
+
+
+def check_is_explicit_closing_tag(elements):
+    """A named closing tag like ::div[-] or ::span[-].
+
+    Parsed as: tag='', text='div'/'span', []= '-'
+    (because the tag name appears after ::, not before)
+    """
+    return elements['text'] != '' and elements['[]'] == '-'

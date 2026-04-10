@@ -15,7 +15,7 @@ from .element_extract import extract_bracket_elements
 from .export_html import (
     export_html_element_class_and_id, export_html_generic,
     export_html_link, export_html_img, export_html_video,
-    check_is_closing_tag,
+    check_is_closing_tag, check_is_explicit_closing_tag,
 )
 from .listing import process_listing  # noqa: F401 — re-exported
 from .code import export_html_code
@@ -173,6 +173,23 @@ def _dispatch_tag(element, tag_to_close, current_directory, registry=None):
     built-in dispatch for backward compatibility.
     """
     tag = element['tag']
+
+    # Explicit closing tag: ::div[-], ::span[-], etc.
+    if check_is_explicit_closing_tag(element):
+        closing_name = element['text']
+        if not tag_to_close:
+            warnings.warn(
+                str(LHTMLTagStackError(source_pos=element.get('index_start', -1))),
+                stacklevel=3,
+            )
+            return '::??ERROR', True
+        if tag_to_close[-1] != closing_name:
+            warnings.warn(
+                f'Closing ::{closing_name}[-] but last opened tag is <{tag_to_close[-1]}> '
+                f'(position {element.get("index_start", -1)})',
+                stacklevel=3,
+            )
+        return '</' + tag_to_close.pop() + '>', True
 
     # Try plugin registry first
     if registry is not None:

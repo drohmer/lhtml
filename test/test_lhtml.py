@@ -170,6 +170,43 @@ class TestTags:
 
 
 # ---------------------------------------------------------------------------
+# Explicit closing tags
+# ---------------------------------------------------------------------------
+
+class TestExplicitClosing:
+    def test_explicit_div_close(self):
+        r = lhtml.run('\ndiv::[color:red;]\ncontent\n::div[-]\n')
+        assert '<div style="color:red;">' in r
+        assert '</div>' in r
+        assert '::div' not in r
+
+    def test_explicit_span_close(self):
+        r = lhtml.run('\nspan::[color:blue;] text ::span[-]\n')
+        # span with inline text uses :: self-closing, but ::span[-] is explicit
+        # Actually: span::[color:blue;] text :: is self-closing
+        # Let's test a block span
+        r = lhtml.run('\nspan::[color:blue;]\ntext\n::span[-]\n')
+        assert '<span style="color:blue;">' in r
+        assert '</span>' in r
+
+    def test_nested_explicit_close(self):
+        r = lhtml.run('\ndiv::[padding:10px;]\nspan::[color:red;]\ntext\n::span[-]\n::div[-]\n')
+        assert r.count('</span>') == 1
+        assert r.count('</div>') == 1
+
+    def test_bare_close_still_works(self):
+        r = lhtml.run('\ndiv::[color:green;]\ntext\n::\n')
+        assert '</div>' in r
+
+    def test_mismatch_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always')
+            lhtml.run('\ndiv::[color:red;]\nspan::[color:blue;]\ntext\n::div[-]\n::span[-]\n')
+            mismatches = [x for x in w if 'but last opened' in str(x.message)]
+            assert len(mismatches) >= 1
+
+
+# ---------------------------------------------------------------------------
 # Verbatim tests
 # ---------------------------------------------------------------------------
 
