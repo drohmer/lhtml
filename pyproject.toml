@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lhtml-markup"
-version = "2.0.0"
+version = "2.0.1"
 description = "Lightweight HTML markup language — simplifies HTML authoring with shorthand syntax"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,6 +14,11 @@ dependencies = [
     "pygments>=2.15",
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/drohmer/lhtml"
+Repository = "https://github.com/drohmer/lhtml"
+Issues = "https://github.com/drohmer/lhtml/issues"
 
 [project.optional-dependencies]
 dev = [
