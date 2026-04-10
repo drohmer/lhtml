@@ -1,6 +1,6 @@
 # LHTML — Lightweight HTML
 
-[![Tests](https://github.com/drohmer/lhtml/actions/workflows/tests.yml/badge.svg)](https://github.com/drohmer/lhtml/actions/workflows/tests.yml)
+[![Tests](https://github.com/drohmer/lhtml/actions/workflows/tests.yml/badge.svg?branch=feature/lhtml-v2)](https://github.com/drohmer/lhtml/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/lhtml-markup)](https://pypi.org/project/lhtml-markup/)
 
 LHTML is a markup language that simplifies HTML authoring with embedded CSS styling. It is designed to be **HTML-first**: raw HTML passes through untouched, and only a few shorthand symbols (`::`, `*`, `=`, `**`, `__`) trigger conversions.
