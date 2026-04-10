@@ -1,0 +1,11 @@
+
+{% assign a = 7 %}
+
+<div style="color:red;">
+<strong>bold inside div</strong>
+</div>
+
+{% for i in range(a) %}
+{{i}} / {{a}} in <strong>bold</strong> <br>
+{%- endfor -%}
+

@@ -1,0 +1,112 @@
+(* ============================================================
+   LHTML Grammar - Formal EBNF Specification
+
+   LHTML is an island grammar: only recognized LHTML constructs
+   are parsed; everything else (raw HTML, Jinja2, prose) passes
+   through as TextNode.
+   ============================================================ *)
+
+document = yaml_frontmatter?, content;
+
+(* --- YAML Front Matter --- *)
+yaml_frontmatter = "---\n", yaml_body, "\n---";
+yaml_body = { any_char };  (* parsed by PyYAML *)
+
+(* --- Content: sequence of blocks and text --- *)
+content = { block | inline_element | text };
+
+(* --- Block-level elements --- *)
+block = verbatim_block
+      | code_block
+      | heading
+      | list
+      | include_directive
+      | comment
+      | tag_element;
+
+(* --- Verbatim Block (protected from processing) --- *)
+verbatim_block = "verbatim::[]", verbatim_content, "verbatim::[-]";
+verbatim_content = { any_char };  (* preserved as-is *)
+
+(* --- Code Block --- *)
+code_block = "code::[", language, "]", code_content, "code::[-]";
+language = { letter | digit | "+" | "#" };
+code_content = { any_char };  (* highlighted by Pygments *)
+
+(* --- Headings --- *)
+heading = heading_marker, [ "(", class_id_spec, ")" ], " ", title_text, newline;
+heading_marker = "=" | "==" | "===" | "====" | "=====" | "======";
+title_text = { any_char - newline };
+
+(* --- Lists --- *)
+list = list_item, { list_item };
+list_item = list_marker, " ", item_content, newline;
+list_marker = "*" | "**" | "***" | "****";
+item_content = { any_char - newline };  (* may contain inline elements *)
+
+(* --- Include Directive --- *)
+include_directive = "include::", filename;
+filename = { any_char - whitespace };
+
+(* --- Comment --- *)
+comment = "::#", comment_text, newline;
+comment_text = { any_char - newline };
+
+(* --- Tag Element System (the :: syntax) --- *)
+tag_element = [ tag_name ], "::", bracket_groups, [ inline_text ];
+
+tag_name = { letter | ":" };  (* e.g., "div", "span", "link", "img", "video", "videoplay" *)
+
+bracket_groups = { bracket_group };
+bracket_group = paren_group | square_group | curly_group;
+
+paren_group  = "(", class_id_spec, ")";   (* classes and IDs *)
+square_group = "[", style_spec, "]";       (* CSS styles or link text *)
+curly_group  = "{", inline_attrs, "}";     (* raw HTML attributes *)
+
+class_id_spec = { class_token | id_token };
+class_token = ".", css_identifier;
+id_token = "#", css_identifier;
+css_identifier = letter, { letter | digit | "-" | "_" };
+
+style_spec = { any_char - "]" | "[", style_spec, "]" };  (* supports nested [] *)
+inline_attrs = { any_char - "}" | "{", inline_attrs, "}" };  (* supports nested {} *)
+
+inline_text = { any_char - whitespace };  (* URL for link, path for img, etc. *)
+
+(* --- Closing Tag --- *)
+closing_tag = "::";  (* bare :: with no tag name or brackets *)
+
+(* --- Spacer --- *)
+spacer = "::nl";
+
+(* --- Inline self-closing --- *)
+(* tag::content:: where trailing :: closes immediately *)
+self_closing_text = inline_text, "::";
+
+(* --- Inline Formatting --- *)
+inline_element = bold | italic | inline_code;
+bold = "**", bold_content, "**";
+bold_content = { any_char - "**" };
+italic = "__", italic_content, "__";
+italic_content = { any_char - "__" };
+inline_code = "`", code_content_inline, "`";
+code_content_inline = { any_char - "`" };
+
+(* --- Special Tag Types --- *)
+(* These are dispatched by tag_name in export_tag_element_to_html *)
+
+(* link::url[link_text](.classes){attrs} *)
+(* img::path[style](.classes){attrs} *)
+(* video::path[style](.classes){attrs} *)
+(* videoplay::path[style](.classes){attrs}  -- adds autoplay loop muted *)
+
+(* --- Text (passthrough) --- *)
+text = { any_char };  (* raw HTML, Jinja2, prose - preserved as-is *)
+
+(* --- Base tokens --- *)
+letter = "a" | ... | "z" | "A" | ... | "Z";
+digit = "0" | ... | "9";
+newline = "\n";
+whitespace = " " | "\t" | newline;
+any_char = ? any Unicode character ?;

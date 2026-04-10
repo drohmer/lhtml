@@ -1,0 +1,30 @@
+// LHTML tag element grammar for the :: bracket subsystem.
+//
+// Parses the text after :: in constructs like:
+//   tag::(.class #id)[style]{attrs}text::
+//   div::[color:red;]
+//   link::url[link text]
+//   ::(.class)[style]
+//
+// Supports nested brackets: [outer[inner]still_outer]
+
+start: bracket_and_text*
+
+bracket_and_text: paren_group
+                | square_group
+                | curly_group
+                | bare_text
+
+paren_group:  "(" paren_content ")"
+square_group: "[" square_content "]"
+curly_group:  "{" curly_content "}"
+
+// Bracket content allows nested brackets of the same type
+paren_content:  (/[^()]+/ | "(" paren_content ")")*
+square_content: (/[^\[\]]+/ | "[" square_content "]")*
+curly_content:  (/[^{}]+/ | "{" curly_content "}")*
+
+// Bare text: any non-whitespace, non-bracket characters
+bare_text: /[^\s\[\](){}]+/
+
+%import common.WS_INLINE

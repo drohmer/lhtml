@@ -1,2 +1,7 @@
 __pycache__/
 **/.DS_Store
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+CLAUDE.md
