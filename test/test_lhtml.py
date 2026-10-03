@@ -597,7 +597,17 @@ class TestUnclosedTags:
 
     def test_extra_closing_warns_with_context(self):
         r, w = _run_with_warnings('hello\n::\n')
-        assert '::??ERROR' in r
+        assert r == 'hello\n::\n'
+        assert any('no matching opening tag' in x for x in w)
+
+    @pytest.mark.parametrize('source, expected', [
+        ('a :: b', 'a :: b'),
+        ('a ::div[-] b', 'a ::div[-] b'),
+        ('span::[c] x :: y ::', '<span style="c"> x </span> y ::'),
+    ])
+    def test_unmatched_closing_is_kept_as_text(self, source, expected):
+        r, w = _run_with_warnings(source)
+        assert r == expected
         assert any('no matching opening tag' in x for x in w)
 
 

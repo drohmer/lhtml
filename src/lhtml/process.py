@@ -396,9 +396,10 @@ def process_code(text):
 # ---------------------------------------------------------------------------
 
 def _warn_unmatched_closing(element):
+    """Warn about a closing :: without opening tag; the source is kept."""
     warnings.warn(str(LHTMLTagStackError(element.get('context', ''))),
                   LHTMLWarning, stacklevel=4)
-    return '::??ERROR', True
+    return '', False
 
 
 def _dispatch_tag(element, tag_to_close, current_directory, registry=None):
