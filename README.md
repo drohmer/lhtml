@@ -7,6 +7,8 @@ LHTML is a markup language that simplifies HTML authoring with embedded CSS styl
 
 LHTML is used to build static websites and presentation slides, typically combined with Jinja2 templates.
 
+See the [examples](examples/) and the [changelog](CHANGELOG.md).
+
 ## Installation
 
 From PyPI:
@@ -39,14 +41,43 @@ Dependencies (`lark`, `pygments`, `pyyaml`) are installed automatically.
 ```bash
 lhtml input.l.html                    # Convert to stdout
 lhtml input.l.html -o output.html     # Convert to file
-lhtml input.l.html -w                 # Wrap in full HTML document
-lhtml input.l.html -b                 # Render source line breaks as <br>
+lhtml input.l.html -w                 # Wrap in full HTML document (--wrapAuto)
+lhtml input.l.html -b                 # Render source line breaks as <br> (--line-breaks)
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
 ```
 
-Files are read and written as UTF-8 (a BOM is accepted). Errors and warnings are reported on stderr with the file name, the remaining files are still processed, and the exit code is non-zero if any file failed. No input file in the batch is overwritten (including through symbolic or hard links) (e.g. `lhtml page.html` without `-o`). Includes are looked up in the input file's directory first, then in the current directory.
+Without `-o`, `page.l.html` is written to `page.html` next to its source.
+
+- Files are read and written as UTF-8 (a BOM is accepted).
+- Errors and warnings are reported on stderr with the file name. The remaining files are still processed, and the exit code is non-zero if any file failed.
+- An input file is never overwritten: `lhtml page.html` (output `page.html`) is an error, as is an output that is another input of the batch, or a symbolic or hard link to one.
+- Includes are looked up in the input file's directory first, then in the current directory.
+
+With `-w`, the result is wrapped in a minimal HTML document using the `title`, `css` and `js` of the front matter:
+
+```html
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>My Page</title>
+	<link rel="stylesheet" type="text/css" href="style.css">
+	<script src="app.js" defer></script>
+</head>
+
+<body>
+<h1>Hello</h1>
+
+
+</body>
+
+</html>
+```
 
 ### Python API
 
@@ -95,13 +126,33 @@ With classes/IDs:
 ```
 * First item
 * Second item
-** Nested item A
-** Nested item B
-*** Deep nested
+** Nested item
 * Back to top level
 ```
 
-Produces nested `<ul><li>` structures.
+Output (a nested list is placed in its own `<li>`):
+```html
+<ul>
+<li>
+First item
+</li>
+<li>
+Second item
+</li>
+<li>
+<ul>
+<li>
+Nested item
+</li>
+</ul>
+</li>
+<li>
+Back to top level
+</li>
+</ul>
+```
+
+Each `*` adds one level (`***` is level 3). A list ends at the first line that is not an item.
 
 
 ### Inline Formatting
@@ -136,7 +187,7 @@ Tag names start with a letter and may contain letters, digits, `_` and `-` (usef
 
 A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). In a run of colons, `::` markers are the pairs ending the run: `::::[...]` is a closing `::` followed by `::[...]`, and `x:::nl` is `x:` followed by `::nl`. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
 
-A tag that is opened but never closed, or a `::` without matching opening tag, produces an `LHTMLWarning` quoting the beginning of the tag.
+A tag that is opened but never closed, or a `::` without matching opening tag, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
 
 #### Div / Span with Styles
 
@@ -200,6 +251,25 @@ Output:
 <div style="color:blue;"> short text </div>
 ```
 
+#### Explicit Closing Tags
+
+A bare `::` closes the last opened tag. To make long or nested blocks easier to read, name the tag you close with `::name[-]` (`::[-]` closes the last one, like `::`):
+
+```
+div::[color:red;]
+Red **text**
+::div[-]
+```
+
+Output:
+```html
+<div style="color:red;">
+Red <strong>text</strong>
+</div>
+```
+
+If the name does not match the last opened tag, a `LHTMLWarning` is emitted and the last opened tag is closed.
+
 
 ### Links
 
@@ -248,7 +318,22 @@ def hello():
 code::[-]
 ````
 
-`include::file` directives inside a code block insert the file as raw code. Syntax highlighting is powered by Pygments. Any language supported by Pygments can be used. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning.
+Output (Pygments HTML inside `<div class="code">`):
+```html
+<div class="code"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">hello</span><span class="p">():</span>
+...
+</pre></div>
+```
+
+Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](#custom-code-lexers)).
+
+The colors come from a Pygments stylesheet, which you must include in your page. Generate one for the `.code` class (any [Pygments style](https://pygments.org/styles/) can replace `default`):
+
+```bash
+pygmentize -S default -f html -a .code > code.css
+```
+
+`include::file` directives inside a code block insert the file as raw code.
 
 
 ### Spacer
@@ -336,6 +421,50 @@ Supported metadata keys:
 | `directory_include` | list | Directories to search for includes |
 
 
+## Using LHTML with Jinja2
+
+LHTML leaves Jinja2 untouched, so a template can be written in LHTML: convert it to HTML first, then render it with Jinja2 (`pip install jinja2`).
+
+`blog.l.html`:
+```
+= {{ page.title }}
+
+{% for post in posts %}
+div::(.post)
+== link::{{ post.url }}[{{ post.title }}]
+{{ post.summary }} **Read more**
+::
+{% endfor %}
+```
+
+```python
+import jinja2
+import lhtml
+
+with open('blog.l.html', encoding='utf-8') as f:
+    template = jinja2.Template(lhtml.run(f.read()))
+
+html = template.render(page={'title': 'Blog'},
+                       posts=[{'url': 'first.html', 'title': 'First post', 'summary': 'Hello.'}])
+```
+
+`lhtml.run()` produces the Jinja2 template:
+```html
+<h1>{{ page.title }}</h1>
+
+
+{% for post in posts %}
+<div class="post">
+<h2><a href="{{ post.url }}">{{ post.title }}</a></h2>
+
+{{ post.summary }} <strong>Read more</strong>
+</div>
+{% endfor %}
+```
+
+Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in tag groups (`div::[color:{{ color }};]`).
+
+
 ## Plugin System
 
 ### Custom Tag Handlers
@@ -402,7 +531,7 @@ All keys for the `meta` dict passed to `lhtml.run()`:
     'title': 'Webpage',        # Document title
     'css': [],                 # CSS files (string or list)
     'js': [],                  # JS files (string or list)
-    'directory_include': [],   # Search paths for include::
+    'directory_include': [cwd],  # Search paths for include:: (default: current directory)
     'current_directory': '',   # Base directory for video codec detection
 }
 ```
@@ -411,8 +540,8 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 ## Design Principles
 
 - **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed (not even by `include::` or `::#`): HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, so that `$x**2$` reaches MathJax/KaTeX intact). Text between HTML tags is still processed.
-- Styles, classes/IDs and HTML attributes in LHTML tag groups are preserved without inline formatting. Link labels still support formatting.
-- Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged.
+- **Attributes stay literal**: styles, classes/IDs and HTML attributes in LHTML tag groups and headings are preserved without inline formatting (`div::(.my__class__)` keeps `my__class__`). Link labels still support formatting.
+- **Template-friendly**: Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.
 - **Minimal**: A few symbols (`::`, `=`, `*`, `**`, `__`, `` ` ``) cover most needs. No complex configuration required.
 - **Composable**: LHTML works seamlessly with Jinja2 templates, making it suitable for static site generators.
@@ -423,20 +552,27 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 ```
 src/lhtml/
   __init__.py          # Public API: run(), analyse_tag(), read_yaml()
+  __main__.py          # python -m lhtml
   cli.py               # Command-line interface
   pipeline.py          # ProcessingPipeline, TagRegistry, LexerRegistry
   process.py           # Core transformation functions
   patterns.py          # Centralized regex patterns and utilities
   tag_parser.py        # Lark-based parser for :: bracket syntax
   tag_element.lark     # Lark grammar definition
+  element_extract.py   # extract_bracket_elements() (entry point of the tag parser)
   export_html.py       # HTML generation for tag elements
   listing.py           # List processing
   code.py              # Code syntax highlighting (Pygments)
   wrap_html.py         # HTML document wrapping
   errors.py            # Structured error types
+  insert_in_text.py    # Store/restore helpers kept for backward compatibility
+test/                  # pytest suite and .l.html / -out.html reference pairs
+examples/              # Example sources (see examples/README.md)
 ```
+
+Run the tests with `pytest` (after `pip install -e ".[dev]"`).
 
 
 ## License
 
-MIT
+MIT, see [LICENSE.md](LICENSE.md).

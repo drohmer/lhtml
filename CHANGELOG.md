@@ -3,6 +3,18 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- A closing `::` (or `::name[-]`) without matching opening tag is kept as
+  text in the output, instead of being replaced by `::??ERROR`. The
+  `LHTMLWarning` is unchanged.
+
+### Documentation
+- README: explicit closing tags, list and code block outputs, Pygments
+  stylesheet, `-w` output, using LHTML with Jinja2, default
+  `directory_include`.
+
 ## [2.4.0] - 2026-10-03
 
 ### Added
@@ -107,5 +119,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Headings without parentheses (`= Title`).
 - `::#` comments are removed on every line.
 
+[Unreleased]: https://github.com/drohmer/lhtml/compare/v2.4.0...HEAD
 [2.4.0]: https://github.com/drohmer/lhtml/releases/tag/v2.4.0
 [2.3.0]: https://github.com/drohmer/lhtml/releases/tag/v2.3.0
