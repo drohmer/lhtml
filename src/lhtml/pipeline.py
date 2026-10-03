@@ -19,12 +19,9 @@ from typing import Callable
 
 META_DEFAULTS = {
     'wrap-auto': False,
-    'add_title_id': False,
     'title': 'Webpage',
     'css': [],
     'js': [],
-    'wrap-custom-pre': '',
-    'wrap-custom-post': '',
     'line-breaks': False,
 }
 

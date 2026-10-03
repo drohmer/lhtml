@@ -19,6 +19,7 @@ dependencies = [
 Homepage = "https://github.com/drohmer/lhtml"
 Repository = "https://github.com/drohmer/lhtml"
 Issues = "https://github.com/drohmer/lhtml/issues"
+Changelog = "https://github.com/drohmer/lhtml/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
