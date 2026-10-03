@@ -1274,3 +1274,49 @@ class TestLineBreakRegressions:
     def test_multiline_jinja_expression_remains_inline(self):
         source = 'one {{\n value\n}}\ntwo'
         assert lhtml.run(source, self.ON) == 'one {{\n value\n}}<br>\ntwo'
+
+
+class TestJinjaInUrlsAndHeadings:
+    @pytest.mark.parametrize('source, expected', [
+        ('img::{{ url }}', '<img src="{{ url }}" alt="{{ url }}">'),
+        ('img::{{ base }}/photo__small__.jpg[width:10px]',
+         '<img style="width:10px" src="{{ base }}/photo__small__.jpg"'
+         ' alt="{{ base }}/photo__small__.jpg">'),
+        ('link::{{ url }}[**go**]', '<a href="{{ url }}"><strong>go</strong></a>'),
+        ('link::/posts/{{ post.slug }}.html(.nav)[x]',
+         '<a class="nav" href="/posts/{{ post.slug }}.html">x</a>'),
+        ("link::{{ url_for('page', name='a b') }}[x]",
+         "<a href=\"{{ url_for('page', name='a b') }}\">x</a>"),
+    ])
+    def test_jinja_expression_in_url(self, source, expected):
+        assert lhtml.run(source) == expected
+
+    def test_jinja_double_quotes_are_not_escaped_in_attributes(self):
+        assert lhtml.run('link::{{ url_for("page") }}[x]') == (
+            '<a href="{{ url_for("page") }}">x</a>')
+        assert lhtml.run('div::[font-family:{{ font("a") }}; content:"x"] y ::') == (
+            '<div style="font-family:{{ font("a") }}; content:&quot;x&quot;"> y </div>')
+
+    def test_jinja_in_video_url(self):
+        assert '<source src="{{ base }}/clip.mp4"' in lhtml.run('video::{{ base }}/clip.mp4')
+
+    @pytest.mark.parametrize('source, expected', [
+        ('=(.t__x__) Title', '<h1 class="t__x__">Title</h1>\n'),
+        ('==(.a**b** #id__1__) **Bold** __it__',
+         '<h2 class="a**b**" id="id__1__"><strong>Bold</strong> <em>it</em></h2>\n'),
+        ('= Title (.not__class__)', '<h1>Title (.not<em>class</em>)</h1>\n'),
+    ])
+    def test_heading_classes_are_not_formatted(self, source, expected):
+        assert lhtml.run(source) == expected
+
+    @pytest.mark.parametrize('opening', ['{{', '{%'])
+    def test_many_unclosed_jinja_delimiters_are_fast(self, opening):
+        source = (opening + ' x ') * 20000 + '**b**'
+        start = time.perf_counter()
+        result = lhtml.run(source)
+        assert time.perf_counter() - start < 1
+        assert result.endswith('<strong>b</strong>')
+
+    def test_jinja_delimiter_in_string_still_matches(self):
+        assert lhtml.run('{{ "{{" }} __a__') == '{{ "{{" }} <em>a</em>'
+        assert lhtml.run('{% set x = "{%" %} __a__') == '{% set x = "{%" %} <em>a</em>'

@@ -187,7 +187,7 @@ class ProcessingPipeline:
         ctx.text = process_include_recursive(ctx.text, ctx.meta['directory_include'], stores)
 
         # Phase 3: Block-level elements
-        ctx.text = process_title(ctx.text)
+        ctx.text = process_title(ctx.text, stores)
         ctx.text = process_listing(ctx.text)
 
         # Phase 4: Inline elements

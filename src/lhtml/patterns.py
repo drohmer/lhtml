@@ -55,14 +55,20 @@ HTML_TAG = re.compile(r'</?[A-Za-z][\w:-]*(?:\s+' + _HTML_ATTRIBUTE + r')*\s*/?>
 RAW_HTML_BLOCK   = re.compile(r'<!--.*?-->|<(?i:(script|style))\b[^>]*>.*?</(?i:\1)\s*>', re.DOTALL)
 # URL of link::, img::, video::, videoplay:: (parentheses are kept when they
 # are not a (.class #id) group, e.g. Mercury_(planet) or fig(1).png)
-URL_TAGS         = ('link', 'img', 'video', 'videoplay')
-URL_TOKEN        = r'(?:[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+'
 # Quoted strings can contain the Jinja closing delimiter itself. A quote can
-# only start a string (otherwise an unclosed {{ backtracks exponentially).
+# only start a string (otherwise an unclosed {{ backtracks exponentially),
+# and a new opening delimiter ends the search (an unclosed {{ does not scan
+# the rest of the document).
 _JINJA_STRING = r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')"
+_JINJA_EXPRESSION = r'\{\{(?:' + _JINJA_STRING + r'|(?!\}\}|\{\{)[^"\'])*?\}\}'
 JINJA = (r'\{#.*?#\}'
-         r'|\{\{(?:' + _JINJA_STRING + r'|(?!\}\})[^"\'])*?\}\}'
-         r'|\{%(?:' + _JINJA_STRING + r'|(?!%\})[^"\'])*?%\}')
+         r'|' + _JINJA_EXPRESSION +
+         r'|\{%(?:' + _JINJA_STRING + r'|(?!%\}|\{%)[^"\'])*?%\}')
+JINJA_RE = re.compile(JINJA, re.DOTALL)
+URL_TAGS         = ('link', 'img', 'video', 'videoplay')
+# A URL may contain Jinja expressions (img::{{ base }}/photo.jpg)
+URL_TOKEN        = (r'(?:' + _JINJA_EXPRESSION +
+                    r'|[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+')
 PROTECTED        = re.compile(
     r'(?P<jinja>' + JINJA + r')'
     r'|(?P<comment><!--.*?-->)'

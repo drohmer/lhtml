@@ -196,6 +196,12 @@ def process_protect(text, stores, directories=None, _stack=()):
 
 def process_protect_attributes(text, stores):
     """Hide attribute groups from formatting, keeping link labels active."""
+    def _heading(m):
+        if not m.group(2):
+            return m.group(0)
+        return f'{m.group(1)}({stores.add("A", m.group(2))}) {m.group(3)}'
+    text = regex_transform(text, HEADING, _heading)
+
     parts, prev = [], 0
     for m in TAG_MARKER.finditer(text):
         if m.start() < prev:
@@ -370,14 +376,24 @@ def process_code_inline(text):
 # Headings
 # ---------------------------------------------------------------------------
 
-def process_title(text):
-    """Convert = Title or =(.class) Title to <h1>Title</h1>, etc."""
+def process_title(text, stores=None):
+    """Convert = Title or =(.class) Title to <h1>Title</h1>, etc.
+
+    With stores, the (.class #id) group protected by process_protect_attributes
+    is resolved, and the generated attributes stay protected from inline
+    formatting until process_unprotect.
+    """
     def _heading(m):
         level = str(len(m.group(1)))
-        class_id = (m.group(2) or '').strip()
+        class_id = m.group(2) or ''
+        if stores is not None:
+            class_id = stores.restore(class_id, 'A')
+        class_id = class_id.strip()
         title = m.group(3)
         if class_id:
             attrs = export_html_element_class_and_id(class_id)
+            if stores is not None and attrs:
+                attrs = stores.add('A', attrs)
             return f'<h{level}{attrs}>{title}</h{level}>\n'
         return f'<h{level}>{title}</h{level}>\n'
     return regex_transform(text, HEADING, _heading)

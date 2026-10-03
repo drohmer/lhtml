@@ -9,6 +9,8 @@ import html
 import os
 import re
 
+from .patterns import JINJA_RE
+
 
 # ---------------------------------------------------------------------------
 # Attribute helpers
@@ -24,8 +26,15 @@ def _build_attrs(elements):
 
 
 def _attr(value):
-    """Escape the double quotes of a value placed inside a double-quoted HTML attribute."""
-    return value.replace('"', '&quot;')
+    """Escape the double quotes of a value placed inside a double-quoted HTML
+    attribute (Jinja zones are kept as is, they are rendered before HTML)."""
+    parts, prev = [], 0
+    for m in JINJA_RE.finditer(value):
+        parts.append(value[prev:m.start()].replace('"', '&quot;'))
+        parts.append(m.group(0))
+        prev = m.end()
+    parts.append(value[prev:].replace('"', '&quot;'))
+    return ''.join(parts)
 
 
 def export_html_element_style(text):
