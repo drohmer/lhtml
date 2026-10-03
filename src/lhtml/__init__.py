@@ -9,7 +9,7 @@ Usage:
     html = lhtml.run(text, {'wrap-auto': True, 'title': 'My Page'})
 """
 
-__version__ = '2.4.0'
+__version__ = '2.4.1'
 
 from .element_extract import extract_bracket_elements
 from .insert_in_text import insert_element_from_index, remove_element_to_index
