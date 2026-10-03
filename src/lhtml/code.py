@@ -54,20 +54,21 @@ _BUILTIN_LEXERS = {
 
 def export_html_code(text, language, cssclass='code'):
     """Highlight a code block and return HTML."""
-    # Check plugin registry first, then built-in lexers
+    language = (language or '').strip()
+
+    # Check plugin registry first, then built-in lexers (case-insensitive)
     lexer_class = None
     try:
         from .pipeline import lexer_registry
-        lexer_class = lexer_registry.get(language)
+        lexer_class = lexer_registry.get(language) or lexer_registry.get(language.lower())
     except ImportError:
         pass
 
     if lexer_class is None:
-        lexer_class = _BUILTIN_LEXERS.get(language)
+        lexer_class = _BUILTIN_LEXERS.get(language.lower())
 
     lexer_options = dict(stripall=False, stripnl=True, ensurenl=True,
                          tabsize=2, encoding='utf-8')
-    language = (language or '').strip()
     if lexer_class is not None:
         lexer = lexer_class()
     elif not language:

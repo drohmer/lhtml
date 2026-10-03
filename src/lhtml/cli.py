@@ -11,9 +11,11 @@ Usage:
 import os
 import sys
 import argparse
+import warnings
 
 from .errors import LHTMLError
 from .pipeline import ProcessingPipeline
+from .process import read_source
 
 
 _pipeline = ProcessingPipeline()
@@ -51,16 +53,22 @@ def _output_path_for(input_path, output_arg):
 
 
 def _process_file(f_in, meta_base):
-    """Process a single LHTML file and return the HTML output."""
+    """Process a single LHTML file and return (html, warning_messages).
+
+    Includes are looked up first in the file's directory, then in the
+    current directory.
+    """
     meta = dict(meta_base)
-    dir_to_include = os.path.dirname(os.path.abspath(f_in)) + '/'
-    meta['directory_include'] = meta.get('directory_include', []) + [dir_to_include]
-    meta['current_directory'] = dir_to_include
+    dir_of_file = os.path.dirname(os.path.abspath(f_in)) + '/'
+    meta['directory_include'] = [dir_of_file] + [
+        d for d in meta.get('directory_include', []) if d != dir_of_file]
+    meta['current_directory'] = dir_of_file
 
-    with open(f_in) as fid:
-        txt = _ensure_trailing_newline(fid.read())
-
-    return _ensure_trailing_newline(_pipeline.run(txt, meta))
+    txt = _ensure_trailing_newline(read_source(f_in))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        html = _ensure_trailing_newline(_pipeline.run(txt, meta))
+    return html, [str(w.message) for w in caught]
 
 
 def main():
@@ -94,18 +102,26 @@ def main():
             continue
 
         try:
-            html = _process_file(f_in, meta)
-        except (LHTMLError, OSError) as e:
+            html, messages = _process_file(f_in, meta)
+            for message in messages:
+                print(f'lhtml: warning in {f_in}: {message}', file=sys.stderr)
+
+            if single_to_stdout:
+                sys.stdout.buffer.write(html.encode('utf-8'))
+                sys.stdout.flush()
+                continue
+
+            out_path = _output_path_for(f_in, args.output)
+            if os.path.abspath(out_path) == os.path.abspath(f_in):
+                raise ValueError(f'output file would overwrite the input file [{out_path}]')
+            out_dir = os.path.dirname(out_path)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            with open(out_path, 'w', encoding='utf-8') as f_out:
+                f_out.write(html)
+        except (LHTMLError, OSError, UnicodeError, ValueError) as e:
             print(f'lhtml: error in {f_in}: {e}', file=sys.stderr)
             errors += 1
-            continue
-
-        if single_to_stdout:
-            sys.stdout.write(html)
-        else:
-            out_path = _output_path_for(f_in, args.output)
-            with open(out_path, 'w') as f_out:
-                f_out.write(html)
 
     if errors:
         sys.exit(1)

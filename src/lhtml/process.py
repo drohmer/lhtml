@@ -61,6 +61,24 @@ class ProtectionStores:
 
 
 # ---------------------------------------------------------------------------
+# Input normalization
+# ---------------------------------------------------------------------------
+
+def normalize_input(text):
+    """Normalize a source text: no BOM, LF line endings, no NUL character
+    (which would be mistaken for a placeholder delimiter)."""
+    if text.startswith('\ufeff'):
+        text = text[1:]
+    return text.replace('\r\n', '\n').replace(PLACEHOLDER_CHAR, '\ufffd')
+
+
+def read_source(filename):
+    """Read an LHTML source file (UTF-8, with or without BOM), normalized."""
+    with open(filename, 'r', encoding='utf-8-sig') as fid:
+        return normalize_input(fid.read())
+
+
+# ---------------------------------------------------------------------------
 # YAML front matter
 # ---------------------------------------------------------------------------
 
@@ -203,9 +221,7 @@ def process_include(text, directory):
         found_include = True
         element = extract_bracket_elements(text, m.end())
         filename = find_file(directory, element['text'])
-
-        with open(filename, 'r') as fid:
-            included = fid.read()
+        included = read_source(filename)
 
         parts.append(text[prev:m.start()])
         parts.append(included)
@@ -232,8 +248,7 @@ def _expand_includes_raw(text, directories, _stack=()):
         if m.start() < prev:
             continue
         element, filename = _include_target(text, m, directories, _stack)
-        with open(filename, 'r') as fid:
-            included = fid.read().replace(PLACEHOLDER_CHAR, '\ufffd')
+        included = read_source(filename)
         included = _expand_includes_raw(included, [os.path.dirname(filename) + '/', *directories],
                                         (*_stack, filename))
         parts.append(text[prev:m.start()])
@@ -263,8 +278,8 @@ def process_include_recursive(text, directories, stores, _stack=()):
         if m.start() < prev:
             continue
         element, filename = _include_target(text, m, directories, _stack)
-        with open(filename, 'r') as fid:
-            included = fid.read().replace(PLACEHOLDER_CHAR, '\ufffd')
+        # The front matter of an included file is not part of its content
+        included, _ = process_yaml(read_source(filename))
         file_directories = [os.path.dirname(filename) + '/', *directories]
         included = process_include_recursive(included, file_directories,
                                              stores, (*_stack, filename))

@@ -7,6 +7,7 @@ an HTML string. The element dict has keys: '[]' (style), '()'
 
 import html
 import os
+import re
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +109,7 @@ def export_html_video(elements, default_inline='', current_directory=''):
     """Render a video:: or videoplay:: element with codec variants."""
     source = elements['text']
     extension = source.rsplit('.', 1)[-1]
+    mime_extension = re.split(r'[?#]', extension, maxsplit=1)[0].lower()
     poster_candidate = source.rsplit(f'.{extension}', 1)[0] + '-poster.jpg'
 
     parts = ['<video']
@@ -126,7 +128,7 @@ def export_html_video(elements, default_inline='', current_directory=''):
     source_dirname = os.path.dirname(source_name)
 
     found_codecs = False
-    if current_directory and os.path.basename(source_dirname) == 'assets':
+    if os.path.basename(source_dirname) == 'assets':
         codec_dir = os.path.join(source_dirname, CACHE_VIDEO_DIR)
         full_codec_dir = os.path.join(current_directory, codec_dir)
         if os.path.isdir(full_codec_dir):
@@ -137,7 +139,7 @@ def export_html_video(elements, default_inline='', current_directory=''):
                     found_codecs = True
 
     if not found_codecs:
-        parts.append(f'\t<source src="{_attr(source)}" type="video/{extension}">\n')
+        parts.append(f'\t<source src="{_attr(source)}" type="video/{mime_extension}">\n')
 
     parts.append(f'\t Cannot play video {html.escape(source)}\n')
     parts.append('</video>')

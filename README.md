@@ -45,7 +45,7 @@ lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
 ```
 
-Errors are reported on stderr and the exit code is non-zero if any file failed.
+Files are read and written as UTF-8 (a BOM is accepted). Errors and warnings are reported on stderr with the file name, the remaining files are still processed, and the exit code is non-zero if any file failed. An input file is never overwritten (e.g. `lhtml page.html` without `-o`). Includes are looked up in the input file's directory first, then in the current directory.
 
 ### Python API
 
@@ -291,12 +291,12 @@ include::header.html
 include::components/nav.html
 ```
 
-Included files are recursively processed (up to 20 levels). An included file looks for its own includes first in its own directory, then in `directory_include`. A circular include raises `LHTMLIncludeLoopError`.
+Included files are recursively processed (up to 20 levels); their own YAML front matter is ignored. An included file looks for its own includes first in its own directory, then in `directory_include`. A circular include raises `LHTMLIncludeLoopError`.
 
 
 ### YAML Front Matter
 
-The front matter must be at the very beginning of the file (`---` separators elsewhere are kept as text).
+The front matter must be at the very beginning of the file (`---` separators elsewhere are kept as text). Input text is normalized first: a leading BOM is removed and CRLF line endings become LF.
 
 ```
 ---

@@ -4,6 +4,8 @@ Wraps LHTML output in a complete HTML5 document structure
 with head, meta, CSS/JS includes from the YAML metadata.
 """
 
+from html import escape
+
 HTML_TEMPLATE = """\
 <!DOCTYPE html>
 
@@ -38,13 +40,13 @@ def wrap_auto(html_in, meta):
     head_parts = []
 
     for css in _ensure_list(meta.get('css', [])):
-        head_parts.append(f'\t<link rel="stylesheet" type="text/css" href="{css}">\n')
+        head_parts.append(f'\t<link rel="stylesheet" type="text/css" href="{escape(str(css))}">\n')
 
     for js in _ensure_list(meta.get('js', [])):
-        head_parts.append(f'\t<script src="{js}" defer></script>\n')
+        head_parts.append(f'\t<script src="{escape(str(js))}" defer></script>\n')
 
     return HTML_TEMPLATE.format(
-        title=meta.get('title', 'Webpage'),
+        title=escape(str(meta.get('title', 'Webpage')), quote=False),
         head_extras=''.join(head_parts),
         content=html_in,
     )

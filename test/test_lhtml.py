@@ -927,3 +927,113 @@ class TestBackwardCompatibleApi:
     def test_tag_stack_error_old_signature(self):
         assert 'Position 12' in str(lhtml.LHTMLTagStackError(12))
         assert 'Position 3' in str(lhtml.LHTMLTagStackError(source_pos=3))
+
+
+# ---------------------------------------------------------------------------
+# Robustness: encodings, line endings, CLI, wrapper (2.3.0)
+# ---------------------------------------------------------------------------
+
+class TestInputNormalization:
+    def test_crlf_front_matter(self):
+        r = lhtml.run('---\r\ntitle: A\r\nwrap-auto: true\r\n---\r\n= T\r\n')
+        assert '<title>A</title>' in r and '<h1>T</h1>' in r and '\r' not in r
+
+    def test_crlf_heading_has_no_carriage_return(self):
+        assert lhtml.run('= T\r\n') == '<h1>T</h1>\n\n'
+
+    def test_bom_before_front_matter(self):
+        r = lhtml.run('﻿---\ntitle: A\nwrap-auto: true\n---\nx\n')
+        assert '<title>A</title>' in r and '﻿' not in r
+
+    def test_included_file_with_bom_and_front_matter(self, tmp_path):
+        (tmp_path / 'inc.html').write_bytes('﻿---\ntitle: X\n---\n= Inner\n'.encode('utf-8'))
+        r = lhtml.run('include::inc.html', {'directory_include': [str(tmp_path) + '/']})
+        # as for the main document, the newline after the closing --- is kept
+        assert r == '\n<h1>Inner</h1>\n\n'
+
+    def test_included_file_read_as_utf8(self, tmp_path, monkeypatch):
+        (tmp_path / 'inc.html').write_bytes('é ” ü'.encode('utf-8'))
+        monkeypatch.setattr('locale.getpreferredencoding', lambda *a, **k: 'cp1252')
+        r = lhtml.run('include::inc.html', {'directory_include': [str(tmp_path) + '/']})
+        assert r == 'é ” ü'
+
+    def test_directory_include_as_string(self, tmp_path):
+        (tmp_path / 'inc.html').write_text('X')
+        assert lhtml.run('include::inc.html', {'directory_include': str(tmp_path) + '/'}) == 'X'
+
+    def test_non_string_current_directory(self):
+        r = lhtml.run('---\ncurrent_directory: 5\n---\nvideo::a.mp4\n')
+        assert '<video' in r
+
+
+class TestWrapAndMisc:
+    def test_wrapper_escapes_title_and_paths(self):
+        r = lhtml.run('x', {'wrap-auto': True, 'title': 'A </title> & B', 'css': 'a".css'})
+        assert '<title>A &lt;/title&gt; &amp; B</title>' in r
+        assert 'href="a&quot;.css"' in r
+
+    def test_code_language_case_insensitive_custom_lexer(self):
+        upper = lhtml.run('code::[C++]\nvec3 v;\ncode::[-]\n')
+        lower = lhtml.run('code::[ c++ ]\nvec3 v;\ncode::[-]\n')
+        assert upper == lower == lhtml.run('code::[c++]\nvec3 v;\ncode::[-]\n')
+
+    def test_video_mime_type(self):
+        r = lhtml.run('video::clip.MP4?v=2\n')
+        assert 'type="video/mp4"' in r
+
+
+class TestCliRobustness:
+    _run_cli = TestCli._run_cli
+
+    def test_non_utf8_file_does_not_stop_the_batch(self, tmp_path, monkeypatch, capsys):
+        bad, good = tmp_path / 'bad.l.html', tmp_path / 'good.l.html'
+        bad.write_bytes('caf\xe9\n'.encode('latin-1'))
+        good.write_text('**ok**\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(bad), str(good),
+                                     '-o', str(tmp_path / 'out') + '/')
+        assert code == 1
+        assert 'bad.l.html' in err and 'Traceback' not in err
+        assert (tmp_path / 'out' / 'good.html').read_text() == '<strong>ok</strong>\n'
+
+    def test_output_file_in_missing_directory(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / 'a.l.html'
+        f.write_text('**a**\n')
+        code, _, _ = self._run_cli(monkeypatch, capsys, str(f), '-o', str(tmp_path / 'new' / 'a.html'))
+        assert code == 0
+        assert (tmp_path / 'new' / 'a.html').read_text() == '<strong>a</strong>\n'
+
+    def test_never_overwrites_input(self, tmp_path, monkeypatch, capsys):
+        page, other = tmp_path / 'page.html', tmp_path / 'other.html'
+        page.write_text('**p**\n')
+        other.write_text('**o**\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(page), str(other))
+        assert code == 1
+        assert 'overwrite' in err
+        assert page.read_text() == '**p**\n' and other.read_text() == '**o**\n'
+
+    def test_utf8_output_and_bom_input(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / 'a.l.html'
+        f.write_bytes('﻿---\ntitle: Été\n---\n**é**\n'.encode('utf-8'))
+        out = tmp_path / 'a.html'
+        code, _, _ = self._run_cli(monkeypatch, capsys, str(f), '-o', str(out))
+        assert code == 0
+        assert out.read_bytes() == '\n<strong>é</strong>\n'.encode('utf-8')
+
+    def test_warnings_name_the_file_and_are_not_deduplicated(self, tmp_path, monkeypatch, capsys):
+        a, b = tmp_path / 'e1.l.html', tmp_path / 'e2.l.html'
+        a.write_text('x\n::\n')
+        b.write_text('x\n::\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(a), str(b),
+                                     '-o', str(tmp_path / 'out') + '/')
+        assert code == 0
+        assert err.count('lhtml: warning in') == 2
+        assert 'e1.l.html' in err and 'e2.l.html' in err
+
+    def test_include_prefers_file_directory_over_cwd(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'site').mkdir()
+        (tmp_path / 'header.html').write_text('ROOT')
+        (tmp_path / 'site' / 'header.html').write_text('SITE')
+        (tmp_path / 'site' / 'page.l.html').write_text('include::header.html\n')
+        monkeypatch.chdir(tmp_path)
+        code, out, _ = self._run_cli(monkeypatch, capsys, 'site/page.l.html')
+        assert out == 'SITE\n'

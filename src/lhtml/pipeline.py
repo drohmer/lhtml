@@ -161,10 +161,9 @@ class ProcessingPipeline:
             render_inline_code, render_code_block,
         )
         from .wrap_html import wrap_auto
-        from .patterns import PLACEHOLDER_CHAR
+        from .process import normalize_input
 
-        # A NUL character would be mistaken for a placeholder delimiter
-        text = text.replace(PLACEHOLDER_CHAR, '\ufffd')
+        text = normalize_input(text)
         ctx = ProcessingContext(
             text=text,
             meta={**_default_meta(), **(meta_arg or {})},
@@ -175,7 +174,11 @@ class ProcessingPipeline:
         # Phase 1: YAML front matter
         ctx.text, meta_yaml = process_yaml(ctx.text)
         ctx.meta = {**ctx.meta, **meta_yaml}
-        ctx.current_directory = ctx.meta.get('current_directory', '')
+        ctx.current_directory = str(ctx.meta.get('current_directory') or '')
+        directory_include = ctx.meta.get('directory_include') or []
+        if isinstance(directory_include, (str, os.PathLike)):
+            directory_include = [directory_include]
+        ctx.meta['directory_include'] = [str(d) for d in directory_include]
 
         # Phase 2: For each file: verbatim/code blocks and protected zones
         # (HTML, inline code, URLs, math) are replaced by placeholders,
