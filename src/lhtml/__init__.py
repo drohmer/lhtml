@@ -16,7 +16,7 @@ from .wrap_html import wrap_auto
 from .process import (
     process_yaml, process_verbatim_to_index, process_verbatim_back_from_index,
     process_remove_comment, process_include, process_include_recursive, find_file,
-    process_protect, process_unprotect,
+    process_protect, process_unprotect, process_line_breaks,
     process_bold, process_italic, process_code_inline,
     process_title, process_tag, process_code,
     process_listing,
@@ -75,7 +75,7 @@ __all__ = [
     'extract_bracket_elements',
     'process_yaml', 'process_verbatim_to_index', 'process_verbatim_back_from_index',
     'process_remove_comment', 'process_include', 'process_include_recursive', 'find_file',
-    'process_protect', 'process_unprotect',
+    'process_protect', 'process_unprotect', 'process_line_breaks',
     'process_bold', 'process_italic', 'process_code_inline',
     'process_title', 'process_tag', 'process_code',
     'process_listing',

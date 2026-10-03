@@ -25,6 +25,7 @@ META_DEFAULTS = {
     'js': [],
     'wrap-custom-pre': '',
     'wrap-custom-post': '',
+    'line-breaks': False,
 }
 
 
@@ -158,7 +159,7 @@ class ProcessingPipeline:
             ProtectionStores, process_yaml, process_include_recursive,
             process_unprotect, process_title, process_listing,
             process_bold, process_italic, process_tag,
-            render_inline_code, render_code_block,
+            render_inline_code, render_code_block, process_line_breaks,
         )
         from .wrap_html import wrap_auto
         from .process import normalize_input
@@ -202,6 +203,11 @@ class ProcessingPipeline:
                                resolve=resolve_urls)
         ctx.text = stores.restore(ctx.text, 'I', lambda content: render_inline_code(
             process_tag(content, ctx.current_directory, self.tag_registry, inline=True)))
+
+        # Optional: source line breaks become <br> (protected zones are
+        # still placeholders, so their content is not affected)
+        if ctx.meta.get('line-breaks') is True:
+            ctx.text = process_line_breaks(ctx.text, stores)
 
         # Phase 6: Restore protected zones, code blocks (highlighted) and
         # verbatim blocks

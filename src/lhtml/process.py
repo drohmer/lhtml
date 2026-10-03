@@ -31,6 +31,8 @@ from .patterns import (
     YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, BLOCKS, PROTECTED,
     HEADING, BOLD, ITALIC, INLINE_CODE,
     COMMENT, INCLUDE, TAG_MARKER, SPACER,
+    BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
+    JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
     MAX_INCLUDE_ITERATIONS, PLACEHOLDER_CHAR, PLACEHOLDER,
     regex_transform, store_to_index, restore_from_index, make_placeholder,
 )
@@ -504,3 +506,85 @@ def process_tag(text, current_directory='', registry=None, inline=False, resolve
 
     parts.append(text[prev:])
     return ''.join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Line breaks option
+# ---------------------------------------------------------------------------
+
+def _is_block_placeholder(kind, idx, stores):
+    """True if a protected zone is a block: code/verbatim block, HTML
+    comment, <script>/<style>, display math or block-level HTML tag."""
+    if kind in 'CV':
+        return True
+    if kind != 'R':
+        return False
+    entry = stores.R[idx]
+    if BLOCK_RAW.match(entry):
+        return True
+    m = LEADING_TAG.match(entry)
+    return bool(m) and m.group(1).lower() in BLOCK_TAGS
+
+
+def _is_structure_line(line, stores):
+    """True if the line starts or ends with a block element, or is a Jinja statement."""
+    if JINJA_LINE.fullmatch(line):
+        return True
+    for tag_re, ph_re in ((LEADING_TAG, LEADING_PLACEHOLDER), (TRAILING_TAG, TRAILING_PLACEHOLDER)):
+        m = ph_re.search(line)
+        if m and _is_block_placeholder(m.group(1), int(m.group(2)), stores):
+            return True
+        m = tag_re.search(line)
+        if m and m.group(1).lower() in BLOCK_TAGS:
+            return True
+    return False
+
+
+def _preformatted_depth_change(line, stores):
+    """Net number of <pre>/<textarea> elements opened by the line (raw HTML
+    tags are still placeholders, so they are resolved)."""
+    resolved = PLACEHOLDER.sub(
+        lambda m: stores.R[int(m.group(2))] if m.group(1) == 'R' else '', line)
+    return sum(-1 if m.group(1) else 1 for m in PREFORMATTED_TAG.finditer(resolved))
+
+
+def process_line_breaks(text, stores=None):
+    """Make the line breaks of the source visible with <br>.
+
+    Lines that start or end with a block element (heading, list, div,
+    code block, ...) are structure and are left alone. In each run of
+    other lines, blank lines at the start and end of the run are ignored,
+    and every line but the last one gets a <br>, blank lines included.
+    The content of protected zones (code, math, scripts...) is not
+    affected since it is still hidden in placeholders, nor is the content
+    of <pre> and <textarea> elements, whose line breaks are already visible.
+    """
+    if stores is None:
+        stores = ProtectionStores()
+    lines = text.split('\n')
+    structure = []
+    depth = 0
+    for line in lines:
+        change = _preformatted_depth_change(line, stores)
+        structure.append(depth > 0 or change != 0 or _is_structure_line(line, stores))
+        depth = max(0, depth + change)
+    blank = [not line.strip() for line in lines]
+
+    start = 0
+    while start < len(lines):
+        if structure[start]:
+            start += 1
+            continue
+        end = start
+        while end < len(lines) and not structure[end]:
+            end += 1
+        # run = lines[start:end], without leading/trailing blank lines
+        first, last = start, end - 1
+        while first <= last and blank[first]:
+            first += 1
+        while last >= first and blank[last]:
+            last -= 1
+        for k in range(first, last):
+            lines[k] += '<br>'
+        start = end
+    return '\n'.join(lines)

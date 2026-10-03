@@ -1037,3 +1037,84 @@ class TestCliRobustness:
         monkeypatch.chdir(tmp_path)
         code, out, _ = self._run_cli(monkeypatch, capsys, 'site/page.l.html')
         assert out == 'SITE\n'
+
+
+# ---------------------------------------------------------------------------
+# Line breaks option (-b / line-breaks)
+# ---------------------------------------------------------------------------
+
+class TestLineBreaks:
+    ON = {'line-breaks': True}
+
+    def test_disabled_by_default(self):
+        assert lhtml.run('a\nb\n\nc\n') == 'a\nb\n\nc\n'
+
+    def test_basic_with_blank_line(self):
+        r = lhtml.run('Ligne 1\nLigne 2\n\nAutre paragraphe\n', self.ON)
+        assert r == 'Ligne 1<br>\nLigne 2<br>\n<br>\nAutre paragraphe\n'
+
+    def test_leading_and_trailing_blank_lines_ignored(self):
+        assert lhtml.run('\n\na\nb\n\n\n', self.ON) == '\n\na<br>\nb\n\n\n'
+
+    def test_no_break_around_heading_and_list(self):
+        r = lhtml.run('= Titre\n\nTexte a\nTexte b\n\n* item 1\n* item 2\n\nfin\n', self.ON)
+        assert r == ('<h1>Titre</h1>\n\n\nTexte a<br>\nTexte b\n\n'
+                     '<ul>\n<li>\nitem 1\n</li>\n<li>\nitem 2\n</li>\n</ul>\n\nfin\n')
+
+    def test_breaks_inside_div_but_not_around(self):
+        r = lhtml.run('div::[x]\nl1\nl2\n::\napres\n::nl\nb\n', self.ON)
+        assert r == ('<div style="x">\nl1<br>\nl2\n</div>\napres\n'
+                     '<div style="height:1em;"></div>\nb\n')
+
+    def test_no_break_after_block_end(self):
+        # closing :: on its own line, at the end of a text line, or followed by text
+        assert lhtml.run('div::[x]\ntexte\n::\nsuite\n', self.ON) == \
+            '<div style="x">\ntexte\n</div>\nsuite\n'
+        assert lhtml.run('div::[x]\ntexte ::\nsuite\n', self.ON) == \
+            '<div style="x">\ntexte </div>\nsuite\n'
+        assert lhtml.run('div::[x]\na\n:: b\nc\n', self.ON) == \
+            '<div style="x">\na\n</div> b\nc\n'
+        # raw HTML block end, blank line after it ignored
+        assert lhtml.run('<div>\na\n</div>\n\nb\n', self.ON) == '<div>\na\n</div>\n\nb\n'
+        assert lhtml.run('x\n</p>\ny\n</ul>\nz\n', self.ON) == 'x\n</p>\ny\n</ul>\nz\n'
+
+    def test_inline_elements_are_text(self):
+        r = lhtml.run('Use **gras** et span::[c] s :: ici\nsuite `code` link::u[l]\n', self.ON)
+        assert r == ('Use <strong>gras</strong> et <span style="c"> s </span> ici<br>\n'
+                     'suite <code class="code-inline">code</code> <a href="u">l</a>\n')
+
+    def test_protected_blocks_untouched(self):
+        src = ('avant\ncode::[text]\na\nb\ncode::[-]\n'
+               'verbatim::[]\nv1\nv2\nverbatim::[-]\n'
+               '<script>\nx\ny\n</script>\n'
+               '$$\nm1\nm2\n$$\n'
+               '<!--\nc1\nc2\n-->\napres\n')
+        r = lhtml.run(src, self.ON)
+        assert '<br>' not in r
+
+    def test_existing_br_not_doubled(self):
+        assert lhtml.run('a<br>\nb\n', self.ON) == 'a<br>\nb\n'
+
+    def test_raw_block_html(self):
+        r = lhtml.run('<p>\nx\ny\n</p>\n', self.ON)
+        assert r == '<p>\nx<br>\ny\n</p>\n'
+
+    def test_images_one_per_line_are_stacked(self):
+        r = lhtml.run('img::a.jpg\nimg::b.jpg\nvideo::c.mp4\nfin\n', self.ON)
+        assert r.startswith('<img src="a.jpg" alt="a.jpg"><br>\n<img src="b.jpg" alt="b.jpg"><br>\n<video')
+        assert r.endswith('</video><br>\nfin\n')
+        assert '<source src="c.mp4" type="video/mp4">\n' in r
+
+    def test_no_break_inside_pre(self):
+        src = '<pre>\n**a** x\ny\n</pre>\nt\nu\n'
+        assert lhtml.run(src, self.ON) == '<pre>\n<strong>a</strong> x\ny\n</pre>\nt<br>\nu\n'
+
+    def test_enabled_by_front_matter(self):
+        assert lhtml.run('---\nline-breaks: true\n---\na\nb\n') == '\na<br>\nb\n'
+
+    def test_cli_flag(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / 'a.l.html'
+        f.write_text('a\nb\n')
+        for flag in ('-b', '--line-breaks'):
+            code, out, _ = TestCli._run_cli(self, monkeypatch, capsys, flag, str(f))
+            assert code == 0 and out == 'a<br>\nb\n'

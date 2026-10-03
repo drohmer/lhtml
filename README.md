@@ -40,6 +40,7 @@ Dependencies (`lark`, `pygments`, `pyyaml`) are installed automatically.
 lhtml input.l.html                    # Convert to stdout
 lhtml input.l.html -o output.html     # Convert to file
 lhtml input.l.html -w                 # Wrap in full HTML document
+lhtml input.l.html -b                 # Render source line breaks as <br>
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
@@ -275,6 +276,20 @@ verbatim::[-]
 ```
 
 
+### Line breaks
+
+By default, line breaks of the source have no visual effect (as in HTML). With the option `-b` / `--line-breaks` (or `line-breaks: true` in the YAML front matter, or `{'line-breaks': True}` in the `meta` passed to `lhtml.run()`), each line break of the text is rendered with `<br>`, blank lines included:
+
+```
+Line 1            Line 1<br>
+Line 2     =>     Line 2<br>
+                  <br>
+Other paragraph   Other paragraph
+```
+
+Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code and verbatim blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, verbatim blocks, scripts, comments and math is never modified.
+
+
 ### Comments
 
 ```
@@ -317,6 +332,7 @@ Supported metadata keys:
 | `css` | string or list | CSS files to include |
 | `js` | string or list | JavaScript files to include |
 | `wrap-auto` | boolean | Wrap output in full HTML document |
+| `line-breaks` | boolean | Render source line breaks as `<br>` |
 | `directory_include` | list | Directories to search for includes |
 
 
@@ -382,6 +398,7 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 ```python
 {
     'wrap-auto': False,        # Wrap in HTML document
+    'line-breaks': False,      # Render source line breaks as <br>
     'title': 'Webpage',        # Document title
     'css': [],                 # CSS files (string or list)
     'js': [],                  # JS files (string or list)

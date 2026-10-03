@@ -66,6 +66,20 @@ PROTECTED        = re.compile(
     r'|(?P<tag>' + HTML_TAG.pattern + r')',
     re.DOTALL)
 
+# Line breaks option: elements that make a line part of the structure
+BLOCK_TAGS       = frozenset((
+    'div p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tfoot tr td th '
+    'pre blockquote section article header footer nav aside main figure figcaption '
+    'hr br source track details summary form').split())
+LEADING_TAG      = re.compile(r'^\s*</?([A-Za-z][\w-]*)')
+TRAILING_TAG     = re.compile(r'</?([A-Za-z][\w-]*)(?:[^<>"\']|"[^"]*"|\'[^\']*\')*/?>\s*$')
+LEADING_PLACEHOLDER  = re.compile(r'^\s*\x00([A-Z])(\d+)\x00')
+TRAILING_PLACEHOLDER = re.compile(r'\x00([A-Z])(\d+)\x00\s*$')
+JINJA_LINE       = re.compile(r'\s*(\{%.*%\}|\{#.*#\})\s*')
+# <pre> and <textarea> keep their line breaks: no <br> inside
+PREFORMATTED_TAG = re.compile(r'<(/?)(?i:pre|textarea)\b')
+BLOCK_RAW        = re.compile(r'\s*(<!--|<(?i:script|style)\b|\$\$|\\\[)')
+
 # Placeholders for protected content. They contain no LHTML syntax
 # characters, so no processing step can alter them. Kinds:
 #   V verbatim, C code block, R raw zone (HTML, math), I inline code, U URL

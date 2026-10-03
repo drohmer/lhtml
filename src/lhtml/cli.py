@@ -5,6 +5,7 @@ Usage:
     lhtml [-w] file.l.html -o output.html         # Single file → output file
     lhtml [-w] a.l.html b.l.html                  # Multiple files → .html next to sources
     lhtml [-w] a.l.html b.l.html -o build/        # Multiple files → output directory
+    lhtml -b file.l.html                          # Source line breaks rendered as <br>
     python -m lhtml [same options]
 """
 
@@ -78,6 +79,9 @@ def main():
     parser.add_argument('-w', '--wrapAuto',
                         help='Wrap content in basic HTML template',
                         action='store_true')
+    parser.add_argument('-b', '--line-breaks',
+                        help='Render the line breaks of the source text as <br>',
+                        action='store_true')
     parser.add_argument('-o', '--output',
                         help='Output file (single input) or directory (multiple inputs)')
     args = parser.parse_args()
@@ -85,6 +89,8 @@ def main():
     meta = {'directory_include': [os.getcwd() + '/']}
     if args.wrapAuto:
         meta['wrap-auto'] = True
+    if args.line_breaks:
+        meta['line-breaks'] = True
 
     single_file = len(args.inputFiles) == 1
     single_to_stdout = single_file and args.output is None
