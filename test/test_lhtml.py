@@ -11,6 +11,7 @@ Tests cover:
 import os
 import re
 import glob
+import time
 import warnings
 
 import pytest
@@ -1118,3 +1119,158 @@ class TestLineBreaks:
         for flag in ('-b', '--line-breaks'):
             code, out, _ = TestCli._run_cli(self, monkeypatch, capsys, flag, str(f))
             assert code == 0 and out == 'a<br>\nb\n'
+
+
+class TestAuditRegressions:
+    @pytest.mark.parametrize('source', [
+        '<script>const s = "code::[]include::missing.txt code::[-]";</script>',
+        '<style>p::before {content:"verbatim::[]**x**verbatim::[-]"}</style>',
+        '<!-- code::[]include::missing.txt code::[-] -->',
+        '<a title="code::[]include::missing.txt code::[-]">**label**</a>',
+        '$code::[]include::missing.txt code::[-]$',
+    ])
+    def test_outer_zone_owns_block_directives(self, source):
+        assert lhtml.run(source) == source.replace('**label**', '<strong>label</strong>')
+
+    def test_inline_code_owns_block_directive_after_text(self):
+        source = '`example code::[]include::missing.txt code::[-]`'
+        assert lhtml.run(source) == '<code class="code-inline">' + source[1:-1] + '</code>'
+
+    @pytest.mark.parametrize('source', [
+        '<a\n href="page__draft__.html">**label**</a>',
+        '<a title="first\n**second**"\n href="x">**label**</a>',
+        '<input\n disabled\n data-path="__draft__">',
+    ])
+    def test_multiline_html_attributes(self, source):
+        assert lhtml.run(source) == source.replace('**label**', '<strong>label</strong>')
+
+    @pytest.mark.parametrize('source', [
+        '{{ "page__draft__.html" }}',
+        '{{ user.__class__.__name__ }}',
+        '{% set path = "page__draft__.html" %}',
+        '{# code::[]include::missing.txt code::[-] #}',
+        '{{ "}} **literal**" }}',
+        '{% set text = "%} __literal__" %}',
+        '{{\n "__literal__"\n }}',
+    ])
+    def test_jinja_preserved_with_surrounding_formatting(self, source):
+        assert lhtml.run('**before** ' + source + ' __after__') == (
+            '<strong>before</strong> ' + source + ' <em>after</em>')
+
+    @pytest.mark.parametrize('opening', ['{{', '{%'])
+    def test_unclosed_jinja_with_quotes_is_fast(self, opening):
+        source = opening + ' ' + 'il dit "oui" puis "non ' * 200 + '**b**'
+        start = time.perf_counter()
+        result = lhtml.run(source)
+        assert time.perf_counter() - start < 1
+        assert result.endswith('<strong>b</strong>')
+
+    def test_styles_classes_and_inline_attributes_are_not_formatted(self):
+        source = ('div::(.my__class__)[background:url(photo__small__x.png)]'
+                  '{data-path="a__b__"} **content** ::')
+        assert lhtml.run(source) == (
+            '<div class="my__class__" style="background:url(photo__small__x.png)"'
+            ' data-path="a__b__"> <strong>content</strong> </div>')
+
+    def test_link_label_keeps_formatting_and_inline_code(self):
+        assert lhtml.run('link::page__draft__.html(.my__class__)[**bold** `code`]') == (
+            '<a class="my__class__" href="page__draft__.html">'
+            '<strong>bold</strong> <code class="code-inline">code</code></a>')
+
+    def test_attribute_quotes_are_escaped_after_restoring(self):
+        assert lhtml.run('div::[font-family:"__font__"] x ::') == (
+            '<div style="font-family:&quot;__font__&quot;"> x </div>')
+
+    def test_protection_applies_in_includes(self, tmp_path):
+        source = '<a\n href="__draft__.html">{{ "__value__" }}</a>'
+        (tmp_path / 'part.html').write_text(source)
+        assert lhtml.run('include::part.html', {'directory_include': [tmp_path]}) == source
+
+
+class TestCliSourceProtection:
+    _run_cli = TestCli._run_cli
+
+    def test_batch_cannot_overwrite_another_input(self, tmp_path, monkeypatch, capsys):
+        first, second, third = [tmp_path / name for name in
+                                ('page.l.html', 'page.html', 'other.l.html')]
+        first.write_text('= First\n')
+        second.write_text('Original content\n')
+        third.write_text('= Other\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(first), str(second), str(third))
+        assert code == 1 and 'overwrite' in err
+        assert first.read_text() == '= First\n'
+        assert second.read_text() == 'Original content\n'
+        assert '<h1>Other</h1>' in (tmp_path / 'other.html').read_text()
+
+    @pytest.mark.parametrize('alias_kind', ['symlink', 'hardlink'])
+    def test_output_alias_cannot_overwrite_source(self, tmp_path, monkeypatch, capsys, alias_kind):
+        source, destination = tmp_path / 'page.l.html', tmp_path / 'output.html'
+        source.write_text('= Original\n')
+        if alias_kind == 'symlink':
+            destination.symlink_to(source)
+        else:
+            os.link(source, destination)
+        code, _, err = self._run_cli(monkeypatch, capsys, str(source), '-o', str(destination))
+        assert code == 1 and 'overwrite' in err
+        assert source.read_text() == '= Original\n'
+
+
+@pytest.mark.parametrize('statement', ['{% if visible %}', '{# comment #}'])
+def test_jinja_statement_does_not_introduce_line_breaks(statement):
+    source = 'before\n' + statement + '\nafter'
+    assert lhtml.run(source, {'line-breaks': True}) == source
+
+
+class TestLineBreakRegressions:
+    ON = {'line-breaks': True}
+
+    @pytest.mark.parametrize('tag', ['pre', 'textarea'])
+    @pytest.mark.parametrize('wrapper', [
+        '<script>const s = "<{tag}>";</script>',
+        '<!-- <{tag}> -->',
+        '<span title="<{tag}>">label</span>',
+        '{{ "<{tag}>" }}',
+    ])
+    def test_fake_preformatted_tag_does_not_disable_following_breaks(self, tag, wrapper):
+        prefix = wrapper.replace('{tag}', tag)
+        result = lhtml.run(prefix + '\none\ntwo', self.ON)
+        assert result.startswith(prefix)
+        assert result.endswith('one<br>\ntwo')
+
+    @pytest.mark.parametrize('tag', ['pre-view', 'textarea-widget'])
+    def test_custom_element_is_not_preformatted(self, tag):
+        source = f'<{tag}>one\ntwo</{tag}>\nthree\nfour'
+        assert lhtml.run(source, self.ON) == (
+            f'<{tag}>one<br>\ntwo</{tag}><br>\nthree<br>\nfour')
+
+    @pytest.mark.parametrize('tag', ['pre', 'textarea', 'PRE', 'TEXTAREA'])
+    def test_real_preformatted_block_still_preserves_newlines(self, tag):
+        source = f'<{tag}\n class="sample">\none\ntwo\n</{tag}>\nthree\nfour'
+        assert lhtml.run(source, self.ON) == source.replace('three\nfour', 'three<br>\nfour')
+
+    def test_fake_close_in_comment_does_not_end_preformatted_block(self):
+        source = '<pre>\n<!-- </pre> -->\none\ntwo\n</pre>\nthree\nfour'
+        assert lhtml.run(source, self.ON) == source.replace('three\nfour', 'three<br>\nfour')
+
+    @pytest.mark.parametrize('source, expected', [
+        ('one ::# note\ntwo', 'one <br>\ntwo'),
+        ('one ::# note\n\ntwo', 'one <br>\n<br>\ntwo'),
+        ('one ::# note', 'one '),
+        ('one\n::# note\ntwo', 'one<br>\n<br>\ntwo'),
+    ])
+    def test_comment_removal_keeps_only_existing_newlines(self, source, expected):
+        assert lhtml.run(source, self.ON) == expected
+
+    @pytest.mark.parametrize('statement', [
+        '{%\n if visible\n%}',
+        '{#\n a comment\n#}',
+        '{%-\n set value = "text"\n-%}',
+    ])
+    def test_multiline_jinja_statement_is_structure(self, statement):
+        source = 'one\ntwo\n' + statement + '\nthree\nfour'
+        expected = 'one<br>\ntwo\n' + statement + '\nthree<br>\nfour'
+        assert lhtml.run(source, self.ON) == expected
+
+    def test_multiline_jinja_expression_remains_inline(self):
+        source = 'one {{\n value\n}}\ntwo'
+        assert lhtml.run(source, self.ON) == 'one {{\n value\n}}<br>\ntwo'

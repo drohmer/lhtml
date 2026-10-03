@@ -118,7 +118,10 @@ def main():
                 continue
 
             out_path = _output_path_for(f_in, args.output)
-            if os.path.abspath(out_path) == os.path.abspath(f_in):
+            if any(os.path.realpath(out_path) == os.path.realpath(source)
+                   or (os.path.exists(out_path) and os.path.exists(source)
+                       and os.path.samefile(out_path, source))
+                   for source in args.inputFiles):
                 raise ValueError(f'output file would overwrite the input file [{out_path}]')
             out_dir = os.path.dirname(out_path)
             if out_dir:

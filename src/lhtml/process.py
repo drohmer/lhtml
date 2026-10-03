@@ -28,7 +28,7 @@ from .errors import (
     LHTMLParseError, LHTMLWarning,
 )
 from .patterns import (
-    YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, BLOCKS, PROTECTED,
+    YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, BLOCKS, PROTECTED, PROTECTED_BLOCKS,
     HEADING, BOLD, ITALIC, INLINE_CODE,
     COMMENT, INCLUDE, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
@@ -46,12 +46,14 @@ class ProtectionStores:
     R: raw zones: HTML tags, comments, <script>/<style>, math
     I: inline code (content with < and > escaped)
     U: URL of link::/img::/video::/videoplay:: tags
+    A: LHTML styles, classes/IDs and HTML attributes
     """
     V: list = field(default_factory=list)
     C: list = field(default_factory=list)
     R: list = field(default_factory=list)
     I: list = field(default_factory=list)
     U: list = field(default_factory=list)
+    A: list = field(default_factory=list)  # LHTML attribute group contents
 
     def add(self, kind, entry):
         store = getattr(self, kind)
@@ -165,26 +167,76 @@ def render_inline_code(content):
     return f'<code class="code-inline">{content}</code>'
 
 
-def process_protect(text, stores):
+def process_protect(text, stores, directories=None, _stack=()):
     """Replace zones that LHTML must not transform with placeholders.
 
     Protected (the leftmost zone wins): HTML comments, <script>/<style>
     blocks, inline code, URLs of link::/img::/video:: tags, math
     ($...$, $$...$$, \\(...\\), \\[...\\]) and HTML tags themselves (so
     attribute values are never modified). Text between HTML tags is
-    still processed.
+    still processed. Jinja expressions, statements and comments are opaque.
+    With directories supplied, code/verbatim blocks participate in the same
+    left-to-right scan and code includes use those directories.
     """
     def _protect(m):
+        if directories is not None:
+            if m.group('verbatim') is not None:
+                return stores.add('V', m.group('vbody'))
+            if m.group('code') is not None:
+                body = _expand_includes_raw(m.group('body'), directories, _stack)
+                return stores.add('C', (m.group('header'), body))
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')))
         if m.group('url') is not None:
             return m.group('urltag') + stores.add('U', m.group('url'))
         return stores.add('R', m.group(0))
-    return regex_transform(text, PROTECTED, _protect)
+    pattern = PROTECTED if directories is None else PROTECTED_BLOCKS
+    return regex_transform(text, pattern, _protect)
+
+
+def process_protect_attributes(text, stores):
+    """Hide attribute groups from formatting, keeping link labels active."""
+    parts, prev = [], 0
+    for m in TAG_MARKER.finditer(text):
+        if m.start() < prev:
+            continue
+        try:
+            element = extract_bracket_elements(text, m.end())
+        except LHTMLParseError:
+            continue
+        tag = element['tag']
+        if tag in ('include', 'code', 'verbatim') or not _is_tag_boundary(
+                text, m.start() - len(tag), tag):
+            continue
+        end = element['index_end']
+        pos = m.end()
+        while pos < end:
+            opening = text[pos]
+            if opening not in '([{':
+                pos += 1
+                continue
+            closing = {'(': ')', '[': ']', '{': '}'}[opening]
+            start = pos
+            depth = 1
+            pos += 1
+            while pos < end and depth:
+                if text[pos] == opening:
+                    depth += 1
+                elif text[pos] == closing:
+                    depth -= 1
+                pos += 1
+            if depth or (tag == 'link' and opening == '['):
+                continue
+            parts.append(text[prev:start + 1])
+            parts.append(stores.add('A', text[start + 1:pos - 1]))
+            prev = pos - 1
+    parts.append(text[prev:])
+    return ''.join(parts)
 
 
 def process_unprotect(text, stores):
     """Restore the raw zones and URLs protected by process_protect."""
+    text = stores.restore(text, 'A')
     text = stores.restore(text, 'R')
     return stores.restore(text, 'U')
 
@@ -195,7 +247,7 @@ def process_unprotect(text, stores):
 
 def process_remove_comment(text):
     """Remove ::# comments (to the end of the line)."""
-    return regex_transform(text, COMMENT, lambda m: '\n')
+    return regex_transform(text, COMMENT, lambda m: '')
 
 
 # ---------------------------------------------------------------------------
@@ -270,8 +322,8 @@ def process_include_recursive(text, directories, stores, _stack=()):
     its own directory, then in `directories`.
     Raises LHTMLIncludeLoopError on circular or too deep inclusion.
     """
-    text = process_blocks_to_index(text, stores, directories, _stack)
-    text = process_protect(text, stores)
+    text = process_protect(text, stores, directories, _stack)
+    text = process_protect_attributes(text, stores)
     text = process_remove_comment(text)
 
     parts = []
@@ -483,7 +535,10 @@ def process_tag(text, current_directory='', registry=None, inline=False, resolve
             continue
         if not tag and (inline or not _adjust_bare_tag(text, m, element)):
             continue
-        element['context'] = _context(text, tag_start, element['index_end'])
+        context = text[tag_start:element['index_end']]
+        if resolve is not None:
+            context = resolve(context)
+        element['context'] = _context(context, 0, len(context))
         if resolve is not None:
             for key in ('text', '[]', '()', '{}'):
                 element[key] = resolve(element[key])
@@ -520,7 +575,7 @@ def _is_block_placeholder(kind, idx, stores):
     if kind != 'R':
         return False
     entry = stores.R[idx]
-    if BLOCK_RAW.match(entry):
+    if BLOCK_RAW.match(entry) or JINJA_LINE.fullmatch(entry):
         return True
     m = LEADING_TAG.match(entry)
     return bool(m) and m.group(1).lower() in BLOCK_TAGS
@@ -541,11 +596,20 @@ def _is_structure_line(line, stores):
 
 
 def _preformatted_depth_change(line, stores):
-    """Net number of <pre>/<textarea> elements opened by the line (raw HTML
-    tags are still placeholders, so they are resolved)."""
-    resolved = PLACEHOLDER.sub(
-        lambda m: stores.R[int(m.group(2))] if m.group(1) == 'R' else '', line)
-    return sum(-1 if m.group(1) else 1 for m in PREFORMATTED_TAG.finditer(resolved))
+    """Count actual preformatted tags, never tag-like text inside raw zones."""
+    tags = []
+    for placeholder in PLACEHOLDER.finditer(line):
+        if placeholder.group(1) == 'R':
+            entry = stores.R[int(placeholder.group(2))]
+            # An actual tag starts at the beginning of its stored zone.
+            # Do not scan inside comments, scripts, attributes or Jinja.
+            tags.append(PREFORMATTED_TAG.match(entry))
+    # Tags generated by handlers (and direct calls without stores) are
+    # not placeholders. Tokenize them so quoted attributes stay opaque.
+    for zone in PROTECTED.finditer(line):
+        if zone.group('tag') is not None:
+            tags.append(PREFORMATTED_TAG.match(zone.group('tag')))
+    return sum(-1 if tag.group(1) else 1 for tag in tags if tag is not None)
 
 
 def process_line_breaks(text, stores=None):

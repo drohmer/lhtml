@@ -49,22 +49,32 @@ MATH             = re.compile(
     r'|(?<![\\$\w])\$(?![\s$])[^$\n]*?[^\s\\$]\$(?![\w$])'  # $inline$ (pandoc-like rule)
     r'|(?<![\\$\w])\$[^\s\\$]\$(?![\w$])',                    # $x$ (single char)
     re.DOTALL)
-# An HTML tag: a name followed by attributes on the same line; quoted
-# values may contain '<' or '>'.
-HTML_TAG         = re.compile(r'</?[A-Za-z][\w:-]*(?=[\s/>])(?:[^<>"\'\n]|"[^"\n]*"|\'[^\'\n]*\')*>')
+# HTML attributes may span lines; quoted values may contain < or >.
+_HTML_ATTRIBUTE = r"[A-Za-z_:][\w:.-]*(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s<>\"'=\x60]+))?"
+HTML_TAG = re.compile(r'</?[A-Za-z][\w:-]*(?:\s+' + _HTML_ATTRIBUTE + r')*\s*/?>')
 RAW_HTML_BLOCK   = re.compile(r'<!--.*?-->|<(?i:(script|style))\b[^>]*>.*?</(?i:\1)\s*>', re.DOTALL)
 # URL of link::, img::, video::, videoplay:: (parentheses are kept when they
 # are not a (.class #id) group, e.g. Mercury_(planet) or fig(1).png)
 URL_TAGS         = ('link', 'img', 'video', 'videoplay')
 URL_TOKEN        = r'(?:[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+'
+# Quoted strings can contain the Jinja closing delimiter itself. A quote can
+# only start a string (otherwise an unclosed {{ backtracks exponentially).
+_JINJA_STRING = r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')"
+JINJA = (r'\{#.*?#\}'
+         r'|\{\{(?:' + _JINJA_STRING + r'|(?!\}\})[^"\'])*?\}\}'
+         r'|\{%(?:' + _JINJA_STRING + r'|(?!%\})[^"\'])*?%\}')
 PROTECTED        = re.compile(
-    r'(?P<comment><!--.*?-->)'
+    r'(?P<jinja>' + JINJA + r')'
+    r'|(?P<comment><!--.*?-->)'
     r'|(?P<raw><(?i:(?P<rawtag>script|style))\b[^>]*>.*?</(?i:(?P=rawtag))\s*>)'
     r'|`(?P<icode>[^`\n]*)`'
     r'|(?P<urltag>(?<![\w-])(?:' + '|'.join(URL_TAGS) + r')::)(?P<url>' + URL_TOKEN + r')'
     r'|(?P<math>' + MATH.pattern + r')'
     r'|(?P<tag>' + HTML_TAG.pattern + r')',
     re.DOTALL)
+
+# One left-to-right pass: an outer protected zone owns its contents.
+PROTECTED_BLOCKS = re.compile(BLOCKS.pattern + '|' + PROTECTED.pattern, re.DOTALL)
 
 # Line breaks option: elements that make a line part of the structure
 BLOCK_TAGS       = frozenset((
@@ -75,9 +85,9 @@ LEADING_TAG      = re.compile(r'^\s*</?([A-Za-z][\w-]*)')
 TRAILING_TAG     = re.compile(r'</?([A-Za-z][\w-]*)(?:[^<>"\']|"[^"]*"|\'[^\']*\')*/?>\s*$')
 LEADING_PLACEHOLDER  = re.compile(r'^\s*\x00([A-Z])(\d+)\x00')
 TRAILING_PLACEHOLDER = re.compile(r'\x00([A-Z])(\d+)\x00\s*$')
-JINJA_LINE       = re.compile(r'\s*(\{%.*%\}|\{#.*#\})\s*')
+JINJA_LINE       = re.compile(r'\s*(\{%.*%\}|\{#.*#\})\s*', re.DOTALL)
 # <pre> and <textarea> keep their line breaks: no <br> inside
-PREFORMATTED_TAG = re.compile(r'<(/?)(?i:pre|textarea)\b')
+PREFORMATTED_TAG = re.compile(r'<(/?)(?i:pre|textarea)(?=[\s/>])')
 BLOCK_RAW        = re.compile(r'\s*(<!--|<(?i:script|style)\b|\$\$|\\\[)')
 
 # Placeholders for protected content. They contain no LHTML syntax

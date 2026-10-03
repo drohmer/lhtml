@@ -196,11 +196,11 @@ class ProcessingPipeline:
 
         # Phase 5: Tag elements (uses tag_registry). Inside inline code,
         # only named tags (e.g. link::) are processed.
-        def resolve_urls(s):
-            return stores.restore(s, 'U')
+        def resolve_attributes(s):
+            return stores.restore(stores.restore(s, 'A'), 'U')
 
         ctx.text = process_tag(ctx.text, ctx.current_directory, self.tag_registry,
-                               resolve=resolve_urls)
+                               resolve=resolve_attributes)
         ctx.text = stores.restore(ctx.text, 'I', lambda content: render_inline_code(
             process_tag(content, ctx.current_directory, self.tag_registry, inline=True)))
 

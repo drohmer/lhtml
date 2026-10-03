@@ -46,7 +46,7 @@ lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
 ```
 
-Files are read and written as UTF-8 (a BOM is accepted). Errors and warnings are reported on stderr with the file name, the remaining files are still processed, and the exit code is non-zero if any file failed. An input file is never overwritten (e.g. `lhtml page.html` without `-o`). Includes are looked up in the input file's directory first, then in the current directory.
+Files are read and written as UTF-8 (a BOM is accepted). Errors and warnings are reported on stderr with the file name, the remaining files are still processed, and the exit code is non-zero if any file failed. No input file in the batch is overwritten (including through symbolic or hard links) (e.g. `lhtml page.html` without `-o`). Includes are looked up in the input file's directory first, then in the current directory.
 
 ### Python API
 
@@ -410,7 +410,9 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 
 ## Design Principles
 
-- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed (not even by `include::` or `::#`): HTML tags and their attributes (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, so that `$x**2$` reaches MathJax/KaTeX intact). Text between HTML tags is still processed.
+- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed (not even by `include::` or `::#`): HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, so that `$x**2$` reaches MathJax/KaTeX intact). Text between HTML tags is still processed.
+- Styles, classes/IDs and HTML attributes in LHTML tag groups are preserved without inline formatting. Link labels still support formatting.
+- Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged.
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.
 - **Minimal**: A few symbols (`::`, `=`, `*`, `**`, `__`, `` ` ``) cover most needs. No complex configuration required.
 - **Composable**: LHTML works seamlessly with Jinja2 templates, making it suitable for static site generators.
