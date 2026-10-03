@@ -27,12 +27,6 @@ from .errors import (
     LHTMLTagStackError, LHTMLIncludeLoopError, LHTMLWarning,
 )
 
-from .ast_nodes import (
-    LHTMLDocument, TextNode, TagElement, HeadingNode,
-    ListNode, ListItem, InlineFormat, CodeBlock,
-    VerbatimBlock, IncludeDirective, Comment, SpacerNode, ClosingTag,
-)
-
 from .pipeline import ProcessingPipeline, tag_registry, lexer_registry
 
 
@@ -89,10 +83,6 @@ __all__ = [
     'wrap_auto',
     # Pipeline & plugins
     'ProcessingPipeline', 'tag_registry', 'lexer_registry',
-    # AST
-    'LHTMLDocument', 'TextNode', 'TagElement', 'HeadingNode',
-    'ListNode', 'ListItem', 'InlineFormat', 'CodeBlock',
-    'VerbatimBlock', 'IncludeDirective', 'Comment', 'SpacerNode', 'ClosingTag',
     # Errors
     'LHTMLError', 'LHTMLParseError', 'LHTMLFileNotFound',
     'LHTMLTagStackError', 'LHTMLIncludeLoopError', 'LHTMLWarning',

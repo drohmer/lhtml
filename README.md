@@ -414,7 +414,6 @@ src/lhtml/
   listing.py           # List processing
   code.py              # Code syntax highlighting (Pygments)
   wrap_html.py         # HTML document wrapping
-  ast_nodes.py         # AST node dataclasses
   errors.py            # Structured error types
 ```
 
