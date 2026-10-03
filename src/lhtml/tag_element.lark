@@ -20,9 +20,13 @@ square_group: "[" square_content "]"
 curly_group:  "{" curly_content "}"
 
 // Bracket content allows nested brackets of the same type
-paren_content:  (/[^()]+/ | "(" paren_content ")")*
-square_content: (/[^\[\]]+/ | "[" square_content "]")*
-curly_content:  (/[^{}]+/ | "{" curly_content "}")*
+paren_content:  (/[^()]+/ | paren_nested)*
+square_content: (/[^\[\]]+/ | square_nested)*
+curly_content:  (/[^{}]+/ | curly_nested)*
+
+paren_nested:  "(" paren_content ")"
+square_nested: "[" square_content "]"
+curly_nested:  "{" curly_content "}"
 
 // Bare text: any non-whitespace, non-bracket characters
 bare_text: /[^\s\[\](){}]+/

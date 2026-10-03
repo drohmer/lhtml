@@ -14,6 +14,7 @@ Supports nested brackets: [outer[inner]still_outer]
 """
 
 import os
+import re
 
 from lark import Lark, Transformer, UnexpectedInput
 
@@ -31,6 +32,9 @@ with open(_GRAMMAR_PATH) as _f:
 
 _parser = Lark(_GRAMMAR_TEXT, parser='earley', ambiguity='resolve')
 
+_TAG_NAME_BEFORE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*\Z')
+_MAX_TAG_NAME = 64
+
 
 # ---------------------------------------------------------------------------
 # Transformer: parse tree -> element dict
@@ -39,31 +43,23 @@ _parser = Lark(_GRAMMAR_TEXT, parser='earley', ambiguity='resolve')
 class _TagElementTransformer(Transformer):
     """Transforms Lark parse tree into element dict."""
 
-    def _flatten_content(self, items):
-        """Recursively flatten nested bracket content to a string."""
-        parts = []
-        for item in items:
-            if hasattr(item, 'data'):
-                name = item.data
-                inner = self._flatten_content(item.children)
-                if 'paren' in name:
-                    parts.append(f'({inner})')
-                elif 'square' in name:
-                    parts.append(f'[{inner}]')
-                elif 'curly' in name:
-                    parts.append('{' + inner + '}')
-            else:
-                parts.append(str(item))
-        return ''.join(parts)
+    # Content is transformed bottom-up: nested groups are already strings
+    # and get their delimiters back here.
 
     def paren_content(self, items):
-        return self._flatten_content(items)
+        return ''.join(str(item) for item in items)
 
-    def square_content(self, items):
-        return self._flatten_content(items)
+    square_content = paren_content
+    curly_content = paren_content
 
-    def curly_content(self, items):
-        return self._flatten_content(items)
+    def paren_nested(self, items):
+        return '(' + (items[0] if items else '') + ')'
+
+    def square_nested(self, items):
+        return '[' + (items[0] if items else '') + ']'
+
+    def curly_nested(self, items):
+        return '{' + (items[0] if items else '') + '}'
 
     def paren_group(self, items):
         return ('()', items[0] if items else '')
@@ -94,8 +90,10 @@ _transformer = _TagElementTransformer()
 def _scan_forward_bracket_aware(text, start):
     """Scan forward from start, respecting bracket nesting.
 
-    Stops at space/newline outside brackets, or if text appears after
-    a bracket group that was preceded by text.
+    Stops at whitespace, '<' (HTML produced by previous passes, such as
+    </strong>) or a protected-zone placeholder (e.g. an HTML tag) outside
+    brackets, or if text appears after a bracket group that was preceded
+    by text. Protected URL placeholders (kind U) are part of the text.
     """
     idx = start
     length = len(text)
@@ -105,7 +103,13 @@ def _scan_forward_bracket_aware(text, start):
 
     while idx < length:
         ch = text[idx]
-        if ch == ' ' or ch == '\n':
+        if ch == '\x00' and text[idx + 1:idx + 2] == 'U':
+            end = text.find('\x00', idx + 1)
+            if end > idx:
+                seen_text = True
+                idx = end + 1
+                continue
+        if ch.isspace() or ch == '\x00' or ch == '<':
             break
         if ch in bracket_pairs:
             close = bracket_pairs[ch]
@@ -150,7 +154,7 @@ def parse_tag_after_colons(text_after_colons):
     try:
         tree = _parser.parse(text_after_colons)
         items = _transformer.transform(tree)
-    except UnexpectedInput:
+    except (UnexpectedInput, RecursionError):
         result['text'] = text_after_colons
         return result
 
@@ -188,18 +192,12 @@ def extract_bracket_elements_lark(text, index_start):
         'tag': '', 'index_start': index_start, 'index_end': index_start,
     }
 
-    # Backward scan for tag name
+    # Backward scan for tag name (letter, then letters/digits/_/-)
     if index_start >= 2:
-        idx = index_start - 2
-        while idx > 0 and text[idx] != '\n' and text[idx] != ' ' and (text[idx].isalpha() or text[idx] == ':'):
-            idx -= 1
-        if idx == 0 and (text[idx].isalpha() or text[idx] == ':'):
-            tag_start = 0
-        elif text[idx] == '\n' or text[idx] == ' ' or not (text[idx].isalpha() or text[idx] == ':'):
-            tag_start = idx + 1
-        else:
-            tag_start = idx
-        elements['tag'] = text[tag_start:index_start - 2]
+        name_end = index_start - 2
+        m = _TAG_NAME_BEFORE.search(text, max(0, name_end - _MAX_TAG_NAME), name_end)
+        tag_start = m.start() if m else name_end
+        elements['tag'] = text[tag_start:name_end]
         elements['index_start'] = tag_start
 
     # Forward scan: bracket-aware extraction

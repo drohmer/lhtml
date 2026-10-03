@@ -3,30 +3,61 @@
 Each function transforms LHTML markup into HTML for one language
 feature (headings, bold, lists, tags, etc.). The pipeline execution
 order is managed by pipeline.py.
+
+Content that must not be transformed is replaced early by placeholders
+(see patterns.PLACEHOLDER) and restored at the end. The kinds of stored
+content are listed in ProtectionStores.
 """
 
 import os
 import re
 import warnings
+from dataclasses import dataclass, field
 
 import yaml
 
 from .element_extract import extract_bracket_elements
 from .export_html import (
     export_html_element_class_and_id, export_html_generic,
-    export_html_link, export_html_img, export_html_video,
     check_is_closing_tag, check_is_explicit_closing_tag,
 )
 from .listing import process_listing  # noqa: F401 — re-exported
 from .code import export_html_code
-from .errors import LHTMLFileNotFound, LHTMLTagStackError
-from .patterns import (
-    YAML_FRONTMATTER, VERBATIM_BLOCK, VERBATIM_INDEX,
-    CODE_BLOCK, HEADING, BOLD, ITALIC, INLINE_CODE,
-    COMMENT, INCLUDE, TAG_MARKER,
-    VERBATIM_OPEN, VERBATIM_CLOSE, CODE_CLOSE, SPACER_TAG,
-    regex_transform,
+from .errors import (
+    LHTMLFileNotFound, LHTMLTagStackError, LHTMLIncludeLoopError,
+    LHTMLParseError, LHTMLWarning,
 )
+from .patterns import (
+    YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, BLOCKS, PROTECTED,
+    HEADING, BOLD, ITALIC, INLINE_CODE,
+    COMMENT, INCLUDE, TAG_MARKER, SPACER,
+    MAX_INCLUDE_ITERATIONS, PLACEHOLDER_CHAR, PLACEHOLDER,
+    regex_transform, store_to_index, restore_from_index, make_placeholder,
+)
+
+
+@dataclass
+class ProtectionStores:
+    """Content replaced by placeholders during processing.
+
+    V: verbatim blocks (raw text)        C: code blocks (header, body)
+    R: raw zones: HTML tags, comments, <script>/<style>, math
+    I: inline code (content with < and > escaped)
+    U: URL of link::/img::/video::/videoplay:: tags
+    """
+    V: list = field(default_factory=list)
+    C: list = field(default_factory=list)
+    R: list = field(default_factory=list)
+    I: list = field(default_factory=list)
+    U: list = field(default_factory=list)
+
+    def add(self, kind, entry):
+        store = getattr(self, kind)
+        store.append(entry)
+        return make_placeholder(kind, len(store) - 1)
+
+    def restore(self, text, kind, render_fn=None):
+        return restore_from_index(text, kind, getattr(self, kind), render_fn)
 
 
 # ---------------------------------------------------------------------------
@@ -34,37 +65,108 @@ from .patterns import (
 # ---------------------------------------------------------------------------
 
 def process_yaml(text):
-    """Extract YAML front matter and return (remaining_text, meta_dict)."""
+    """Extract YAML front matter and return (remaining_text, meta_dict).
+
+    The front matter must start the document. If its content is not a
+    YAML mapping, the text is left untouched.
+    """
     match = YAML_FRONTMATTER.search(text)
-    if match:
-        new_text = text[:match.start()] + text[match.end():]
-        try:
-            yaml_content = yaml.load(match.group(1), Loader=yaml.FullLoader) or {}
-        except yaml.YAMLError:
-            yaml_content = {}
-        return new_text, yaml_content
-    return text, {}
+    if not match:
+        return text, {}
+    try:
+        yaml_content = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as e:
+        warnings.warn(f'Invalid YAML front matter ignored: {e}', LHTMLWarning, stacklevel=2)
+        return text, {}
+    if yaml_content is None:
+        yaml_content = {}
+    if not isinstance(yaml_content, dict):
+        return text, {}
+    return text[match.end():], yaml_content
 
 
 # ---------------------------------------------------------------------------
-# Verbatim blocks (protect / restore)
+# Verbatim and code blocks (protect / restore)
 # ---------------------------------------------------------------------------
+
+def process_blocks_to_index(text, stores, directories=None, _stack=()):
+    """Replace verbatim:: and code:: blocks with placeholders.
+
+    The leftmost block wins: verbatim markers inside a code block are
+    displayed as code, and a code block inside verbatim stays raw.
+    If `directories` is given, include:: directives inside code blocks
+    are expanded (the included files are inserted as raw code).
+    """
+    def _store(m):
+        if m.group('verbatim') is not None:
+            return stores.add('V', m.group('vbody'))
+        body = m.group('body')
+        if directories is not None:
+            body = _expand_includes_raw(body, directories, _stack)
+        return stores.add('C', (m.group('header'), body))
+    return regex_transform(text, BLOCKS, _store)
+
 
 def process_verbatim_to_index(text, verbatim_index_store):
-    """Replace verbatim blocks with indexed placeholders."""
-    def _store(m):
-        content = m.group(0)[len(VERBATIM_OPEN):-len(VERBATIM_CLOSE)]
-        idx = len(verbatim_index_store)
-        verbatim_index_store.append(content)
-        return f'verbatim::[{idx}]'
-    return regex_transform(text, VERBATIM_BLOCK, _store)
+    """Replace verbatim blocks with placeholders."""
+    return store_to_index(text, VERBATIM_BLOCK, 'V', verbatim_index_store,
+                          lambda m: m.group('vbody'))
 
 
 def process_verbatim_back_from_index(text, verbatim_index_store):
-    """Restore verbatim blocks from indexed placeholders."""
-    def _restore(m):
-        return verbatim_index_store[int(m.group(1))]
-    return regex_transform(text, VERBATIM_INDEX, _restore)
+    """Restore verbatim blocks from placeholders."""
+    return restore_from_index(text, 'V', verbatim_index_store)
+
+
+def _code_language(header):
+    m = re.search(r'\[([^\[\]\n]*)\]', header)
+    return m.group(1) if m else ''
+
+
+def render_code_block(entry, verbatim_store=None):
+    """Highlight a stored (header, body) code block."""
+    header, body = entry
+    if verbatim_store is not None:
+        body = restore_from_index(body, 'V', verbatim_store)
+    return export_html_code(body, _code_language(header))
+
+
+# ---------------------------------------------------------------------------
+# Protected zones (raw HTML, inline code, URLs, math)
+# ---------------------------------------------------------------------------
+
+def escape_inline_code(content):
+    """Escape < and > in inline code (& is kept so that entities written
+    by hand, such as &lt;, still work)."""
+    return content.replace('<', '&lt;').replace('>', '&gt;')
+
+
+def render_inline_code(content):
+    return f'<code class="code-inline">{content}</code>'
+
+
+def process_protect(text, stores):
+    """Replace zones that LHTML must not transform with placeholders.
+
+    Protected (the leftmost zone wins): HTML comments, <script>/<style>
+    blocks, inline code, URLs of link::/img::/video:: tags, math
+    ($...$, $$...$$, \\(...\\), \\[...\\]) and HTML tags themselves (so
+    attribute values are never modified). Text between HTML tags is
+    still processed.
+    """
+    def _protect(m):
+        if m.group('icode') is not None:
+            return stores.add('I', escape_inline_code(m.group('icode')))
+        if m.group('url') is not None:
+            return m.group('urltag') + stores.add('U', m.group('url'))
+        return stores.add('R', m.group(0))
+    return regex_transform(text, PROTECTED, _protect)
+
+
+def process_unprotect(text, stores):
+    """Restore the raw zones and URLs protected by process_protect."""
+    text = stores.restore(text, 'R')
+    return stores.restore(text, 'U')
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +174,7 @@ def process_verbatim_back_from_index(text, verbatim_index_store):
 # ---------------------------------------------------------------------------
 
 def process_remove_comment(text):
-    """Remove ::#comment lines."""
+    """Remove ::# comments (to the end of the line)."""
     return regex_transform(text, COMMENT, lambda m: '\n')
 
 
@@ -90,12 +192,14 @@ def find_file(directories, filename):
 
 
 def process_include(text, directory):
-    """Expand include:: directives. Returns (new_text, found_any)."""
+    """Expand include:: directives (one level). Returns (new_text, found_any)."""
     found_include = False
     parts = []
     prev = 0
 
     for m in INCLUDE.finditer(text):
+        if m.start() < prev:
+            continue
         found_include = True
         element = extract_bracket_elements(text, m.end())
         filename = find_file(directory, element['text'])
@@ -109,6 +213,68 @@ def process_include(text, directory):
 
     parts.append(text[prev:])
     return ''.join(parts), found_include
+
+
+def _include_target(text, m, directories, stack):
+    """Resolve the include:: directive matched by m. Returns (element, filename)."""
+    element = extract_bracket_elements(text, m.end())
+    filename = os.path.abspath(find_file(directories, element['text']))
+    if filename in stack or len(stack) >= MAX_INCLUDE_ITERATIONS:
+        raise LHTMLIncludeLoopError(MAX_INCLUDE_ITERATIONS, chain=[*stack, filename])
+    return element, filename
+
+
+def _expand_includes_raw(text, directories, _stack=()):
+    """Expand include:: directives without any other processing (code blocks)."""
+    parts = []
+    prev = 0
+    for m in INCLUDE.finditer(text):
+        if m.start() < prev:
+            continue
+        element, filename = _include_target(text, m, directories, _stack)
+        with open(filename, 'r') as fid:
+            included = fid.read().replace(PLACEHOLDER_CHAR, '\ufffd')
+        included = _expand_includes_raw(included, [os.path.dirname(filename) + '/', *directories],
+                                        (*_stack, filename))
+        parts.append(text[prev:m.start()])
+        parts.append(included)
+        prev = element['index_end']
+    parts.append(text[prev:])
+    return ''.join(parts)
+
+
+def process_include_recursive(text, directories, stores, _stack=()):
+    """Prepare a file and expand its include:: directives recursively.
+
+    In each file, verbatim/code blocks and protected zones are replaced
+    by placeholders and comments are removed before includes are
+    expanded, so that include:: or ::# inside code, HTML comments, etc.
+    are left alone. An included file looks for its own includes first in
+    its own directory, then in `directories`.
+    Raises LHTMLIncludeLoopError on circular or too deep inclusion.
+    """
+    text = process_blocks_to_index(text, stores, directories, _stack)
+    text = process_protect(text, stores)
+    text = process_remove_comment(text)
+
+    parts = []
+    prev = 0
+    for m in INCLUDE.finditer(text):
+        if m.start() < prev:
+            continue
+        element, filename = _include_target(text, m, directories, _stack)
+        with open(filename, 'r') as fid:
+            included = fid.read().replace(PLACEHOLDER_CHAR, '\ufffd')
+        file_directories = [os.path.dirname(filename) + '/', *directories]
+        included = process_include_recursive(included, file_directories,
+                                             stores, (*_stack, filename))
+
+        parts.append(text[prev:m.start()])
+        parts.append(included)
+        prev = element['index_end']
+
+    parts.append(text[prev:])
+    return ''.join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -126,9 +292,9 @@ def process_italic(text):
 
 
 def process_code_inline(text):
-    """Convert `text` to <code class="code-inline">text</code>."""
+    """Convert `text` to <code class="code-inline">text</code> (< and > escaped)."""
     return regex_transform(text, INLINE_CODE,
-                           lambda m: f'<code class="code-inline">{m.group(1)}</code>')
+                           lambda m: render_inline_code(escape_inline_code(m.group(1))))
 
 
 # ---------------------------------------------------------------------------
@@ -153,101 +319,173 @@ def process_title(text):
 # ---------------------------------------------------------------------------
 
 def process_code(text):
-    """Parse and highlight code:: blocks."""
-    def _highlight(m):
-        element = extract_bracket_elements(text, m.start() + len('code::'))
-        code = text[element['index_end']:m.end() - len(CODE_CLOSE)]
-        language = element['[]']
-        return export_html_code(code, language)
-    return regex_transform(text, CODE_BLOCK, _highlight)
+    """Highlight the raw code:: blocks contained in text."""
+    return regex_transform(text, CODE_BLOCK,
+                           lambda m: render_code_block((m.group('header'), m.group('body'))))
 
 
 # ---------------------------------------------------------------------------
 # Tag elements (the :: system)
 # ---------------------------------------------------------------------------
 
+def _warn_unmatched_closing(element):
+    warnings.warn(str(LHTMLTagStackError(element.get('context', ''))),
+                  LHTMLWarning, stacklevel=4)
+    return '::??ERROR', True
+
+
 def _dispatch_tag(element, tag_to_close, current_directory, registry=None):
     """Dispatch a parsed tag element to the appropriate handler.
 
-    Uses the tag_registry if provided, otherwise falls back to
-    built-in dispatch for backward compatibility.
+    Named tags go to the plugin registry if provided, then to the global
+    registry (built-in tags). Unnamed tags (::) are closing tags, spacers
+    or anonymous divs.
     """
     tag = element['tag']
 
-    # Explicit closing tag: ::div[-], ::span[-], etc.
-    if check_is_explicit_closing_tag(element):
+    if tag != '':
+        from .pipeline import tag_registry
+        handler = (registry.get(tag) if registry is not None else None) or tag_registry.get(tag)
+        if handler is not None:
+            return handler(element, tag_to_close, current_directory)
+        # Unrecognized tag — pass through
+        return '', False
+
+    # Explicit closing tag: ::div[-], ::span[-], or ::[-]
+    if check_is_explicit_closing_tag(element) or (
+            element['[]'] == '-' and not (element['text'] or element['()'] or element['{}'])):
         closing_name = element['text']
         if not tag_to_close:
-            warnings.warn(
-                str(LHTMLTagStackError(source_pos=element.get('index_start', -1))),
-                stacklevel=3,
-            )
-            return '::??ERROR', True
-        if tag_to_close[-1] != closing_name:
+            return _warn_unmatched_closing(element)
+        if closing_name and tag_to_close[-1] != closing_name:
             warnings.warn(
                 f'Closing ::{closing_name}[-] but last opened tag is <{tag_to_close[-1]}> '
-                f'(position {element.get("index_start", -1)})',
-                stacklevel=3,
+                f'(near {element.get("context", "")!r})',
+                LHTMLWarning, stacklevel=3,
             )
         return '</' + tag_to_close.pop() + '>', True
 
-    # Try plugin registry first
-    if registry is not None:
-        handler = registry.get(tag)
-        if handler is not None:
-            return handler(element, tag_to_close, current_directory)
-
-    # Built-in tag dispatch (used when no registry, or tag not in registry)
-    if tag == 'div' or tag == 'span':
-        return export_html_generic(element, tag, tag_to_close), True
-    elif tag == 'link':
-        return export_html_link(element), True
-    elif tag == 'img':
-        return export_html_img(element), True
-    elif tag == 'video':
-        return export_html_video(element, '', current_directory), True
-    elif tag == 'videoplay':
-        return export_html_video(element, 'autoplay loop muted', current_directory), True
-    elif tag == '':
-        if check_is_closing_tag(element):
-            if not tag_to_close:
-                warnings.warn(
-                    str(LHTMLTagStackError(source_pos=element.get('index_start', -1))),
-                    stacklevel=3,
-                )
-                return '::??ERROR', True
-            return '</' + tag_to_close.pop() + '>', True
-        if element['text'] == SPACER_TAG:
-            return '<div style="height:1em;"></div>', True
-        if element['[]'] or element['()'] or element['{}'] or element['text']:
-            return export_html_generic(element, 'div', tag_to_close), True
-        return '', False
-
-    # Unrecognized tag — pass through
+    if check_is_closing_tag(element):
+        if not tag_to_close:
+            return _warn_unmatched_closing(element)
+        return '</' + tag_to_close.pop() + '>', True
+    if element['text'] == 'nl':
+        return '<div style="height:1em;"></div>', True
+    if element['[]'] or element['()'] or element['{}'] or element['text']:
+        return export_html_generic(element, 'div', tag_to_close), True
     return '', False
 
 
-def process_tag(text, current_directory='', registry=None):
-    """Process all :: tag elements in text."""
+def _context(text, start, end, max_len=40):
+    """Short excerpt of the source around a tag, for warning messages."""
+    excerpt = PLACEHOLDER.sub('…', text[start:min(end, start + max_len)])
+    return excerpt.split('\n')[0]
+
+
+def _is_tag_boundary(text, index, tag, last_tag_end=-1):
+    """True if a tag (named, or bare :: when tag is '') may start at `index`.
+
+    A tag name must not be glued to a preceding word (x.link::, std::a::).
+    A bare :: must not follow an opening bracket, a colon or a word
+    character, which leaves constructs like a[::2] or 2::3 untouched
+    (except ':::' as in 'x:::nl', read as ':' followed by '::nl').
+    A tag may always directly follow the previous tag.
+    """
+    if index == 0 or index == last_tag_end:
+        return True
+    ch = text[index - 1]
+    if not tag and ch == ':':
+        return index < 2 or not (text[index - 2].isalnum() or text[index - 2] in '_:')
+    if ch.isalnum() or ch in '_:':
+        return False
+    if tag:
+        return ch not in '-.'
+    return ch not in '[({'
+
+
+def _adjust_bare_tag(text, m, element):
+    """Adjust the extent of a bare :: tag. Returns False if it is not a tag.
+
+    - '::nl' followed by other characters is a spacer ending after 'nl'.
+    - '::' followed by punctuation (e.g. '::,', '::**' or '::::[...]')
+      is a closing tag.
+    - A '::' between two protected zones (e.g. <span>::</span> in
+      pre-highlighted C++), or glued after one and followed by a word,
+      is not a tag.
+    """
+    after_placeholder = m.start() > 0 and text[m.start() - 1] == PLACEHOLDER_CHAR
+    if after_placeholder and text[m.end():m.end() + 1] == PLACEHOLDER_CHAR:
+        return False
+
+    word = element['text']
+    if SPACER.match(word):
+        if element['index_end'] != m.end() + 2:
+            element.update({'text': 'nl', '[]': '', '()': '', '{}': '',
+                            'index_end': m.end() + 2})
+        return True
+    if after_placeholder and word[:1].isalnum():
+        return False
+    following = text[m.end():m.end() + 1]
+    if following and not (following.isalnum() or following.isspace() or following in '[({'):
+        element.update({'text': '', '[]': '', '()': '', '{}': '', 'index_end': m.end()})
+    return True
+
+
+def process_tag(text, current_directory='', registry=None, inline=False, resolve=None):
+    """Process all :: tag elements in text.
+
+    Args:
+        inline: process only named tags (used inside inline code, where a
+            bare :: is C++ syntax rather than LHTML).
+        resolve: function applied to the parsed fields before dispatch
+            (used to restore protected URLs).
+    """
     parts = []
     prev = 0
+    last_tag_end = -1
     tag_to_close = []
+    open_contexts = []
 
     for m in TAG_MARKER.finditer(text):
-        if m.start() <= prev:
+        if m.start() < prev:
             continue  # skip overlapping matches
 
-        element = extract_bracket_elements(text, m.end())
-        html, is_real_tag = _dispatch_tag(element, tag_to_close, current_directory, registry)
+        try:
+            element = extract_bracket_elements(text, m.end())
+        except LHTMLParseError as e:
+            warnings.warn(f'{e} near {_context(text, m.start(), m.end() + 30)!r}',
+                          LHTMLWarning, stacklevel=2)
+            continue
         tag = element['tag']
-        index_end = element['index_end']
+        tag_start = m.start() - len(tag)
+        if tag_start < prev:
+            # The name found backwards belongs to the previous tag (::nl::[...])
+            tag, tag_start = '', m.start()
+            element.update({'tag': '', 'index_start': tag_start})
+        if not _is_tag_boundary(text, tag_start, tag, last_tag_end):
+            continue
+        if not tag and (inline or not _adjust_bare_tag(text, m, element)):
+            continue
+        element['context'] = _context(text, tag_start, element['index_end'])
+        if resolve is not None:
+            for key in ('text', '[]', '()', '{}'):
+                element[key] = resolve(element[key])
+
+        depth = len(tag_to_close)
+        html_out, is_real_tag = _dispatch_tag(element, tag_to_close, current_directory, registry)
+        del open_contexts[len(tag_to_close):]
+        open_contexts.extend([element['context']] * (len(tag_to_close) - depth))
 
         if is_real_tag:
-            parts.append(text[prev:m.start() - len(tag)])
-            parts.append(html)
+            parts.append(text[prev:tag_start])
+            parts.append(html_out)
+            last_tag_end = element['index_end']
         else:
-            parts.append(text[prev:index_end])
-        prev = index_end
+            parts.append(text[prev:element['index_end']])
+        prev = element['index_end']
+
+    for tag, context in zip(tag_to_close, open_contexts):
+        warnings.warn(str(LHTMLTagStackError(context, unclosed=tag)), LHTMLWarning, stacklevel=2)
 
     parts.append(text[prev:])
     return ''.join(parts)

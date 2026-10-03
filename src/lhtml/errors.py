@@ -20,6 +20,10 @@ class LHTMLError(Exception):
         super().__init__(full_message)
 
 
+class LHTMLWarning(UserWarning):
+    """Category of the warnings emitted while processing LHTML markup."""
+
+
 class LHTMLParseError(LHTMLError):
     """Error during parsing of LHTML markup (unclosed brackets, etc.)."""
     pass
@@ -36,18 +40,34 @@ class LHTMLFileNotFound(LHTMLError):
 
 
 class LHTMLTagStackError(LHTMLError):
-    """A closing :: tag has no matching opening tag."""
+    """A closing :: tag has no matching opening tag, or a tag is never closed."""
 
-    def __init__(self, source_pos: int = -1, source_line: int = -1):
-        message = 'Closing tag :: has no matching opening tag'
+    def __init__(self, context: str | int = '', unclosed: str | None = None,
+                 source_pos: int = -1, source_line: int = -1):
+        if isinstance(context, int):
+            # LHTML 2.2 signature: LHTMLTagStackError(source_pos, source_line)
+            if isinstance(unclosed, int):
+                source_line, unclosed = unclosed, None
+            source_pos, context = context, ''
+        self.context = context
+        self.unclosed = unclosed
+        if unclosed:
+            message = f'Tag <{unclosed}> is never closed'
+        else:
+            message = 'Closing tag :: has no matching opening tag'
+        if context:
+            message += f' (near {context!r})'
         super().__init__(message, source_pos, source_line)
 
 
 class LHTMLIncludeLoopError(LHTMLError):
     """Too many include iterations — likely a circular include."""
 
-    def __init__(self, max_iterations: int = 20):
-        message = f'Too many include iterations (>{max_iterations}), possible circular include'
+    def __init__(self, max_iterations: int = 20, chain: list[str] | None = None):
+        self.chain = chain or []
+        message = f'Circular or too deep include (max depth {max_iterations})'
+        if self.chain:
+            message += ': ' + ' -> '.join(self.chain)
         super().__init__(message)
 
 

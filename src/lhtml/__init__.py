@@ -15,7 +15,8 @@ from .wrap_html import wrap_auto
 
 from .process import (
     process_yaml, process_verbatim_to_index, process_verbatim_back_from_index,
-    process_remove_comment, process_include, find_file,
+    process_remove_comment, process_include, process_include_recursive, find_file,
+    process_protect, process_unprotect,
     process_bold, process_italic, process_code_inline,
     process_title, process_tag, process_code,
     process_listing,
@@ -23,7 +24,7 @@ from .process import (
 
 from .errors import (
     LHTMLError, LHTMLParseError, LHTMLFileNotFound,
-    LHTMLTagStackError, LHTMLIncludeLoopError,
+    LHTMLTagStackError, LHTMLIncludeLoopError, LHTMLWarning,
 )
 
 from .ast_nodes import (
@@ -79,7 +80,8 @@ __all__ = [
     # Processing functions
     'extract_bracket_elements',
     'process_yaml', 'process_verbatim_to_index', 'process_verbatim_back_from_index',
-    'process_remove_comment', 'process_include', 'find_file',
+    'process_remove_comment', 'process_include', 'process_include_recursive', 'find_file',
+    'process_protect', 'process_unprotect',
     'process_bold', 'process_italic', 'process_code_inline',
     'process_title', 'process_tag', 'process_code',
     'process_listing',
@@ -93,5 +95,5 @@ __all__ = [
     'VerbatimBlock', 'IncludeDirective', 'Comment', 'SpacerNode', 'ClosingTag',
     # Errors
     'LHTMLError', 'LHTMLParseError', 'LHTMLFileNotFound',
-    'LHTMLTagStackError', 'LHTMLIncludeLoopError',
+    'LHTMLTagStackError', 'LHTMLIncludeLoopError', 'LHTMLWarning',
 ]

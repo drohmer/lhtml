@@ -5,6 +5,7 @@ an HTML string. The element dict has keys: '[]' (style), '()'
 (class/id), '{}' (inline attrs), 'text', 'tag'.
 """
 
+import html
 import os
 
 
@@ -21,10 +22,15 @@ def _build_attrs(elements):
     return ''.join(parts)
 
 
+def _attr(value):
+    """Escape the double quotes of a value placed inside a double-quoted HTML attribute."""
+    return value.replace('"', '&quot;')
+
+
 def export_html_element_style(text):
     if not text:
         return ''
-    return f' style="{text}"'
+    return f' style="{_attr(text)}"'
 
 
 def export_html_element_class_and_id(text):
@@ -76,13 +82,13 @@ def export_html_link(elements):
     """Render a link:: element as <a href="...">text</a>."""
     attrs = export_html_element_class_and_id(elements['()'])
     attrs += export_html_element_inline(elements['{}'])
-    return f'<a{attrs} href="{elements["text"]}">{elements["[]"]}</a>'
+    return f'<a{attrs} href="{_attr(elements["text"])}">{elements["[]"]}</a>'
 
 
 def export_html_img(elements):
     """Render an img:: element as <img src="..." alt="...">."""
     src = elements['text']
-    return f'<img{_build_attrs(elements)} src="{src}" alt="{src}">'
+    return f'<img{_build_attrs(elements)} src="{_attr(src)}" alt="{_attr(src)}">'
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +116,8 @@ def export_html_video(elements, default_inline='', current_directory=''):
         parts.append(f' {default_inline} ')
     parts.append(export_html_element_class_and_id(elements['()']))
     parts.append(export_html_element_style(elements['[]']))
-    if os.path.isfile(poster_candidate):
-        parts.append(f' poster="{poster_candidate}"')
+    if os.path.isfile(os.path.join(current_directory, poster_candidate)):
+        parts.append(f' poster="{_attr(poster_candidate)}"')
     parts.append('>\n')
 
     # Look for transcoded codec variants
@@ -127,13 +133,13 @@ def export_html_video(elements, default_inline='', current_directory=''):
             for suffix, mime in VIDEO_CODECS:
                 candidate = os.path.join(codec_dir, source_basename + suffix)
                 if os.path.isfile(os.path.join(current_directory, candidate)):
-                    parts.append(f'\t<source src="{candidate}" type="{mime}">\n')
+                    parts.append(f'\t<source src="{_attr(candidate)}" type="{mime}">\n')
                     found_codecs = True
 
     if not found_codecs:
-        parts.append(f'\t<source src="{source}" type="video/{extension}">\n')
+        parts.append(f'\t<source src="{_attr(source)}" type="video/{extension}">\n')
 
-    parts.append(f'\t Cannot play video {source}\n')
+    parts.append(f'\t Cannot play video {html.escape(source)}\n')
     parts.append('</video>')
     return ''.join(parts)
 

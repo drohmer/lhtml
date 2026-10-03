@@ -4,8 +4,11 @@ Uses Pygments for highlighting. Custom lexers can be registered
 via the lexer_registry in pipeline.py.
 """
 
+import warnings
+
 from pygments import highlight
-from pygments.lexers import get_lexer_by_name
+from pygments.lexers import get_lexer_by_name, TextLexer
+from pygments.util import ClassNotFound
 from pygments.formatters import HtmlFormatter
 from pygments.lexer import words, inherit
 import pygments.lexers
@@ -62,13 +65,21 @@ def export_html_code(text, language, cssclass='code'):
     if lexer_class is None:
         lexer_class = _BUILTIN_LEXERS.get(language)
 
+    lexer_options = dict(stripall=False, stripnl=True, ensurenl=True,
+                         tabsize=2, encoding='utf-8')
+    language = (language or '').strip()
     if lexer_class is not None:
         lexer = lexer_class()
+    elif not language:
+        lexer = TextLexer(**lexer_options)
     else:
-        lexer = get_lexer_by_name(
-            language, stripall=False, stripnl=True,
-            ensurenl='True', tabsize=2, encoding='utf-8',
-        )
+        try:
+            lexer = get_lexer_by_name(language, **lexer_options)
+        except ClassNotFound:
+            from .errors import LHTMLWarning
+            warnings.warn(f'Unknown language {language!r} for code::[...] block, '
+                          'rendered as plain text', LHTMLWarning, stacklevel=2)
+            lexer = TextLexer(**lexer_options)
 
     formatter = HtmlFormatter(linenos=False, cssclass=cssclass)
     return highlight(text, lexer, formatter)

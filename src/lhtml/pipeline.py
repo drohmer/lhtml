@@ -9,12 +9,8 @@ the core processing code.
 from __future__ import annotations
 
 import os
-import warnings
 from dataclasses import dataclass, field
 from typing import Callable
-
-from .errors import LHTMLIncludeLoopError
-from .patterns import MAX_INCLUDE_ITERATIONS
 
 
 # ---------------------------------------------------------------------------
@@ -29,8 +25,12 @@ META_DEFAULTS = {
     'js': [],
     'wrap-custom-pre': '',
     'wrap-custom-post': '',
-    'directory_include': [os.getcwd() + '/'],
 }
+
+
+def _default_meta():
+    """Default configuration (directory_include is evaluated at call time)."""
+    return {**META_DEFAULTS, 'directory_include': [os.getcwd() + '/']}
 
 
 @dataclass
@@ -38,8 +38,7 @@ class ProcessingContext:
     """Mutable state carried through the pipeline."""
     text: str
     meta: dict = field(default_factory=dict)
-    verbatim_store: list = field(default_factory=list)
-    code_store: list = field(default_factory=list)
+    stores: object = None  # process.ProtectionStores
     current_directory: str = ''
 
 
@@ -135,6 +134,8 @@ class LexerRegistry:
 
 lexer_registry = LexerRegistry()
 
+_register_builtin_tags()
+
 
 # ---------------------------------------------------------------------------
 # Pipeline
@@ -154,61 +155,58 @@ class ProcessingPipeline:
 
     def run(self, text: str, meta_arg: dict | None = None) -> str:
         from .process import (
-            process_yaml, process_verbatim_to_index,
-            process_remove_comment, process_include,
-            process_title, process_listing,
-            process_bold, process_italic, process_code_inline,
-            process_tag, process_code,
-            process_verbatim_back_from_index,
+            ProtectionStores, process_yaml, process_include_recursive,
+            process_unprotect, process_title, process_listing,
+            process_bold, process_italic, process_tag,
+            render_inline_code, render_code_block,
         )
         from .wrap_html import wrap_auto
-        from .patterns import CODE_BLOCK, CODE_INDEX, store_to_index, restore_from_index
+        from .patterns import PLACEHOLDER_CHAR
 
+        # A NUL character would be mistaken for a placeholder delimiter
+        text = text.replace(PLACEHOLDER_CHAR, '\ufffd')
         ctx = ProcessingContext(
             text=text,
-            meta={**META_DEFAULTS, **(meta_arg or {})},
+            meta={**_default_meta(), **(meta_arg or {})},
+            stores=ProtectionStores(),
         )
+        stores = ctx.stores
 
         # Phase 1: YAML front matter
         ctx.text, meta_yaml = process_yaml(ctx.text)
         ctx.meta = {**ctx.meta, **meta_yaml}
         ctx.current_directory = ctx.meta.get('current_directory', '')
 
-        # Phase 2: Verbatim / comments / includes (iterative)
-        found_include = True
-        iteration = 0
-        while found_include:
-            ctx.text = process_verbatim_to_index(ctx.text, ctx.verbatim_store)
-            ctx.text = process_remove_comment(ctx.text)
-            ctx.text, found_include = process_include(ctx.text, ctx.meta['directory_include'])
-            iteration += 1
-            if iteration > MAX_INCLUDE_ITERATIONS:
-                warnings.warn(str(LHTMLIncludeLoopError(MAX_INCLUDE_ITERATIONS)))
-                break
+        # Phase 2: For each file: verbatim/code blocks and protected zones
+        # (HTML, inline code, URLs, math) are replaced by placeholders,
+        # comments are removed, then includes are expanded (recursive)
+        ctx.text = process_include_recursive(ctx.text, ctx.meta['directory_include'], stores)
 
-        # Phase 3: Protect code blocks
-        ctx.text = store_to_index(ctx.text, CODE_BLOCK, 'code', ctx.code_store)
-
-        # Phase 4: Block-level elements
+        # Phase 3: Block-level elements
         ctx.text = process_title(ctx.text)
         ctx.text = process_listing(ctx.text)
 
-        # Phase 5: Inline elements
+        # Phase 4: Inline elements
         ctx.text = process_bold(ctx.text)
         ctx.text = process_italic(ctx.text)
-        ctx.text = process_code_inline(ctx.text)
 
-        # Phase 6: Tag elements (uses tag_registry)
-        ctx.text = process_tag(ctx.text, ctx.current_directory, self.tag_registry)
+        # Phase 5: Tag elements (uses tag_registry). Inside inline code,
+        # only named tags (e.g. link::) are processed.
+        def resolve_urls(s):
+            return stores.restore(s, 'U')
 
-        # Phase 7: Restore code blocks with highlighting
-        ctx.text = restore_from_index(ctx.text, CODE_INDEX, ctx.code_store)
-        ctx.text = process_code(ctx.text)
+        ctx.text = process_tag(ctx.text, ctx.current_directory, self.tag_registry,
+                               resolve=resolve_urls)
+        ctx.text = stores.restore(ctx.text, 'I', lambda content: render_inline_code(
+            process_tag(content, ctx.current_directory, self.tag_registry, inline=True)))
 
-        # Phase 8: Restore verbatim blocks
-        ctx.text = process_verbatim_back_from_index(ctx.text, ctx.verbatim_store)
+        # Phase 6: Restore protected zones, code blocks (highlighted) and
+        # verbatim blocks
+        ctx.text = process_unprotect(ctx.text, stores)
+        ctx.text = stores.restore(ctx.text, 'C', lambda entry: render_code_block(entry, stores.V))
+        ctx.text = stores.restore(ctx.text, 'V')
 
-        # Phase 9: Optional HTML wrapping
+        # Phase 7: Optional HTML wrapping
         if ctx.meta.get('wrap-auto') is True:
             ctx.text = wrap_auto(ctx.text, ctx.meta)
 

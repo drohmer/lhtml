@@ -9,8 +9,10 @@ Usage:
 """
 
 import os
+import sys
 import argparse
 
+from .errors import LHTMLError
 from .pipeline import ProcessingPipeline
 
 
@@ -51,9 +53,9 @@ def _output_path_for(input_path, output_arg):
 def _process_file(f_in, meta_base):
     """Process a single LHTML file and return the HTML output."""
     meta = dict(meta_base)
-    dir_to_include = os.path.dirname(os.path.abspath(f_in))
-    if dir_to_include:
-        meta['directory_include'] = meta.get('directory_include', []) + [dir_to_include + '/']
+    dir_to_include = os.path.dirname(os.path.abspath(f_in)) + '/'
+    meta['directory_include'] = meta.get('directory_include', []) + [dir_to_include]
+    meta['current_directory'] = dir_to_include
 
     with open(f_in) as fid:
         txt = _ensure_trailing_newline(fid.read())
@@ -79,19 +81,34 @@ def main():
     single_file = len(args.inputFiles) == 1
     single_to_stdout = single_file and args.output is None
 
+    if (not single_file and args.output is not None
+            and not os.path.isdir(args.output) and not args.output.endswith('/')):
+        parser.error(f'-o must be a directory when several input files are given '
+                     f'(got {args.output!r}; add a trailing / to create it)')
+
+    errors = 0
     for f_in in args.inputFiles:
         if not os.path.isfile(f_in):
-            print(f'Error: file not found [{f_in}]')
+            print(f'lhtml: error: file not found [{f_in}]', file=sys.stderr)
+            errors += 1
             continue
 
-        html = _process_file(f_in, meta)
+        try:
+            html = _process_file(f_in, meta)
+        except (LHTMLError, OSError) as e:
+            print(f'lhtml: error in {f_in}: {e}', file=sys.stderr)
+            errors += 1
+            continue
 
         if single_to_stdout:
-            print(html)
+            sys.stdout.write(html)
         else:
             out_path = _output_path_for(f_in, args.output)
             with open(out_path, 'w') as f_out:
                 f_out.write(html)
+
+    if errors:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

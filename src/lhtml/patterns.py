@@ -8,19 +8,69 @@ from typing import Callable
 # Compiled regex patterns
 # ---------------------------------------------------------------------------
 
-YAML_FRONTMATTER = re.compile(r'^---\n(.*?)\n---$', re.DOTALL | re.MULTILINE)
-VERBATIM_BLOCK   = re.compile(r'verbatim::\[\](.*?)verbatim::\[-\]', re.DOTALL | re.MULTILINE)
-VERBATIM_INDEX   = re.compile(r'verbatim::\[(.*?)\]')
-CODE_BLOCK       = re.compile(r'code::(.*?)code::\[-\]', re.DOTALL | re.MULTILINE)
-CODE_INDEX       = re.compile(r'code::\[(.*?)\]')
+# Front matter is only recognized at the very beginning of the document
+# (optionally after blank lines), so that '---' separators elsewhere are kept.
+YAML_FRONTMATTER = re.compile(r'\A\s*---\n(.*?)\n---[ \t]*$', re.DOTALL | re.MULTILINE)
 HEADING          = re.compile(r'^(=+)(?:\((.*?)\))? (.*?)$', re.MULTILINE)
 BOLD             = re.compile(r'\*\*(.*?)\*\*')
 ITALIC           = re.compile(r'__(.*?)__')
 INLINE_CODE      = re.compile(r'`(.*?)`')
-COMMENT          = re.compile(r'::#(.*?)$', re.MULTILINE)
-INCLUDE          = re.compile(r'include::')
-TAG_MARKER       = re.compile(r'::')
+# A comment starts a line or follows whitespace (so link::#anchor is kept)
+COMMENT          = re.compile(r'(?<!\S)::#.*$', re.MULTILINE)
+INCLUDE          = re.compile(r'(?<![\w-])include::')
+# In a run of colons, '::' markers are the pairs ending the run:
+# '::::' is two markers, ':::nl' is ':' followed by '::nl'
+TAG_MARKER       = re.compile(r'::(?=(?:::)*(?!:))')
+SPACER           = re.compile(r'nl(?![\w-])')
 LIST_ITEM        = re.compile(r'^(\*+) (.*)')
+
+# Block directives must not follow a backquote (inline code) or a colon.
+# A code block opener needs its [language] group (possibly empty), so that
+# words such as bytecode:: are not taken for a block.
+_DIRECTIVE_START = r'(?<![`:])'
+
+# Verbatim and code blocks, extracted first (the leftmost one wins, so
+# verbatim markers inside a code block are shown as code, and conversely).
+VERBATIM_BLOCK   = re.compile(_DIRECTIVE_START + r'verbatim::\[\](?P<vbody>.*?)verbatim::\[-\]', re.DOTALL)
+CODE_BLOCK       = re.compile(
+    _DIRECTIVE_START + r'code::(?P<header>\[(?!-\])[^\[\]\n]*\]'
+    r'(?:\([^()\n]*\)|\[[^\[\]\n]*\]|\{[^{}\n]*\})*)'
+    r'(?P<body>.*?)code::\[-\]', re.DOTALL)
+BLOCKS           = re.compile(f'(?P<verbatim>{VERBATIM_BLOCK.pattern})|(?P<code>{CODE_BLOCK.pattern})',
+                              re.DOTALL)
+
+# Zones that are never transformed by LHTML. They are matched by a single
+# regex so that the leftmost zone wins: `<script>` in inline code is code,
+# a backquote inside an HTML attribute belongs to the tag, etc.
+MATH             = re.compile(
+    r'\$\$.+?\$\$'                                    # $$ display $$
+    r'|\\\[.+?\\\]'                                    # \[ display \]
+    r'|\\\(.+?\\\)'                                    # \( inline \)
+    r'|(?<![\\$\w])\$(?![\s$])[^$\n]*?[^\s\\$]\$(?![\w$])'  # $inline$ (pandoc-like rule)
+    r'|(?<![\\$\w])\$[^\s\\$]\$(?![\w$])',                    # $x$ (single char)
+    re.DOTALL)
+# An HTML tag: a name followed by attributes on the same line; quoted
+# values may contain '<' or '>'.
+HTML_TAG         = re.compile(r'</?[A-Za-z][\w:-]*(?=[\s/>])(?:[^<>"\'\n]|"[^"\n]*"|\'[^\'\n]*\')*>')
+RAW_HTML_BLOCK   = re.compile(r'<!--.*?-->|<(?i:(script|style))\b[^>]*>.*?</(?i:\1)\s*>', re.DOTALL)
+# URL of link::, img::, video::, videoplay:: (parentheses are kept when they
+# are not a (.class #id) group, e.g. Mercury_(planet) or fig(1).png)
+URL_TAGS         = ('link', 'img', 'video', 'videoplay')
+URL_TOKEN        = r'(?:[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+'
+PROTECTED        = re.compile(
+    r'(?P<comment><!--.*?-->)'
+    r'|(?P<raw><(?i:(?P<rawtag>script|style))\b[^>]*>.*?</(?i:(?P=rawtag))\s*>)'
+    r'|`(?P<icode>[^`\n]*)`'
+    r'|(?P<urltag>(?<![\w-])(?:' + '|'.join(URL_TAGS) + r')::)(?P<url>' + URL_TOKEN + r')'
+    r'|(?P<math>' + MATH.pattern + r')'
+    r'|(?P<tag>' + HTML_TAG.pattern + r')',
+    re.DOTALL)
+
+# Placeholders for protected content. They contain no LHTML syntax
+# characters, so no processing step can alter them. Kinds:
+#   V verbatim, C code block, R raw zone (HTML, math), I inline code, U URL
+PLACEHOLDER_CHAR = '\x00'
+PLACEHOLDER      = re.compile(r'\x00([A-Z])(\d+)\x00')
 
 # String constants
 VERBATIM_OPEN  = 'verbatim::[]'
@@ -35,42 +85,43 @@ MAX_INCLUDE_ITERATIONS = 20
 # Generic regex transform utility
 # ---------------------------------------------------------------------------
 
-def store_to_index(text: str, pattern: re.Pattern | str, name: str, store: list) -> str:
-    """Extract regex matches into a store, replacing with indexed placeholders.
+def make_placeholder(kind: str, idx: int) -> str:
+    """Return the placeholder for entry `idx` of the store `kind` (one uppercase letter)."""
+    return f'{PLACEHOLDER_CHAR}{kind}{idx}{PLACEHOLDER_CHAR}'
 
-    Each match is stored in `store` and replaced with `name::[index]`.
-    Used to protect code/verbatim blocks from further processing.
+
+def store_to_index(text: str, pattern: re.Pattern | str, kind: str, store: list,
+                   transform_fn: Callable[[re.Match], str] | None = None) -> str:
+    """Extract regex matches into a store, replacing them with placeholders.
+
+    Each match (or `transform_fn(match)` if given) is stored in `store`
+    and replaced with a placeholder of kind `kind` (one uppercase letter).
+    Used to protect code/verbatim/raw blocks from further processing.
     """
     if isinstance(pattern, str):
         pattern = re.compile(pattern, re.DOTALL | re.MULTILINE)
-    parts = []
-    prev = 0
-    for m in pattern.finditer(text):
-        idx = len(store)
-        store.append(m.group(0))
-        parts.append(text[prev:m.start()])
-        parts.append(f'{name}::[{idx}]')
-        prev = m.end()
-    parts.append(text[prev:])
-    return ''.join(parts)
+
+    def _store(m):
+        store.append(transform_fn(m) if transform_fn else m.group(0))
+        return make_placeholder(kind, len(store) - 1)
+    return regex_transform(text, pattern, _store)
 
 
-def restore_from_index(text: str, pattern: re.Pattern | str, store: list) -> str:
-    """Restore indexed placeholders from a store.
+def restore_from_index(text: str, kind: str, store: list,
+                       render_fn: Callable[[object], str] | None = None) -> str:
+    """Replace the placeholders of kind `kind` by their stored content.
 
-    Matches `name::[index]` patterns and replaces with the stored content.
+    If given, `render_fn(entry)` produces the replacement of a stored entry.
+    Restoration is recursive: protected content may itself contain
+    placeholders of the same kind.
     """
-    if isinstance(pattern, str):
-        pattern = re.compile(pattern)
-    parts = []
-    prev = 0
-    for m in pattern.finditer(text):
-        idx = int(m.group(1))
-        parts.append(text[prev:m.start()])
-        parts.append(store[idx])
-        prev = m.end()
-    parts.append(text[prev:])
-    return ''.join(parts)
+    def _restore(m):
+        idx = int(m.group(2))
+        if m.group(1) != kind or idx >= len(store):
+            return m.group(0)
+        entry = store[idx]
+        return restore_from_index(render_fn(entry) if render_fn else entry, kind, store, render_fn)
+    return regex_transform(text, PLACEHOLDER, _restore)
 
 
 def regex_transform(text: str, pattern: re.Pattern, transform_fn: Callable[[re.Match], str]) -> str:
@@ -79,8 +130,7 @@ def regex_transform(text: str, pattern: re.Pattern, transform_fn: Callable[[re.M
     For each match of `pattern` in `text`, calls `transform_fn(match)`
     to produce the replacement string. Non-matching text passes through.
 
-    This eliminates the boilerplate loop duplicated across process_bold,
-    process_italic, process_code_inline, process_title, etc.
+    Used by process_bold, process_italic, process_title, etc.
     """
     parts = []
     prev = 0
