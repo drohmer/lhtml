@@ -28,7 +28,7 @@ from .errors import (
     LHTMLParseError, LHTMLWarning,
 )
 from .patterns import (
-    YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, BLOCKS, PROTECTED, PROTECTED_BLOCKS,
+    YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, PROTECTED, PROTECTED_BLOCKS,
     HEADING, BOLD, ITALIC, INLINE_CODE,
     COMMENT, INCLUDE, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
@@ -110,24 +110,6 @@ def process_yaml(text):
 # ---------------------------------------------------------------------------
 # Verbatim and code blocks (protect / restore)
 # ---------------------------------------------------------------------------
-
-def process_blocks_to_index(text, stores, directories=None, _stack=()):
-    """Replace verbatim:: and code:: blocks with placeholders.
-
-    The leftmost block wins: verbatim markers inside a code block are
-    displayed as code, and a code block inside verbatim stays raw.
-    If `directories` is given, include:: directives inside code blocks
-    are expanded (the included files are inserted as raw code).
-    """
-    def _store(m):
-        if m.group('verbatim') is not None:
-            return stores.add('V', m.group('vbody'))
-        body = m.group('body')
-        if directories is not None:
-            body = _expand_includes_raw(body, directories, _stack)
-        return stores.add('C', (m.group('header'), body))
-    return regex_transform(text, BLOCKS, _store)
-
 
 def process_verbatim_to_index(text, verbatim_index_store):
     """Replace verbatim blocks with placeholders."""

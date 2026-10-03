@@ -1,3 +1,0 @@
-::[color:red;]
-this is a test
-::

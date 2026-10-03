@@ -23,7 +23,6 @@ Issues = "https://github.com/drohmer/lhtml/issues"
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "ansicolors",
 ]
 
 [project.scripts]
