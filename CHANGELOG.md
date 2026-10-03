@@ -3,7 +3,7 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.4.0] - Unreleased
+## [2.4.0] - 2026-10-03
 
 ### Added
 - Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments
@@ -107,5 +107,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Headings without parentheses (`= Title`).
 - `::#` comments are removed on every line.
 
-[2.4.0]: https://github.com/drohmer/lhtml/compare/v2.3.0...HEAD
+[2.4.0]: https://github.com/drohmer/lhtml/releases/tag/v2.4.0
 [2.3.0]: https://github.com/drohmer/lhtml/releases/tag/v2.3.0
