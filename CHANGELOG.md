@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `lhtml --version` (`-V`) and `lhtml.__version__`. The version is defined
+  once, in `lhtml/__init__.py`, and read from there by `pyproject.toml`.
+
 ### Changed
 - A closing `::` (or `::name[-]`) without matching opening tag is kept as
   text in the output, instead of being replaced by `::??ERROR`. The

@@ -46,6 +46,7 @@ lhtml input.l.html -b                 # Render source line breaks as <br> (--lin
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
+lhtml --version                       # Show the version (also lhtml.__version__)
 ```
 
 Without `-o`, `page.l.html` is written to `page.html` next to its source.

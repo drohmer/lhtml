@@ -9,6 +9,8 @@ Usage:
     html = lhtml.run(text, {'wrap-auto': True, 'title': 'My Page'})
 """
 
+__version__ = '2.4.0'
+
 from .element_extract import extract_bracket_elements
 from .insert_in_text import insert_element_from_index, remove_element_to_index
 from .wrap_html import wrap_auto
@@ -70,7 +72,7 @@ def main():
 
 __all__ = [
     # Core API
-    'run', 'analyse_tag', 'read_yaml', 'main',
+    '__version__', 'run', 'analyse_tag', 'read_yaml', 'main',
     # Processing functions
     'extract_bracket_elements',
     'process_yaml', 'process_verbatim_to_index', 'process_verbatim_back_from_index',

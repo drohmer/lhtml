@@ -6,6 +6,7 @@ Usage:
     lhtml [-w] a.l.html b.l.html                  # Multiple files → .html next to sources
     lhtml [-w] a.l.html b.l.html -o build/        # Multiple files → output directory
     lhtml -b file.l.html                          # Source line breaks rendered as <br>
+    lhtml --version
     python -m lhtml [same options]
 """
 
@@ -14,6 +15,7 @@ import sys
 import argparse
 import warnings
 
+from . import __version__
 from .errors import LHTMLError
 from .pipeline import ProcessingPipeline
 from .process import read_source
@@ -84,6 +86,8 @@ def main():
                         action='store_true')
     parser.add_argument('-o', '--output',
                         help='Output file (single input) or directory (multiple inputs)')
+    parser.add_argument('-V', '--version', action='version',
+                        version=f'lhtml {__version__}')
     args = parser.parse_args()
 
     meta = {'directory_include': [os.getcwd() + '/']}

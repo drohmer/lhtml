@@ -1340,3 +1340,14 @@ class TestJinjaInUrlsAndHeadings:
 ])
 def test_video_opening_tag_spacing(source, expected):
     assert lhtml.run(source).startswith(expected + '\n')
+
+
+@pytest.mark.parametrize('flag', ['--version', '-V'])
+def test_cli_version(flag, monkeypatch, capsys):
+    code, out, _ = TestCli._run_cli(None, monkeypatch, capsys, flag)
+    assert code == 0
+    assert out == f'lhtml {lhtml.__version__}\n'
+
+
+def test_version_format():
+    assert re.fullmatch(r'\d+\.\d+\.\d+', lhtml.__version__)
