@@ -1320,3 +1320,13 @@ class TestJinjaInUrlsAndHeadings:
     def test_jinja_delimiter_in_string_still_matches(self):
         assert lhtml.run('{{ "{{" }} __a__') == '{{ "{{" }} <em>a</em>'
         assert lhtml.run('{% set x = "{%" %} __a__') == '{% set x = "{%" %} <em>a</em>'
+
+
+@pytest.mark.parametrize('source, expected', [
+    ('videoplay::v.mp4[width:400px;]', '<video autoplay loop muted style="width:400px;">'),
+    ('videoplay::v.mp4(.c)', '<video autoplay loop muted class="c">'),
+    ('videoplay::v.mp4', '<video autoplay loop muted>'),
+    ('video::v.mp4[width:400px;]', '<video style="width:400px;">'),
+])
+def test_video_opening_tag_spacing(source, expected):
+    assert lhtml.run(source).startswith(expected + '\n')

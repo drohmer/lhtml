@@ -124,7 +124,7 @@ def export_html_video(elements, default_inline='', current_directory=''):
     parts = ['<video']
     parts.append(export_html_element_inline(elements['{}']))
     if default_inline:
-        parts.append(f' {default_inline} ')
+        parts.append(f' {default_inline}')
     parts.append(export_html_element_class_and_id(elements['()']))
     parts.append(export_html_element_style(elements['[]']))
     if os.path.isfile(os.path.join(current_directory, poster_candidate)):
