@@ -16,6 +16,7 @@ Fields (all optional):
     attrs    default HTML attributes, e.g. 'frameborder="0"'
     empty    the element has no content: it is closed immediately
              (gap::, demo::url) instead of waiting for a closing ::
+             (always the case for HTML void elements such as br, hr)
     url      the text after :: is the value of this attribute (src, href)
     variant  the text after :: selects a variant, added as the class
              '<first class>-<variant>' (gap::l -> class="gap gap-l");
@@ -43,6 +44,9 @@ from .pipeline import TagRegistry, tag_registry
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
 FIELDS = {'tag', 'class', 'style', 'attrs', 'empty', 'url', 'variant', 'default', 'css', 'doc'}
+# HTML elements without closing tag (a macro using them is always empty)
+VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
+             'source', 'track', 'wbr'}
 BUILTIN_TAGS = ('div', 'span', 'link', 'img', 'video', 'videoplay', 'code', 'verbatim',
                 'include', 'nl')
 
@@ -69,12 +73,26 @@ def _check(name, spec):
     unknown = set(spec) - FIELDS
     if unknown:
         raise LHTMLMacroError(f'macro {name!r}: unknown field(s) {", ".join(sorted(unknown))}')
-    tag = str(spec.get('tag', 'div'))
+    for key in ('tag', 'class', 'style', 'attrs', 'url'):
+        if spec.get(key) is not None and not isinstance(spec[key], str):
+            raise LHTMLMacroError(f'macro {name!r}: {key} must be a string, got {spec[key]!r}')
+    if spec.get('empty') is not None and not isinstance(spec['empty'], bool):
+        raise LHTMLMacroError(f'macro {name!r}: empty must be true or false, got {spec["empty"]!r}')
+    tag = spec.get('tag') or 'div'
     if not NAME_RE.match(tag):
         raise LHTMLMacroError(f'macro {name!r}: invalid tag {tag!r}')
+    if tag.lower() in VOID_TAGS and spec.get('empty') is False:
+        raise LHTMLMacroError(f'macro {name!r}: <{tag}> has no content (empty cannot be false)')
+    if spec.get('url') is not None and not NAME_RE.match(spec['url']):
+        raise LHTMLMacroError(f'macro {name!r}: url must be an attribute name, got {spec["url"]!r}')
     variant = spec.get('variant')
     if variant is not None and not isinstance(variant, (bool, list)):
         raise LHTMLMacroError(f'macro {name!r}: variant must be true or a list')
+    if isinstance(variant, list) and any(not isinstance(v, (str, int)) or isinstance(v, bool)
+                                         for v in variant):
+        raise LHTMLMacroError(f'macro {name!r}: the variants must be names')
+    if spec.get('default') is not None and not isinstance(spec['default'], (str, int)):
+        raise LHTMLMacroError(f'macro {name!r}: default must be a name')
     if variant and spec.get('url'):
         raise LHTMLMacroError(f'macro {name!r}: variant and url cannot be combined')
     if variant and not str(spec.get('class', '')).split():
@@ -85,7 +103,8 @@ def _check(name, spec):
 def make_handler(name, spec):
     """Tag handler (see TagRegistry) for one macro definition."""
     spec = _check(name, spec)
-    tag = str(spec.get('tag', 'div'))
+    tag = spec.get('tag') or 'div'
+    void = tag.lower() in VOID_TAGS
     classes = str(spec.get('class', '') or '').split()
     style = str(spec.get('style', '') or '').strip()
     attrs = str(spec.get('attrs', '') or '').strip()
@@ -122,6 +141,8 @@ def make_handler(name, spec):
         html += export_html_element_inline(element['{}'])
         html += '>'
 
+        if void:
+            return html + text, True
         if empty:
             return html + text + f'</{tag}>', True
         if text.endswith('::'):
@@ -155,7 +176,11 @@ def load_macros(source):
         source = data
     if not isinstance(source, dict):
         raise LHTMLMacroError(f'macros: expected a mapping, got {type(source).__name__}')
-    if 'macros' in source and isinstance(source['macros'], dict):
+    if 'macros' in source:
+        if source['macros'] is None:
+            return {}
+        if not isinstance(source['macros'], dict):
+            raise LHTMLMacroError(f"macros: expected a mapping, got {type(source['macros']).__name__}")
         source = source['macros']
     return dict(source)
 

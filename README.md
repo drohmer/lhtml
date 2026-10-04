@@ -457,7 +457,10 @@ macro is not protected from inline formatting (avoid `__` in it).
 Declare them with `-m` / `--macros` (repeatable, later files win), with the
 `macros` key of the front matter (file names relative to the page, or
 definitions), or with `lhtml.run(text, {'macros': ...})` (a dict, a file
-name, or a list of them). Invalid definitions raise `LHTMLMacroError`.
+name, or a list of them). The macros of the front matter are added to the
+others (a macro of the same name is replaced). An HTML void element
+(`tag: hr`, `br`, ...) is always empty. Invalid definitions (unknown field,
+wrong type) raise `LHTMLMacroError`.
 
 ```bash
 lhtml -m design.yaml slide.l.html

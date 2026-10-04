@@ -139,6 +139,15 @@ _register_builtin_tags()
 # Pipeline
 # ---------------------------------------------------------------------------
 
+def _macro_sources(value):
+    """Macros given as a file name, a mapping or a list of them -> list."""
+    if not value:
+        return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
 class ProcessingPipeline:
     """Orchestrates the LHTML-to-HTML transformation pipeline.
 
@@ -178,16 +187,14 @@ class ProcessingPipeline:
             directory_include = [directory_include]
         ctx.meta['directory_include'] = [str(d) for d in directory_include]
 
-        # Macros (custom tags) declared in the meta or the front matter
+        # Macros (custom tags) declared in the meta, then in the front matter:
+        # the front matter adds definitions (and replaces those of same name)
         registry = self.tag_registry
-        if ctx.meta.get('macros'):
+        macros = _macro_sources((meta_arg or {}).get('macros')) + _macro_sources(meta_yaml.get('macros'))
+        if macros:
             from .macros import registry_with_macros
-            macros = ctx.meta['macros']
-            if isinstance(macros, str):
-                macros = [macros]
-            if isinstance(macros, list):
-                macros = [m if not isinstance(m, str) or os.path.isabs(m)
-                          else os.path.join(ctx.current_directory, m) for m in macros]
+            macros = [m if not isinstance(m, str) or os.path.isabs(m)
+                      else os.path.join(ctx.current_directory, m) for m in macros]
             registry = registry_with_macros(macros, self.tag_registry)
 
         # Phase 2: For each file: verbatim/code blocks and protected zones

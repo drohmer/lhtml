@@ -1436,6 +1436,9 @@ class TestMacros:
     @pytest.mark.parametrize('macros', [
         {'div': {}}, {'nl': {}}, {'2x': {}}, {'box': {'colour': 'red'}},
         {'box': 'small'}, {'gap': {'variant': True}},
+        {'box': {'class': ['a', 'b']}}, {'box': {'url': True}}, {'box': {'url': 'a b'}},
+        {'box': {'empty': 'false'}}, {'box': {'tag': 'br', 'empty': False}},
+        {'gap': {'class': 'gap', 'variant': [['s']]}}, {'macros': ['box']},
     ])
     def test_invalid_definitions(self, macros):
         with pytest.raises(lhtml.LHTMLMacroError):
@@ -1449,3 +1452,22 @@ class TestMacros:
                                          str(tmp_path / 'p.l.html')])
         cli.main()
         assert capsys.readouterr().out == '<div class="box"> x </div>\n'
+
+
+class TestMacrosRegressions:
+
+    def test_front_matter_adds_to_meta_macros(self):
+        out = lhtml.run('---\nmacros: {note: {class: note}}\n---\nbox:: x ::\nnote:: y ::\n',
+                        {'macros': MACROS})
+        assert out.strip() == '<div class="box"> x </div>\n<div class="note"> y </div>'
+
+    def test_front_matter_replaces_same_name(self):
+        out = lhtml.run('---\nmacros: {box: {class: frame}}\n---\nbox:: x ::\n', {'macros': MACROS})
+        assert out.strip() == '<div class="frame"> x </div>'
+
+    def test_void_tag(self):
+        out = lhtml.run('a rule::\nb\n', {'macros': {'rule': {'tag': 'hr', 'class': 'rule'}}})
+        assert out == 'a <hr class="rule">\nb\n'
+
+    def test_macros_key_null(self):
+        assert lhtml.load_macros({'macros': None}) == {}
