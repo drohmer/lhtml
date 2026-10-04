@@ -1489,3 +1489,26 @@ class TestMacrosDelegation:
     def test_macro_does_not_render_through_another_macro(self):
         out = lhtml.run('a:: x ::\n', {'macros': {'b': {'class': 'b'}, 'a': {'tag': 'b', 'class': 'a'}}})
         assert out == '<b class="a"> x </b>\n'
+
+
+class TestMacrosRound2:
+
+    def test_variant_closed_inline(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            assert _run_macros('gap::l::\n') == '<div class="gap gap-l"></div>\n'
+            out = lhtml.run('box::warn:: x\n', {'macros': {'box': {'class': 'box', 'variant': ['warn']}}})
+        assert out == '<div class="box box-warn"></div> x\n'
+
+    def test_design_file_without_macros(self, tmp_path):
+        (tmp_path / 'tok.yaml').write_text('tokens: {font: {small: 85%}}\n', encoding='utf-8')
+        assert lhtml.load_macros(str(tmp_path / 'tok.yaml')) == {}
+
+    def test_null_removes_macro(self):
+        with pytest.warns(lhtml.LHTMLWarning, match='no matching opening tag'):
+            out = lhtml.run('---\nmacros: {box: null}\n---\nbox:: x ::\n', {'macros': MACROS})
+        assert out.strip() == 'box:: x ::'
+
+    def test_default_must_be_a_variant(self):
+        with pytest.raises(lhtml.LHTMLMacroError):
+            lhtml.run('x\n', {'macros': {'gap': {'class': 'gap', 'variant': ['s'], 'default': 'm'}}})

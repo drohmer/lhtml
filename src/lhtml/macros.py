@@ -40,6 +40,7 @@ from .pipeline import TagRegistry, tag_registry
 
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
+DESIGN_KEYS = {'tokens', 'macros', 'extends'}   # keys of a design file (static_website_lhtml)
 FIELDS = {'tag', 'class', 'style', 'attrs', 'empty', 'url', 'variant', 'default', 'css', 'doc'}
 # HTML elements without closing tag (a macro using them is always empty)
 VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
@@ -90,6 +91,9 @@ def _check(name, spec):
         raise LHTMLMacroError(f'macro {name!r}: the variants must be names')
     if spec.get('default') is not None and not isinstance(spec['default'], (str, int)):
         raise LHTMLMacroError(f'macro {name!r}: default must be a name')
+    if isinstance(variant, list) and spec.get('default') is not None \
+            and str(spec['default']) not in [str(v) for v in variant]:
+        raise LHTMLMacroError(f'macro {name!r}: default {spec["default"]!r} is not one of the variants')
     if variant and spec.get('url'):
         raise LHTMLMacroError(f'macro {name!r}: variant and url cannot be combined')
     if variant and not str(spec.get('class', '')).split():
@@ -121,7 +125,11 @@ def make_handler(name, spec, base=None):
         text = element['text']
         all_classes = list(classes)
         if variant:
-            value = text.strip() or (str(default) if default is not None else '')
+            value = text.strip()
+            closed = value.endswith('::')          # gap::l:: (closed at once)
+            if closed:
+                value = value[:-2].strip()
+            value = value or (str(default) if default is not None else '')
             if value:
                 if isinstance(variant, list) and value not in [str(v) for v in variant]:
                     warnings.warn(f'{name}::{value}: unknown variant (expected one of '
@@ -129,7 +137,7 @@ def make_handler(name, spec, base=None):
                                   f'near {element.get("context", "")!r}',
                                   LHTMLWarning, stacklevel=4)
                 all_classes.append(f'{classes[0]}-{value}')
-            text = ''
+            text = '::' if closed else ''
         inline = ' '.join(a for a in (attrs, element['{}']) if a)
         if url and delegate is None:
             inline = ' '.join(a for a in (f'{url}="{_attr(text)}"', inline) if a)
@@ -141,7 +149,7 @@ def make_handler(name, spec, base=None):
                   'text': text}
         if void and delegate is None:
             return f'<{tag}{_build_attrs(merged)}>' + merged['text'], True
-        if empty and not (url and delegate is not None):
+        if empty and not (url and delegate is not None) and not merged['text'].endswith('::'):
             merged['text'] += '::'   # closed at once (a URL of img::, video:: is not content)
         depth = len(tag_to_close)
         if delegate is not None:
@@ -157,14 +165,20 @@ def make_handler(name, spec, base=None):
 
 def load_macros(source):
     """Macro definitions from a dict, a YAML file name, or a list of them
-    (later definitions replace earlier ones). A dict or file may hold the
-    definitions directly or under a top-level 'macros' key."""
+    (later definitions replace earlier ones, and a definition null removes
+    the macro). A dict or file may hold the definitions directly or under a
+    top-level 'macros' key; a design file (keys tokens, macros, extends) gives
+    its 'macros' only."""
+    return {name: spec for name, spec in _load_macros(source).items() if spec is not None}
+
+
+def _load_macros(source):
     if source is None:
         return {}
     if isinstance(source, (list, tuple)):
         merged = {}
         for item in source:
-            merged.update(load_macros(item))
+            merged.update(_load_macros(item))
         return merged
     if isinstance(source, (str, os.PathLike)):
         import yaml
@@ -178,12 +192,13 @@ def load_macros(source):
         source = data
     if not isinstance(source, dict):
         raise LHTMLMacroError(f'macros: expected a mapping, got {type(source).__name__}')
-    if 'macros' in source:
-        if source['macros'] is None:
+    if 'macros' in source or (source and set(source) <= DESIGN_KEYS):
+        macros = source.get('macros')
+        if macros is None:
             return {}
-        if not isinstance(source['macros'], dict):
-            raise LHTMLMacroError(f"macros: expected a mapping, got {type(source['macros']).__name__}")
-        source = source['macros']
+        if not isinstance(macros, dict):
+            raise LHTMLMacroError(f"macros: expected a mapping, got {type(macros).__name__}")
+        return dict(macros)
     return dict(source)
 
 

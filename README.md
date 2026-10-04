@@ -445,7 +445,7 @@ Output:
 | `empty` | No content: the element is closed at once (`gap::`, `demo::url`) |
 | `url` | The text after `::` is the value of this attribute (`src`, `href`) |
 | `variant` | The text after `::` selects a variant, added as the class `<first class>-<variant>`; a list restricts the allowed values (an unknown one gives a warning) |
-| `default` | Variant used when none is given |
+| `default` | Variant used when none is given (one of the variants) |
 | `css`, `doc` | Ignored by LHTML (free for tools: stylesheet generation, documentation) |
 
 The classes, style and attributes written in the source are added to the
@@ -457,11 +457,15 @@ not active inside inline code (`` `box::` `` stays text), and a macro cannot
 replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
 macro is not protected from inline formatting (avoid `__` in it).
 
+A variant may be closed at once like any element: `gap::l::`.
+
 Declare them with `-m` / `--macros` (repeatable, later files win), with the
 `macros` key of the front matter (file names relative to the page, or
 definitions), or with `lhtml.run(text, {'macros': ...})` (a dict, a file
 name, or a list of them). The macros of the front matter are added to the
-others (a macro of the same name is replaced). An HTML void element
+others (a macro of the same name is replaced, `name: null` removes it). A
+design file of static_website_lhtml (keys `tokens`, `macros`, `extends`) can
+be given: only its `macros` are read (not what it `extends`). An HTML void element
 (`tag: hr`, `br`, ...) is always empty. Invalid definitions (unknown field,
 wrong type) raise `LHTMLMacroError`.
 
