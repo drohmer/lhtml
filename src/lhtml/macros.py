@@ -35,10 +35,7 @@ import re
 import warnings
 
 from .errors import LHTMLMacroError, LHTMLWarning
-from .export_html import (
-    _attr, export_html_element_class_and_id, export_html_element_inline,
-    export_html_element_style,
-)
+from .export_html import _attr, _build_attrs, export_html_generic
 from .pipeline import TagRegistry, tag_registry
 
 
@@ -100,18 +97,25 @@ def _check(name, spec):
     return spec
 
 
-def make_handler(name, spec):
-    """Tag handler (see TagRegistry) for one macro definition."""
+def make_handler(name, spec, base=None):
+    """Tag handler (see TagRegistry) for one macro definition.
+
+    The macro adds its defaults (classes, style, attributes) to the parsed
+    element, then renders it like any element: with the handler of its tag
+    when LHTML has one (img, video, link, ...: `base` registry, the global one
+    by default), else as a generic element. There is thus one rendering path
+    for an element, whether it is written directly or through a macro."""
     spec = _check(name, spec)
     tag = spec.get('tag') or 'div'
     void = tag.lower() in VOID_TAGS
-    classes = str(spec.get('class', '') or '').split()
-    style = str(spec.get('style', '') or '').strip()
-    attrs = str(spec.get('attrs', '') or '').strip()
+    classes = (spec.get('class') or '').split()
+    style = (spec.get('style') or '').strip()
+    attrs = (spec.get('attrs') or '').strip()
     empty = bool(spec.get('empty', False))
     url = spec.get('url')
     variant = spec.get('variant')
     default = spec.get('default')
+    delegate = (base if base is not None else tag_registry).get(tag)
 
     def handler(element, tag_to_close, current_directory):
         text = element['text']
@@ -126,29 +130,27 @@ def make_handler(name, spec):
                                   LHTMLWarning, stacklevel=4)
                 all_classes.append(f'{classes[0]}-{value}')
             text = ''
-        source_classes = element['()']
-        class_id = ' '.join(['.' + c for c in all_classes] + ([source_classes] if source_classes else []))
-        full_style = ' '.join(s for s in (style, element['[]']) if s)
-
-        html = f'<{tag}'
-        if url:
-            html += f' {url}="{_attr(text)}"'
+        inline = ' '.join(a for a in (attrs, element['{}']) if a)
+        if url and delegate is None:
+            inline = ' '.join(a for a in (f'{url}="{_attr(text)}"', inline) if a)
             text = ''
-        html += export_html_element_class_and_id(class_id)
-        html += export_html_element_style(full_style)
-        if attrs:
-            html += ' ' + attrs
-        html += export_html_element_inline(element['{}'])
-        html += '>'
-
-        if void:
-            return html + text, True
-        if empty:
-            return html + text + f'</{tag}>', True
-        if text.endswith('::'):
-            return html + text[:-2] + f'</{tag}>', True
-        tag_to_close.append(OpenTag(tag, name))
-        return html + text, True
+        merged = {**element,
+                  '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
+                  '[]': ' '.join(s for s in (style, element['[]']) if s),
+                  '{}': inline,
+                  'text': text}
+        if void and delegate is None:
+            return f'<{tag}{_build_attrs(merged)}>' + merged['text'], True
+        if empty and not (url and delegate is not None):
+            merged['text'] += '::'   # closed at once (a URL of img::, video:: is not content)
+        depth = len(tag_to_close)
+        if delegate is not None:
+            html, real = delegate(merged, tag_to_close, current_directory)
+        else:
+            html, real = export_html_generic(merged, tag, tag_to_close), True
+        if len(tag_to_close) > depth:
+            tag_to_close[-1] = OpenTag(tag_to_close[-1], name)
+        return html, real
 
     return handler
 
@@ -189,8 +191,12 @@ def register_macros(macros, registry: TagRegistry | None = None):
     """Register macro definitions (see load_macros) in a tag registry
     (the global one by default). Returns the registry."""
     registry = registry if registry is not None else tag_registry
+    # Macros render through the tags known before them (not through each other)
+    base = TagRegistry()
+    for tag in registry.registered_tags():
+        base.register(tag, registry.get(tag))
     for name, spec in load_macros(macros).items():
-        registry.register(name, make_handler(name, spec))
+        registry.register(name, make_handler(name, spec, base))
     return registry
 
 

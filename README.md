@@ -449,7 +449,10 @@ Output:
 | `css`, `doc` | Ignored by LHTML (free for tools: stylesheet generation, documentation) |
 
 The classes, style and attributes written in the source are added to the
-defaults. A macro is closed by `::` or by its name (`::box[-]`). Macros are
+defaults, then the element is rendered like any element: a macro whose `tag`
+is an LHTML tag (`img`, `video`, `videoplay`, `link`, ...) uses that tag
+(`photo: {tag: img, class: photo}` gives `photo::a.png` an `alt`, `videoplay`
+keeps its codec variants); a macro never renders through another macro. A macro is closed by `::` or by its name (`::box[-]`). Macros are
 not active inside inline code (`` `box::` `` stays text), and a macro cannot
 replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
 macro is not protected from inline formatting (avoid `__` in it).

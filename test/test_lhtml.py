@@ -1410,8 +1410,8 @@ class TestMacros:
 
     def test_url(self):
         out = _run_macros('demo::assets/ik/index.html#d2[height:700px;]\n')
-        assert out == ('<iframe src="assets/ik/index.html#d2" class="demo" '
-                       'style="height:700px;" frameborder="0"></iframe>\n')
+        assert out == ('<iframe class="demo" style="height:700px;" '
+                       'src="assets/ik/index.html#d2" frameborder="0"></iframe>\n')
 
     def test_not_active_inside_inline_code(self):
         assert _run_macros('`box:: gap::`\n') == '<code class="code-inline">box:: gap::</code>\n'
@@ -1471,3 +1471,21 @@ class TestMacrosRegressions:
 
     def test_macros_key_null(self):
         assert lhtml.load_macros({'macros': None}) == {}
+
+
+class TestMacrosDelegation:
+    """A macro renders through the handler of its tag (one rendering path)."""
+
+    def test_img_macro_uses_img_handler(self):
+        out = lhtml.run('photo::a.png[width:10px;]\n',
+                        {'macros': {'photo': {'tag': 'img', 'class': 'photo', 'url': 'src'}}})
+        assert out == '<img class="photo" style="width:10px;" src="a.png" alt="a.png">\n'
+
+    def test_videoplay_macro_keeps_video_attributes(self):
+        out = lhtml.run('clip::v.mp4\n', {'macros': {'clip': {'tag': 'videoplay', 'class': 'clip'}}})
+        assert out.startswith('<video autoplay loop muted class="clip">')
+        assert '<source src="v.mp4" type="video/mp4">' in out
+
+    def test_macro_does_not_render_through_another_macro(self):
+        out = lhtml.run('a:: x ::\n', {'macros': {'b': {'class': 'b'}, 'a': {'tag': 'b', 'class': 'a'}}})
+        assert out == '<b class="a"> x </b>\n'
