@@ -246,6 +246,9 @@ Content
 </div>
 ```
 
+Classes and ID may also be chained without spaces: `::(.classA.classB#myId)`
+gives the same attributes (since 2.5.1).
+
 #### Self-Closing (inline)
 
 End the content with `::` on the same line:
