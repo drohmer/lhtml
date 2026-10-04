@@ -71,6 +71,10 @@ class LHTMLIncludeLoopError(LHTMLError):
         super().__init__(message)
 
 
+class LHTMLMacroError(LHTMLError):
+    """Invalid macro definition (name, fields or macros file)."""
+
+
 def pos_to_line(text: str, pos: int) -> int:
     """Convert a character position to a 1-based line number."""
     if pos < 0 or pos > len(text):

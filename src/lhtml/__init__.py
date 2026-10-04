@@ -9,7 +9,7 @@ Usage:
     html = lhtml.run(text, {'wrap-auto': True, 'title': 'My Page'})
 """
 
-__version__ = '2.4.1'
+__version__ = '2.5.0'
 
 from .element_extract import extract_bracket_elements
 from .insert_in_text import insert_element_from_index, remove_element_to_index
@@ -26,10 +26,11 @@ from .process import (
 
 from .errors import (
     LHTMLError, LHTMLParseError, LHTMLFileNotFound,
-    LHTMLTagStackError, LHTMLIncludeLoopError, LHTMLWarning,
+    LHTMLTagStackError, LHTMLIncludeLoopError, LHTMLWarning, LHTMLMacroError,
 )
 
 from .pipeline import ProcessingPipeline, tag_registry, lexer_registry
+from .macros import load_macros, register_macros, registry_with_macros
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +46,7 @@ def run(text, meta_arg=None):
     Args:
         text: LHTML markup string.
         meta_arg: Optional dict overriding default configuration.
-            Keys: wrap-auto, title, css, js, directory_include, etc.
+            Keys: wrap-auto, title, css, js, directory_include, macros, etc.
 
     Returns:
         HTML string.
@@ -85,7 +86,8 @@ __all__ = [
     'wrap_auto',
     # Pipeline & plugins
     'ProcessingPipeline', 'tag_registry', 'lexer_registry',
+    'load_macros', 'register_macros', 'registry_with_macros',
     # Errors
     'LHTMLError', 'LHTMLParseError', 'LHTMLFileNotFound',
-    'LHTMLTagStackError', 'LHTMLIncludeLoopError', 'LHTMLWarning',
+    'LHTMLTagStackError', 'LHTMLIncludeLoopError', 'LHTMLWarning', 'LHTMLMacroError',
 ]

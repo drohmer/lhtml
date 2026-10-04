@@ -43,6 +43,7 @@ lhtml input.l.html                    # Convert to stdout
 lhtml input.l.html -o output.html     # Convert to file
 lhtml input.l.html -w                 # Wrap in full HTML document (--wrapAuto)
 lhtml input.l.html -b                 # Render source line breaks as <br> (--line-breaks)
+lhtml input.l.html -m design.yaml     # Declare macros, custom :: tags (--macros)
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
@@ -395,6 +396,74 @@ include::components/nav.html
 Included files are recursively processed (up to 20 levels); their own YAML front matter is ignored. An included file looks for its own includes first in its own directory, then in `directory_include`. A circular include raises `LHTMLIncludeLoopError`.
 
 
+### Macros (custom tags from a configuration)
+
+A macro is a named `::` tag declared in YAML (or a dict): a shortcut for an
+HTML element with default classes, style and attributes. The styling stays
+in CSS, so a deck or a site changes its look in one place.
+
+```yaml
+# design.yaml (the definitions may also be at the top level)
+macros:
+  small:  {class: small}
+  credit: {tag: span, class: credit}
+  aside:  {class: aside}
+  box:    {class: box}
+  gap:    {class: gap, empty: true, variant: [s, m, l], default: m}
+  demo:   {tag: iframe, class: demo, empty: true, url: src, attrs: 'frameborder="0"'}
+```
+
+```
+aside::[top:400px;]
+img::assets/figure.png[width:450px;]
+::
+
+box::(.good) **Correct** ::
+gap::l
+credit:: Image: Wikimedia Commons ::
+demo::assets/demo/index.html
+```
+
+Output:
+```html
+<div class="aside" style="top:400px;">
+<img style="width:450px;" src="assets/figure.png" alt="assets/figure.png">
+</div>
+
+<div class="box good"> <strong>Correct</strong> </div>
+<div class="gap gap-l"></div>
+<span class="credit"> Image: Wikimedia Commons </span>
+<iframe src="assets/demo/index.html" class="demo" frameborder="0"></iframe>
+```
+
+| Field | Description |
+|-------|-------------|
+| `tag` | HTML element (default `div`) |
+| `class` | Default classes (space separated) |
+| `style` | Default inline style, placed before the style of the source |
+| `attrs` | Default HTML attributes |
+| `empty` | No content: the element is closed at once (`gap::`, `demo::url`) |
+| `url` | The text after `::` is the value of this attribute (`src`, `href`) |
+| `variant` | The text after `::` selects a variant, added as the class `<first class>-<variant>`; a list restricts the allowed values (an unknown one gives a warning) |
+| `default` | Variant used when none is given |
+| `css`, `doc` | Ignored by LHTML (free for tools: stylesheet generation, documentation) |
+
+The classes, style and attributes written in the source are added to the
+defaults. A macro is closed by `::` or by its name (`::box[-]`). Macros are
+not active inside inline code (`` `box::` `` stays text), and a macro cannot
+replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
+macro is not protected from inline formatting (avoid `__` in it).
+
+Declare them with `-m` / `--macros` (repeatable, later files win), with the
+`macros` key of the front matter (file names relative to the page, or
+definitions), or with `lhtml.run(text, {'macros': ...})` (a dict, a file
+name, or a list of them). Invalid definitions raise `LHTMLMacroError`.
+
+```bash
+lhtml -m design.yaml slide.l.html
+```
+
+
 ### YAML Front Matter
 
 The front matter must be at the very beginning of the file (`---` separators elsewhere are kept as text). Input text is normalized first: a leading BOM is removed and CRLF line endings become LF.
@@ -420,6 +489,7 @@ Supported metadata keys:
 | `wrap-auto` | boolean | Wrap output in full HTML document |
 | `line-breaks` | boolean | Render source line breaks as `<br>` |
 | `directory_include` | list | Directories to search for includes |
+| `macros` | string, list or mapping | Macros: YAML file(s) relative to the page, or definitions (see [Macros](#macros-custom-tags-from-a-configuration)) |
 
 
 ## Using LHTML with Jinja2
@@ -534,6 +604,7 @@ All keys for the `meta` dict passed to `lhtml.run()`:
     'js': [],                  # JS files (string or list)
     'directory_include': [cwd],  # Search paths for include:: (default: current directory)
     'current_directory': '',   # Base directory for video codec detection
+    'macros': None,            # Macros: dict, YAML file name, or list of them
 }
 ```
 

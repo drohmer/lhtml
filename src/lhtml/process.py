@@ -425,7 +425,8 @@ def _dispatch_tag(element, tag_to_close, current_directory, registry=None):
         closing_name = element['text']
         if not tag_to_close:
             return _warn_unmatched_closing(element)
-        if closing_name and tag_to_close[-1] != closing_name:
+        if closing_name and closing_name not in (tag_to_close[-1],
+                                                 getattr(tag_to_close[-1], 'name', None)):
             warnings.warn(
                 f'Closing ::{closing_name}[-] but last opened tag is <{tag_to_close[-1]}> '
                 f'(near {element.get("context", "")!r})',

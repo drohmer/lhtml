@@ -178,6 +178,18 @@ class ProcessingPipeline:
             directory_include = [directory_include]
         ctx.meta['directory_include'] = [str(d) for d in directory_include]
 
+        # Macros (custom tags) declared in the meta or the front matter
+        registry = self.tag_registry
+        if ctx.meta.get('macros'):
+            from .macros import registry_with_macros
+            macros = ctx.meta['macros']
+            if isinstance(macros, str):
+                macros = [macros]
+            if isinstance(macros, list):
+                macros = [m if not isinstance(m, str) or os.path.isabs(m)
+                          else os.path.join(ctx.current_directory, m) for m in macros]
+            registry = registry_with_macros(macros, self.tag_registry)
+
         # Phase 2: For each file: verbatim/code blocks and protected zones
         # (HTML, inline code, URLs, math) are replaced by placeholders,
         # comments are removed, then includes are expanded (recursive)
@@ -192,11 +204,11 @@ class ProcessingPipeline:
         ctx.text = process_italic(ctx.text)
 
         # Phase 5: Tag elements (uses tag_registry). Inside inline code,
-        # only named tags (e.g. link::) are processed.
+        # only named tags (e.g. link::) are processed, macros excepted.
         def resolve_attributes(s):
             return stores.restore(stores.restore(s, 'A'), 'U')
 
-        ctx.text = process_tag(ctx.text, ctx.current_directory, self.tag_registry,
+        ctx.text = process_tag(ctx.text, ctx.current_directory, registry,
                                resolve=resolve_attributes)
         ctx.text = stores.restore(ctx.text, 'I', lambda content: render_inline_code(
             process_tag(content, ctx.current_directory, self.tag_registry, inline=True)))

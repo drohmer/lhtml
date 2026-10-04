@@ -6,6 +6,7 @@ Usage:
     lhtml [-w] a.l.html b.l.html                  # Multiple files → .html next to sources
     lhtml [-w] a.l.html b.l.html -o build/        # Multiple files → output directory
     lhtml -b file.l.html                          # Source line breaks rendered as <br>
+    lhtml -m macros.yaml file.l.html              # Custom :: tags declared in a YAML file
     lhtml --version
     python -m lhtml [same options]
 """
@@ -17,6 +18,7 @@ import warnings
 
 from . import __version__
 from .errors import LHTMLError
+from .macros import load_macros, registry_with_macros
 from .pipeline import ProcessingPipeline
 from .process import read_source
 
@@ -84,6 +86,8 @@ def main():
     parser.add_argument('-b', '--line-breaks',
                         help='Render the line breaks of the source text as <br>',
                         action='store_true')
+    parser.add_argument('-m', '--macros', action='append', metavar='FILE',
+                        help='YAML file of macros (custom :: tags); may be repeated')
     parser.add_argument('-o', '--output',
                         help='Output file (single input) or directory (multiple inputs)')
     parser.add_argument('-V', '--version', action='version',
@@ -95,6 +99,13 @@ def main():
         meta['wrap-auto'] = True
     if args.line_breaks:
         meta['line-breaks'] = True
+    if args.macros:
+        try:
+            meta['macros'] = load_macros([os.path.abspath(f) for f in args.macros])
+            registry_with_macros(meta['macros'])  # validate before processing files
+        except LHTMLError as e:
+            print(f'lhtml: error: {e}', file=sys.stderr)
+            sys.exit(1)
 
     single_file = len(args.inputFiles) == 1
     single_to_stdout = single_file and args.output is None

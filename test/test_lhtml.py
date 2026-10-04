@@ -1351,3 +1351,101 @@ def test_cli_version(flag, monkeypatch, capsys):
 
 def test_version_format():
     assert re.fullmatch(r'\d+\.\d+\.\d+', lhtml.__version__)
+
+
+# ---------------------------------------------------------------------------
+# Macros (custom :: tags declared in a configuration)
+# ---------------------------------------------------------------------------
+
+MACROS = {
+    'small': {'class': 'small'},
+    'credit': {'tag': 'span', 'class': 'credit'},
+    'aside': {'class': 'aside', 'style': 'top:150px;'},
+    'box': {'class': 'box'},
+    'gap': {'class': 'gap', 'empty': True, 'variant': ['s', 'm', 'l'], 'default': 'm'},
+    'demo': {'tag': 'iframe', 'class': 'demo', 'empty': True, 'url': 'src',
+             'attrs': 'frameborder="0"'},
+}
+
+
+def _run_macros(text, macros=MACROS):
+    return lhtml.run(text, {'macros': macros})
+
+
+class TestMacros:
+
+    def test_container(self):
+        assert _run_macros('box::\nx\n::\n') == '<div class="box">\nx\n</div>\n'
+
+    def test_inline_and_other_tag(self):
+        assert _run_macros('credit:: Milo ::\n') == '<span class="credit"> Milo </span>\n'
+
+    def test_classes_and_style_are_added(self):
+        out = _run_macros('aside::(.wide #f)[top:400px;] x ::\n')
+        assert out == '<div class="aside wide" id="f" style="top:150px; top:400px;"> x </div>\n'
+
+    def test_explicit_closing_by_macro_name(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            out = _run_macros('small::\nbox::\nx\n::box[-]\n::small[-]\n')
+        assert out == '<div class="small">\n<div class="box">\nx\n</div>\n</div>\n'
+
+    def test_explicit_closing_by_html_name(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            assert _run_macros('small::\nx\n::div[-]\n') == '<div class="small">\nx\n</div>\n'
+
+    def test_wrong_explicit_closing_warns(self):
+        with pytest.warns(lhtml.LHTMLWarning, match='last opened tag'):
+            _run_macros('small::\nx\n::box[-]\n')
+
+    def test_empty_with_variant(self):
+        assert _run_macros('gap::\ngap::l\n') == ('<div class="gap gap-m"></div>\n'
+                                                  '<div class="gap gap-l"></div>\n')
+
+    def test_unknown_variant_warns(self):
+        with pytest.warns(lhtml.LHTMLWarning, match='unknown variant'):
+            out = _run_macros('gap::xl\n')
+        assert out == '<div class="gap gap-xl"></div>\n'
+
+    def test_url(self):
+        out = _run_macros('demo::assets/ik/index.html#d2[height:700px;]\n')
+        assert out == ('<iframe src="assets/ik/index.html#d2" class="demo" '
+                       'style="height:700px;" frameborder="0"></iframe>\n')
+
+    def test_not_active_inside_inline_code(self):
+        assert _run_macros('`box:: gap::`\n') == '<code class="code-inline">box:: gap::</code>\n'
+
+    def test_unknown_without_macros(self):
+        assert lhtml.run('gap::\n') == 'gap::\n'
+
+    def test_global_registry_unchanged(self):
+        _run_macros('gap::\n')
+        assert not lhtml.tag_registry.has('gap')
+
+    def test_front_matter_file(self, tmp_path):
+        (tmp_path / 'design.yaml').write_text('macros:\n  note: {class: note}\n', encoding='utf-8')
+        out = lhtml.run('---\nmacros: design.yaml\n---\nnote:: hi ::\n',
+                        {'current_directory': str(tmp_path) + '/'})
+        assert out.strip() == '<div class="note"> hi </div>'
+
+    def test_later_definition_wins(self):
+        out = lhtml.run('box:: x ::\n', {'macros': [MACROS, {'box': {'class': 'frame'}}]})
+        assert out == '<div class="frame"> x </div>\n'
+
+    @pytest.mark.parametrize('macros', [
+        {'div': {}}, {'nl': {}}, {'2x': {}}, {'box': {'colour': 'red'}},
+        {'box': 'small'}, {'gap': {'variant': True}},
+    ])
+    def test_invalid_definitions(self, macros):
+        with pytest.raises(lhtml.LHTMLMacroError):
+            lhtml.run('x\n', {'macros': macros})
+
+    def test_cli(self, tmp_path, monkeypatch, capsys):
+        from lhtml import cli
+        (tmp_path / 'm.yaml').write_text('box: {class: box}\n', encoding='utf-8')
+        (tmp_path / 'p.l.html').write_text('box:: x ::\n', encoding='utf-8')
+        monkeypatch.setattr('sys.argv', ['lhtml', '-m', str(tmp_path / 'm.yaml'),
+                                         str(tmp_path / 'p.l.html')])
+        cli.main()
+        assert capsys.readouterr().out == '<div class="box"> x </div>\n'

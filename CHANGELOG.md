@@ -3,6 +3,17 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.5.0] - 2026-10-04
+
+### Added
+- Macros: custom `::` tags declared in YAML or a dict (`tag`, `class`,
+  `style`, `attrs`, `empty`, `url`, `variant`, `default`), e.g.
+  `box::(.good) ... ::`, `gap::l`, `demo::url`. They are declared with
+  `lhtml -m file.yaml`, the `macros` key of the front matter or of the
+  `meta` of `lhtml.run()`, and are closed by `::` or `::name[-]`.
+  New `lhtml.load_macros`, `register_macros`, `registry_with_macros` and
+  `LHTMLMacroError`.
+
 ## [2.4.1] - 2026-10-03
 
 ### Added
