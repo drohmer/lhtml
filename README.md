@@ -43,7 +43,7 @@ lhtml input.l.html                    # Convert to stdout
 lhtml input.l.html -o output.html     # Convert to file
 lhtml input.l.html -w                 # Wrap in full HTML document (--wrapAuto)
 lhtml input.l.html -b                 # Render source line breaks as <br> (--line-breaks)
-lhtml input.l.html -m design.yaml     # Declare macros, custom :: tags (--macros)
+lhtml input.l.html -m macros.yaml     # Declare macros, custom :: tags (--macros)
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 python -m lhtml input.l.html          # Alternative invocation
@@ -403,7 +403,7 @@ HTML element with default classes, style and attributes. The styling stays
 in CSS, so a deck or a site changes its look in one place.
 
 ```yaml
-# design.yaml (the definitions may also be at the top level)
+# macros.yaml (the definitions may also be at the top level)
 macros:
   small:  {class: small}
   credit: {tag: span, class: credit}
@@ -433,7 +433,7 @@ Output:
 <div class="box good"> <strong>Correct</strong> </div>
 <div class="gap gap-l"></div>
 <span class="credit"> Image: Wikimedia Commons </span>
-<iframe src="assets/demo/index.html" class="demo" frameborder="0"></iframe>
+<iframe class="demo" src="assets/demo/index.html" frameborder="0"></iframe>
 ```
 
 | Field | Description |
@@ -443,7 +443,7 @@ Output:
 | `style` | Default inline style, placed before the style of the source |
 | `attrs` | Default HTML attributes |
 | `empty` | No content: the element is closed at once (`gap::`, `demo::url`) |
-| `url` | The text after `::` is the value of this attribute (`src`, `href`) |
+| `url` | The text after `::` is the value of this attribute (`src`, `data-src`, ...). Not needed for `tag: img`, `video`, `videoplay`, `link`: their text is already the URL |
 | `variant` | The text after `::` selects a variant, added as the class `<first class>-<variant>`; a list restricts the allowed values (an unknown one gives a warning) |
 | `default` | Variant used when none is given (one of the variants) |
 | `css`, `doc` | Ignored by LHTML (free for tools: stylesheet generation, documentation) |
@@ -452,7 +452,8 @@ The classes, style and attributes written in the source are added to the
 defaults, then the element is rendered like any element: a macro whose `tag`
 is an LHTML tag (`img`, `video`, `videoplay`, `link`, ...) uses that tag
 (`photo: {tag: img, class: photo}` gives `photo::a.png` an `alt`, `videoplay`
-keeps its codec variants); a macro never renders through another macro. A macro is closed by `::` or by its name (`::box[-]`). Macros are
+keeps its codec variants, the `style` of a `link` macro is an attribute since
+`[]` is the link text); a macro never renders through another macro. A macro is closed by `::` or by its name (`::box[-]`). Macros are
 not active inside inline code (`` `box::` `` stays text), and a macro cannot
 replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
 macro is not protected from inline formatting (avoid `__` in it).
@@ -464,13 +465,13 @@ Declare them with `-m` / `--macros` (repeatable, later files win), with the
 definitions), or with `lhtml.run(text, {'macros': ...})` (a dict, a file
 name, or a list of them). The macros of the front matter are added to the
 others (a macro of the same name is replaced, `name: null` removes it). A
-design file of static_website_lhtml (keys `tokens`, `macros`, `extends`) can
-be given: only its `macros` are read (not what it `extends`). An HTML void element
+file holds the definitions at its top level or under its only key `macros`
+(`macros` is thus not a macro name). An HTML void element
 (`tag: hr`, `br`, ...) is always empty. Invalid definitions (unknown field,
 wrong type) raise `LHTMLMacroError`.
 
 ```bash
-lhtml -m design.yaml slide.l.html
+lhtml -m macros.yaml slide.l.html
 ```
 
 

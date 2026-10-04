@@ -1500,9 +1500,9 @@ class TestMacrosRound2:
             out = lhtml.run('box::warn:: x\n', {'macros': {'box': {'class': 'box', 'variant': ['warn']}}})
         assert out == '<div class="box box-warn"></div> x\n'
 
-    def test_design_file_without_macros(self, tmp_path):
-        (tmp_path / 'tok.yaml').write_text('tokens: {font: {small: 85%}}\n', encoding='utf-8')
-        assert lhtml.load_macros(str(tmp_path / 'tok.yaml')) == {}
+    def test_macros_key(self, tmp_path):
+        (tmp_path / 'm.yaml').write_text('macros:\n  note: {class: note}\n', encoding='utf-8')
+        assert lhtml.load_macros(str(tmp_path / 'm.yaml')) == {'note': {'class': 'note'}}
 
     def test_null_removes_macro(self):
         with pytest.warns(lhtml.LHTMLWarning, match='no matching opening tag'):
@@ -1512,3 +1512,40 @@ class TestMacrosRound2:
     def test_default_must_be_a_variant(self):
         with pytest.raises(lhtml.LHTMLMacroError):
             lhtml.run('x\n', {'macros': {'gap': {'class': 'gap', 'variant': ['s'], 'default': 'm'}}})
+
+
+class TestMacrosRound3:
+
+    def test_url_on_container(self):
+        out = lhtml.run('dx::hello\nx\n::\n', {'macros': {'dx': {'class': 'dx', 'url': 'data-x'}}})
+        assert out == '<div class="dx" data-x="hello">\nx\n</div>\n'
+
+    def test_url_on_span_closed_inline(self):
+        out = lhtml.run('t::Tip:: x\n', {'macros': {'t': {'tag': 'span', 'url': 'title'}}})
+        assert out == '<span title="Tip"></span> x\n'
+
+    def test_url_other_than_the_handler_attribute(self):
+        out = lhtml.run('lazy::a.png\n', {'macros': {'lazy': {'tag': 'img', 'class': 'lazy',
+                                                                 'url': 'data-src'}}})
+        assert out == '<img class="lazy" data-src="a.png">\n'
+
+    @pytest.mark.parametrize('tag, expected', [
+        ('img', '<img class="pic" src="a.png" alt="a.png">\n'),
+        ('link', '<a class="pic" href="a.png"></a>\n'),
+    ])
+    def test_empty_url_tag(self, tag, expected):
+        out = lhtml.run('pic::a.png\n', {'macros': {'pic': {'tag': tag, 'class': 'pic', 'empty': True}}})
+        assert out == expected
+
+    def test_link_style_is_an_attribute(self):
+        macros = {'ext': {'tag': 'link', 'class': 'ext', 'style': 'color:red'}}
+        assert lhtml.run('ext::http://a.org[Doc]\n', {'macros': macros}) == \
+            '<a class="ext" style="color:red" href="http://a.org">Doc</a>\n'
+
+    def test_design_keys_are_not_special(self):
+        with pytest.raises(lhtml.LHTMLMacroError, match="'tokens'"):
+            lhtml.run('x\n', {'macros': {'tokens': {'font': {'small': '85%'}}}})
+
+    def test_macros_is_reserved(self):
+        with pytest.raises(lhtml.LHTMLMacroError, match='reserved'):
+            lhtml.run('x\n', {'macros': {'macros': {'macros': {'class': 'm'}}}})
