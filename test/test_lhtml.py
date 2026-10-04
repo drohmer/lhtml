@@ -1549,3 +1549,24 @@ class TestMacrosRound3:
     def test_macros_is_reserved(self):
         with pytest.raises(lhtml.LHTMLMacroError, match='reserved'):
             lhtml.run('x\n', {'macros': {'macros': {'macros': {'class': 'm'}}}})
+
+    def test_css_is_not_a_field(self):
+        with pytest.raises(lhtml.LHTMLMacroError, match='css'):
+            lhtml.run('x\n', {'macros': {'box': {'class': 'box', 'css': '.box {}'}}})
+
+    def test_describe_macro(self):
+        assert lhtml.describe_macro('gap', MACROS['gap']) == {
+            'html': '<div class="gap">', 'url': None, 'empty': True, 'variants': ['s', 'm', 'l'],
+            'default': 'm', 'doc': None}
+        info = lhtml.describe_macro('ext', {'tag': 'link', 'class': 'ext'})
+        assert (info['html'], info['url'], info['empty']) == ('<a class="ext">', 'href', True)
+
+    def test_styles_are_separated(self):
+        out = lhtml.run('m::[margin:0] x ::\n', {'macros': {'m': {'style': 'color:red'}}})
+        assert out == '<div style="color:red; margin:0"> x </div>\n'
+
+    @pytest.mark.parametrize('tag', ['nl', 'code', 'verbatim', 'include'])
+    def test_pseudo_tags_are_rejected(self, tag):
+        with pytest.raises(lhtml.LHTMLMacroError, match='not an element'):
+            lhtml.run('x\n', {'macros': {'m': {'tag': tag}}})
+

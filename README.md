@@ -446,7 +446,7 @@ Output:
 | `url` | The text after `::` is the value of this attribute (`src`, `data-src`, ...). Not needed for `tag: img`, `video`, `videoplay`, `link`: their text is already the URL |
 | `variant` | The text after `::` selects a variant, added as the class `<first class>-<variant>`; a list restricts the allowed values (an unknown one gives a warning) |
 | `default` | Variant used when none is given (one of the variants) |
-| `css`, `doc` | Ignored by LHTML (free for tools: stylesheet generation, documentation) |
+| `doc` | Description, ignored by LHTML (for documentation tools; `lhtml.describe_macro(name, spec)` gives what a definition renders) |
 
 The classes, style and attributes written in the source are added to the
 defaults, then the element is rendered like any element: a macro whose `tag`

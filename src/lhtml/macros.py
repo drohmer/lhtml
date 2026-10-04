@@ -24,6 +24,7 @@ Fields (all optional):
              '<first class>-<variant>' (gap::l -> class="gap gap-l");
              a list restricts the allowed variants
     default  variant used when none is given
+    doc      description, for documentation (ignored)
 
 The classes, style and attributes of the source are added to the defaults
 (box::(.good)[margin:0] -> <div class="box good" style="margin:0">).
@@ -42,7 +43,7 @@ from .pipeline import TagRegistry, tag_registry
 
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
-FIELDS = {'tag', 'class', 'style', 'attrs', 'empty', 'url', 'variant', 'default', 'css', 'doc'}
+FIELDS = {'tag', 'class', 'style', 'attrs', 'empty', 'url', 'variant', 'default', 'doc'}
 # HTML elements without closing tag (a macro using them is always empty)
 VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
              'source', 'track', 'wbr'}
@@ -52,6 +53,7 @@ BUILTIN_TAGS = ('div', 'span', 'link', 'img', 'video', 'videoplay', 'code', 'ver
 # (these handlers render a complete element: never opened, never empty)
 URL_TAGS = {'img': 'src', 'video': 'src', 'videoplay': 'src', 'link': 'href'}
 RESERVED_NAMES = ('macros',)    # a file may hold its macros under 'macros:'
+NOT_ELEMENTS = ('nl', 'code', 'verbatim', 'include')     # LHTML tags that are not elements
 
 
 class OpenTag(str):
@@ -86,6 +88,8 @@ def _check(name, spec):
     tag = spec.get('tag') or 'div'
     if not NAME_RE.match(tag):
         raise LHTMLMacroError(f'macro {name!r}: invalid tag {tag!r}')
+    if tag in NOT_ELEMENTS:
+        raise LHTMLMacroError(f'macro {name!r}: {tag}:: is not an element (tag: {tag})')
     if spec.get('empty') is False and (tag.lower() in VOID_TAGS or tag in URL_TAGS):
         raise LHTMLMacroError(f'macro {name!r}: {tag} has no content (empty cannot be false)')
     if spec.get('url') is not None and not NAME_RE.match(spec['url']):
@@ -106,6 +110,13 @@ def _check(name, spec):
     if variant and not str(spec.get('class', '')).split():
         raise LHTMLMacroError(f'macro {name!r}: a variant needs a class')
     return spec
+
+
+def _join_styles(*styles):
+    """'color:red', 'margin:0' -> 'color:red; margin:0'"""
+    styles = [s.strip() for s in styles if s and s.strip()]
+    return ' '.join(s if s.endswith(';') or k == len(styles) - 1 else s + ';'
+                    for k, s in enumerate(styles))
 
 
 def make_handler(name, spec, base=None):
@@ -162,7 +173,7 @@ def make_handler(name, spec, base=None):
             text = '::' if closed else ''
         merged = {**element,
                   '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
-                  '[]': ' '.join(s for s in (style, element['[]']) if s),
+                  '[]': _join_styles(style, element['[]']),
                   '{}': inline,
                   'text': text}
         if void and delegate is None:
@@ -179,6 +190,30 @@ def make_handler(name, spec, base=None):
         return html, real
 
     return handler
+
+
+HTML_TAGS = {'link': 'a', 'videoplay': 'video'}     # LHTML tag -> HTML element
+
+
+def describe_macro(name, spec):
+    """What a macro definition gives, for documentation tools: its opening
+    HTML, the attribute its text sets (url), whether it has no content
+    (empty), its variants (a list, True for any, or None) and default, doc."""
+    spec = _check(name, spec)
+    tag = spec.get('tag') or 'div'
+    html = '<' + HTML_TAGS.get(tag, tag)
+    for attribute in ('class', 'style'):
+        if spec.get(attribute):
+            html += f' {attribute}="{_attr(spec[attribute])}"'
+    if spec.get('attrs'):
+        html += ' ' + spec['attrs'].strip()
+    variant = spec.get('variant')
+    return {'html': html + '>',
+            'url': spec.get('url') or URL_TAGS.get(tag),
+            'empty': bool(spec.get('empty')) or tag.lower() in VOID_TAGS or tag in URL_TAGS,
+            'variants': [str(v) for v in variant] if isinstance(variant, list) else (True if variant else None),
+            'default': None if spec.get('default') is None else str(spec['default']),
+            'doc': spec.get('doc')}
 
 
 def load_macros(source):

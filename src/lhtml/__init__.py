@@ -30,7 +30,7 @@ from .errors import (
 )
 
 from .pipeline import ProcessingPipeline, tag_registry, lexer_registry
-from .macros import load_macros, register_macros, registry_with_macros
+from .macros import describe_macro, load_macros, register_macros, registry_with_macros
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ __all__ = [
     'wrap_auto',
     # Pipeline & plugins
     'ProcessingPipeline', 'tag_registry', 'lexer_registry',
-    'load_macros', 'register_macros', 'registry_with_macros',
+    'describe_macro', 'load_macros', 'register_macros', 'registry_with_macros',
     # Errors
     'LHTMLError', 'LHTMLParseError', 'LHTMLFileNotFound',
     'LHTMLTagStackError', 'LHTMLIncludeLoopError', 'LHTMLWarning', 'LHTMLMacroError',
