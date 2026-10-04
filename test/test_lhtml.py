@@ -1570,3 +1570,6 @@ class TestMacrosRound3:
         with pytest.raises(lhtml.LHTMLMacroError, match='not an element'):
             lhtml.run('x\n', {'macros': {'m': {'tag': tag}}})
 
+    def test_chained_classes(self):
+        assert lhtml.run('div::(.a.b#c) x ::\n') == '<div class="a b" id="c"> x </div>\n'
+

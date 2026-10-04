@@ -3,6 +3,12 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.5.1] - 2026-10-04
+
+### Fixed
+- Chained classes `(.a.b#c)` give `class="a b" id="c"` (they gave
+  `class="a.b#c"`); `(.a .b #c)` is unchanged.
+
 ## [2.5.0] - 2026-10-04
 
 ### Added

@@ -44,16 +44,17 @@ def export_html_element_style(text):
 
 
 def export_html_element_class_and_id(text):
-    """Parse '.class1 .class2 #id' into class="..." id="..." attributes."""
+    """Parse '.class1 .class2 #id' (or '.class1.class2#id') into class="..."
+    id="..." attributes."""
     if not text:
         return ''
     classes = []
     ids = []
     for token in text.split():
-        if token.startswith('.'):
-            classes.append(token[1:])
-        elif token.startswith('#'):
-            ids.append(token[1:])
+        if not token.startswith(('.', '#')):
+            continue
+        for part in re.findall(r'[.#][^.#]+', token):
+            (classes if part[0] == '.' else ids).append(part[1:])
     parts = []
     if classes:
         parts.append(f' class="{" ".join(classes)}"')
