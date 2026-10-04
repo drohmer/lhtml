@@ -7,11 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Macros: custom `::` tags declared in YAML or a dict (`tag`, `class`,
-  `style`, `attrs`, `empty`, `url`, `variant`, `default`), e.g.
+  `style`, `attrs`, `empty`, `url`, `variant`, `default`, `doc`), e.g.
   `box::(.good) ... ::`, `gap::l`, `demo::url`. They are declared with
-  `lhtml -m file.yaml`, the `macros` key of the front matter or of the
-  `meta` of `lhtml.run()`, and are closed by `::` or `::name[-]`.
-  New `lhtml.load_macros`, `register_macros`, `registry_with_macros` and
+  `lhtml -m file.yaml`, the `macros` key of the front matter (added to the
+  others, `name: null` removes one) or of the `meta` of `lhtml.run()`, and
+  are closed by `::` or `::name[-]`. A macro renders through the handler of
+  its tag (`tag: img`, `video`, `videoplay`, `link` take their URL like
+  `img::`), and invalid definitions raise `LHTMLMacroError`.
+- New `lhtml.load_macros`, `register_macros`, `registry_with_macros`,
+  `describe_macro` (what a definition renders, for documentation tools) and
   `LHTMLMacroError`.
 
 ## [2.4.1] - 2026-10-03

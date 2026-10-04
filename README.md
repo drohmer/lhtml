@@ -94,6 +94,12 @@ html = lhtml.run(text, {
     'css': ['style.css'],
     'js': ['script.js'],
 })
+
+# Macros (custom :: tags, see Macros below)
+html = lhtml.run('box:: x ::\n', {'macros': {'box': {'class': 'box'}}})
+macros = lhtml.load_macros('macros.yaml')            # definitions from files or dicts
+registry = lhtml.registry_with_macros(macros)        # validates them (LHTMLMacroError)
+info = lhtml.describe_macro('box', macros['box'])    # what a definition renders, for docs
 ```
 
 
@@ -634,10 +640,11 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 
 ```
 src/lhtml/
-  __init__.py          # Public API: run(), analyse_tag(), read_yaml()
+  __init__.py          # Public API: run(), analyse_tag(), read_yaml(), macro functions
   __main__.py          # python -m lhtml
   cli.py               # Command-line interface
   pipeline.py          # ProcessingPipeline, TagRegistry, LexerRegistry
+  macros.py            # Macros: custom :: tags declared in YAML
   process.py           # Core transformation functions
   patterns.py          # Centralized regex patterns and utilities
   tag_parser.py        # Lark-based parser for :: bracket syntax
