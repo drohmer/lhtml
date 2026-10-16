@@ -25,7 +25,7 @@ from lhtml.pipeline import ProcessingPipeline, TagRegistry, LexerRegistry
 # ---------------------------------------------------------------------------
 
 INPUT_DIR = os.path.join(os.path.dirname(__file__), 'input_tests')
-META = {'directory_include': [INPUT_DIR + '/']}
+META = {}
 
 
 def _normalize_pygments(html):
@@ -388,7 +388,7 @@ class TestLabWebsite:
                 txt = fid.read()
             if not txt.endswith('\n'):
                 txt += '\n'
-            meta = {'directory_include': [os.path.dirname(f) + '/']}
+            meta = {}
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
                 html = lhtml.run(txt, meta)
@@ -621,32 +621,24 @@ class TestAttributeEscaping:
         assert 'src="a&quot;b.jpg"' in r
 
 
-class TestIncludes:
-    def test_nested_include_relative_to_including_file(self, tmp_path):
-        (tmp_path / 'sub').mkdir()
-        (tmp_path / 'sub' / 'main.l.html').write_text('include::part.html\n')
-        (tmp_path / 'sub' / 'part.html').write_text('**PART**\n')
-        r = lhtml.run('include::sub/main.l.html\n', {'directory_include': [str(tmp_path) + '/']})
-        # part.html + newline after include in main.l.html + newline in the top text
-        assert r == '<strong>PART</strong>\n\n\n'
+class TestIncludeRemoved:
+    """include:: was removed in 3.0: LHTML reads no file."""
 
-    def test_circular_include_raises(self, tmp_path):
-        (tmp_path / 'a.html').write_text('include::b.html\n')
-        (tmp_path / 'b.html').write_text('include::a.html\n')
-        with pytest.raises(lhtml.LHTMLIncludeLoopError) as e:
-            lhtml.run('include::a.html\n', {'directory_include': [str(tmp_path) + '/']})
-        assert 'a.html -> ' in str(e.value)
+    def test_include_raises_with_the_jinja_way(self):
+        with pytest.raises(lhtml.LHTMLParseError) as e:
+            lhtml.run('include::part.html\n')
+        assert 'include::part.html' in str(e.value) and '{% include "part.html" %}' in str(e.value)
 
-    def test_same_file_included_twice_is_not_a_loop(self, tmp_path):
-        (tmp_path / 'p.html').write_text('P')
-        r = lhtml.run('include::p.html include::p.html\n',
-                      {'directory_include': [str(tmp_path) + '/']})
-        assert r == 'P P\n'
+    def test_include_inside_code_block_raises(self):
+        # LHTML 2 expanded it; reading it as text would change the output silently
+        with pytest.raises(lhtml.LHTMLParseError):
+            lhtml.run('code::[text]\ninclude::a.hpp\ncode::[-]\n')
 
-    def test_verbatim_include_not_expanded(self, tmp_path):
-        r = lhtml.run('verbatim::[]include::nope.html verbatim::[-]\n',
-                      {'directory_include': [str(tmp_path) + '/']})
-        assert r == 'include::nope.html \n'
+    def test_verbatim_include_is_text(self):
+        assert lhtml.run('verbatim::[]include::nope.html verbatim::[-]\n') == 'include::nope.html \n'
+
+    def test_include_glued_to_a_word_is_text(self):
+        assert lhtml.run('xinclude::b.html\n') == 'xinclude::b.html\n'
 
 
 class TestCli:
@@ -700,14 +692,13 @@ class TestCli:
         assert code == 1
         assert 'missing.html' in err and 'Traceback' not in err
 
-    def test_video_poster_found_relative_to_input(self, tmp_path, monkeypatch, capsys):
+    def test_video_poster_is_not_probed(self, tmp_path, monkeypatch, capsys):
         (tmp_path / 'assets').mkdir()
         (tmp_path / 'assets' / 'v-poster.jpg').write_bytes(b'')
         f = tmp_path / 'a.l.html'
         f.write_text('video::assets/v.mp4\n')
-        monkeypatch.chdir('/')
         code, out, _ = self._run_cli(monkeypatch, capsys, str(f))
-        assert 'poster="assets/v-poster.jpg"' in out
+        assert code == 0 and 'poster=' not in out
 
 
 # ---------------------------------------------------------------------------
@@ -745,11 +736,6 @@ class TestCodeAndVerbatimBlocks:
         r, _ = _run_with_warnings('code::[python\nx\ncode::[-]\n')
         assert 'x' in r
 
-    def test_include_inside_code_block_is_raw(self, tmp_path):
-        (tmp_path / 'a.hpp').write_text('int **p = __x__;\n')
-        r = lhtml.run('code::[text]\ninclude::a.hpp\ncode::[-]\n',
-                      {'directory_include': [str(tmp_path) + '/']})
-        assert 'int **p = __x__;' in r and '<strong>' not in r
 
 
 class TestProtectionOrder:
@@ -956,21 +942,10 @@ class TestInputNormalization:
         r = lhtml.run('﻿---\ntitle: A\nwrap-auto: true\n---\nx\n')
         assert '<title>A</title>' in r and '﻿' not in r
 
-    def test_included_file_with_bom_and_front_matter(self, tmp_path):
-        (tmp_path / 'inc.html').write_bytes('﻿---\ntitle: X\n---\n= Inner\n'.encode('utf-8'))
-        r = lhtml.run('include::inc.html', {'directory_include': [str(tmp_path) + '/']})
-        # as for the main document, the newline after the closing --- is kept
-        assert r == '\n<h1>Inner</h1>\n\n'
-
-    def test_included_file_read_as_utf8(self, tmp_path, monkeypatch):
-        (tmp_path / 'inc.html').write_bytes('é ” ü'.encode('utf-8'))
+    def test_source_read_as_utf8_without_bom(self, tmp_path, monkeypatch):
+        (tmp_path / 'a.l.html').write_bytes('\ufeffé ” ü\r\n'.encode('utf-8'))
         monkeypatch.setattr('locale.getpreferredencoding', lambda *a, **k: 'cp1252')
-        r = lhtml.run('include::inc.html', {'directory_include': [str(tmp_path) + '/']})
-        assert r == 'é ” ü'
-
-    def test_directory_include_as_string(self, tmp_path):
-        (tmp_path / 'inc.html').write_text('X')
-        assert lhtml.run('include::inc.html', {'directory_include': str(tmp_path) + '/'}) == 'X'
+        assert lhtml.process.read_source(str(tmp_path / 'a.l.html')) == 'é ” ü\n'
 
     def test_non_string_current_directory(self):
         r = lhtml.run('---\ncurrent_directory: 5\n---\nvideo::a.mp4\n')
@@ -1040,14 +1015,6 @@ class TestCliRobustness:
         assert err.count('lhtml: warning in') == 2
         assert 'e1.l.html' in err and 'e2.l.html' in err
 
-    def test_include_prefers_file_directory_over_cwd(self, tmp_path, monkeypatch, capsys):
-        (tmp_path / 'site').mkdir()
-        (tmp_path / 'header.html').write_text('ROOT')
-        (tmp_path / 'site' / 'header.html').write_text('SITE')
-        (tmp_path / 'site' / 'page.l.html').write_text('include::header.html\n')
-        monkeypatch.chdir(tmp_path)
-        code, out, _ = self._run_cli(monkeypatch, capsys, 'site/page.l.html')
-        assert out == 'SITE\n'
 
 
 # ---------------------------------------------------------------------------
@@ -1191,10 +1158,6 @@ class TestAuditRegressions:
         assert lhtml.run('div::[font-family:"__font__"] x ::') == (
             '<div style="font-family:&quot;__font__&quot;"> x </div>')
 
-    def test_protection_applies_in_includes(self, tmp_path):
-        source = '<a\n href="__draft__.html">{{ "__value__" }}</a>'
-        (tmp_path / 'part.html').write_text(source)
-        assert lhtml.run('include::part.html', {'directory_include': [tmp_path]}) == source
 
 
 class TestCliSourceProtection:
@@ -1573,3 +1536,35 @@ class TestMacrosRound3:
     def test_chained_classes(self):
         assert lhtml.run('div::(.a.b#c) x ::\n') == '<div class="a b" id="c"> x </div>\n'
 
+
+# ---------------------------------------------------------------------------
+# Media resolver (3.0): the caller says which sources a video offers
+# ---------------------------------------------------------------------------
+
+class TestMedia:
+    def test_sources_given_by_the_caller(self):
+        def media(src):
+            return [(f'cache/{src}.webm', 'video/webm'), (f'cache/{src}.mp4', 'video/mp4')]
+        r = lhtml.run('video::v.mp4\n', {'media': media})
+        assert '<source src="cache/v.mp4.webm" type="video/webm">' in r
+        assert '<source src="cache/v.mp4.mp4" type="video/mp4">' in r
+        assert 'src="v.mp4"' not in r
+
+    def test_no_source_from_the_caller_writes_the_source(self):
+        r = lhtml.run('videoplay::v.mp4\n', {'media': lambda src: []})
+        assert '<source src="v.mp4" type="video/mp4">' in r and 'autoplay loop muted' in r
+
+    def test_no_file_probed_without_resolver(self, tmp_path):
+        variants = tmp_path / 'assets' / 'cache_video_codecs'
+        variants.mkdir(parents=True)
+        (variants / 'v-h264.mp4').write_bytes(b'')
+        r = lhtml.run('video::assets/v.mp4\n', {'current_directory': str(tmp_path) + '/'})
+        assert r.count('<source') == 1 and 'cache_video_codecs' not in r
+
+    def test_resolver_must_be_callable(self):
+        with pytest.raises(TypeError):
+            lhtml.run('video::v.mp4\n', {'media': 'cache/'})
+
+    def test_resolver_not_taken_from_front_matter(self):
+        r = lhtml.run('---\nmedia: x\n---\nvideo::v.mp4\n')
+        assert '<source src="v.mp4"' in r

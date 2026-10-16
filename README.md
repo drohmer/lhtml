@@ -55,7 +55,7 @@ Without `-o`, `page.l.html` is written to `page.html` next to its source.
 - Files are read and written as UTF-8 (a BOM is accepted).
 - Errors and warnings are reported on stderr with the file name. The remaining files are still processed, and the exit code is non-zero if any file failed.
 - An input file is never overwritten: `lhtml page.html` (output `page.html`) is an error, as is an output that is another input of the batch, or a symbolic or hard link to one.
-- Includes are looked up in the input file's directory first, then in the current directory.
+- LHTML reads no file but its input and the macro files given with `--macros`; macro files named in the front matter are relative to the input file.
 
 With `-w`, the result is wrapped in a minimal HTML document using the `title`, `css` and `js` of the front matter:
 
@@ -317,7 +317,16 @@ video::assets/clip.mp4[width:600px;]
 videoplay::assets/clip.mp4[width:600px;]
 ```
 
-`videoplay` adds `autoplay loop muted` attributes. The parser automatically detects transcoded codec variants (`-vp9.webm`, `-h265.mp4`, `-h264.mp4`) and poster images (`-poster.jpg`).
+`videoplay` adds `autoplay loop muted` attributes. A poster is an attribute: `video::clip.mp4{poster="clip.jpg"}`. LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
+
+```python
+def media(src):
+    return [(f'variants/{src}.webm', 'video/webm'), (src, 'video/mp4')]
+
+html = lhtml.run(text, {'media': media})
+```
+
+An empty list keeps the source as written.
 
 
 ### Code Blocks
@@ -343,8 +352,6 @@ The colors come from a Pygments stylesheet, which you must include in your page.
 ```bash
 pygmentize -S default -f html -a .code > code.css
 ```
-
-`include::file` directives inside a code block insert the file as raw code.
 
 
 ### Spacer
@@ -397,12 +404,10 @@ A comment starts a line or follows whitespace, so `link::#intro[...]` (link to a
 
 ### File Inclusion
 
-```
-include::header.html
-include::components/nav.html
-```
-
-Included files are recursively processed (up to 20 levels); their own YAML front matter is ignored. An included file looks for its own includes first in its own directory, then in `directory_include`. A circular include raises `LHTMLIncludeLoopError`.
+`include::` was removed in 3.0: LHTML reads no file. Include before calling
+LHTML, with Jinja (`{% include "header.html" %}`) for instance. An `include::`
+where LHTML 2 would have expanded one, in the text or in a code block, raises
+`LHTMLParseError` naming the file, rather than being left as text.
 
 
 ### Macros (custom tags from a configuration)
@@ -461,7 +466,7 @@ The classes, style and attributes written in the source are added to the
 defaults, then the element is rendered like any element: a macro whose `tag`
 is an LHTML tag (`img`, `video`, `videoplay`, `link`, ...) uses that tag
 (`photo: {tag: img, class: photo}` gives `photo::a.png` an `alt`, `videoplay`
-keeps its codec variants, the `style` of a `link` macro is an attribute since
+keeps the `media` resolver, the `style` of a `link` macro is an attribute since
 `[]` is the link text); a macro never renders through another macro. A macro is closed by `::` or by its name (`::box[-]`). Macros are
 not active inside inline code (`` `box::` `` stays text), and a macro cannot
 replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
@@ -508,7 +513,6 @@ Supported metadata keys:
 | `js` | string or list | JavaScript files to include |
 | `wrap-auto` | boolean | Wrap output in full HTML document |
 | `line-breaks` | boolean | Render source line breaks as `<br>` |
-| `directory_include` | list | Directories to search for includes |
 | `macros` | string, list or mapping | Macros: YAML file(s) relative to the page, or definitions (see [Macros](#macros-custom-tags-from-a-configuration)) |
 
 
@@ -565,7 +569,7 @@ Register handlers for new `::` tag types:
 ```python
 from lhtml.pipeline import tag_registry
 
-def handle_alert(element, tag_to_close, current_directory):
+def handle_alert(element, tag_to_close, context):
     """Open <div class="alert">; the following :: closes it."""
     style = element.get('[]', '')
     tag_to_close.append('div')
@@ -622,8 +626,8 @@ All keys for the `meta` dict passed to `lhtml.run()`:
     'title': 'Webpage',        # Document title
     'css': [],                 # CSS files (string or list)
     'js': [],                  # JS files (string or list)
-    'directory_include': [cwd],  # Search paths for include:: (default: current directory)
-    'current_directory': '',   # Base directory for video codec detection
+    'current_directory': '',   # Base directory of the macro files named by a relative path
+    'media': None,             # media(src) -> [(url, mime)]: the sources of a video
     'macros': None,            # Macros: dict, YAML file name, or list of them
 }
 ```
@@ -631,7 +635,7 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 
 ## Design Principles
 
-- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed (not even by `include::` or `::#`): HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, so that `$x**2$` reaches MathJax/KaTeX intact). Text between HTML tags is still processed.
+- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed (not even by `::#`): HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, so that `$x**2$` reaches MathJax/KaTeX intact). Text between HTML tags is still processed.
 - **Attributes stay literal**: styles, classes/IDs and HTML attributes in LHTML tag groups and headings are preserved without inline formatting (`div::(.my__class__)` keeps `my__class__`). Link labels still support formatting.
 - **Template-friendly**: Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.

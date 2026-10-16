@@ -3,6 +3,38 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.0] - Unreleased
+
+LHTML reads no file but its input and the macro files it is given: a
+caller that reads its sources itself (a site generator) knows everything a
+page depends on.
+
+### Removed
+- `include::`, in the text and inside code blocks. Where LHTML 2 would have
+  expanded one, LHTML 3 raises `LHTMLParseError` naming the file, instead of
+  leaving the directive as text. Include before calling LHTML (Jinja
+  `{% include %}`, for instance). With it go `find_file`, `process_include`,
+  `process_include_recursive`, `LHTMLFileNotFound`, `LHTMLIncludeLoopError`
+  and the `directory_include` option.
+- The poster convention: a `<name>-poster.jpg` next to a video is no longer
+  looked for. Write it: `video::clip.mp4{poster="clip.jpg"}`.
+- The detection of codec variants in `cache_video_codecs/` (and
+  `CACHE_VIDEO_DIR`, `VIDEO_CODECS`): see `media` below.
+
+### Added
+- `media`, a key of the meta of `lhtml.run()`: a callable,
+  `media(src) -> [(url, mime type)]`, listing the sources of a video. An
+  empty list, or no resolver, keeps the source as written. It is read from
+  the meta given by the caller only, not from the front matter.
+- `process_prepare(text, stores)`: the protection of the zones and the
+  removal of the comments, what `process_include_recursive` did besides
+  including.
+
+### Changed
+- A tag handler receives the `ProcessingContext` of the run as its third
+  argument (it received the current directory); `process_tag` takes it as
+  `run_context`.
+
 ## [2.5.1] - 2026-10-04
 
 ### Fixed

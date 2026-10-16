@@ -29,16 +29,6 @@ class LHTMLParseError(LHTMLError):
     pass
 
 
-class LHTMLFileNotFound(LHTMLError):
-    """An include:: directive references a file that cannot be found."""
-
-    def __init__(self, filename: str, directories: list[str], source_pos: int = -1, source_line: int = -1):
-        self.filename = filename
-        self.directories = directories
-        message = f'Could not find file [{filename}] in directories {directories}'
-        super().__init__(message, source_pos, source_line)
-
-
 class LHTMLTagStackError(LHTMLError):
     """A closing :: tag has no matching opening tag, or a tag is never closed."""
 
@@ -58,17 +48,6 @@ class LHTMLTagStackError(LHTMLError):
         if context:
             message += f' (near {context!r})'
         super().__init__(message, source_pos, source_line)
-
-
-class LHTMLIncludeLoopError(LHTMLError):
-    """Too many include iterations — likely a circular include."""
-
-    def __init__(self, max_iterations: int = 20, chain: list[str] | None = None):
-        self.chain = chain or []
-        message = f'Circular or too deep include (max depth {max_iterations})'
-        if self.chain:
-            message += ': ' + ' -> '.join(self.chain)
-        super().__init__(message)
 
 
 class LHTMLMacroError(LHTMLError):

@@ -27,8 +27,8 @@ META_DEFAULTS = {
 
 
 def _default_meta():
-    """Default configuration (directory_include is evaluated at call time)."""
-    return {**META_DEFAULTS, 'directory_include': [os.getcwd() + '/']}
+    """Default configuration."""
+    return dict(META_DEFAULTS)
 
 
 @dataclass
@@ -38,14 +38,15 @@ class ProcessingContext:
     meta: dict = field(default_factory=dict)
     stores: object = None  # process.ProtectionStores
     current_directory: str = ''
+    media: Callable | None = None   # media(src) -> [(url, mime)], given by the caller
 
 
 # ---------------------------------------------------------------------------
 # Tag handler registry (plugin system)
 # ---------------------------------------------------------------------------
 
-# A tag handler receives (element_dict, tag_to_close, current_directory)
-# and returns (html_string, is_real_tag).
+# A tag handler receives (element_dict, tag_to_close, context) and returns
+# (html_string, is_real_tag); `context` is the ProcessingContext of the run.
 TagHandler = Callable[[dict, list, str], tuple[str, bool]]
 
 
@@ -89,27 +90,27 @@ def _register_builtin_tags():
     )
 
     def _handle_generic(tag_name):
-        def handler(element, tag_to_close, current_directory):
+        def handler(element, tag_to_close, context):
             return export_html_generic(element, tag_name, tag_to_close), True
         return handler
 
     tag_registry.register('div', _handle_generic('div'))
     tag_registry.register('span', _handle_generic('span'))
 
-    def _handle_link(element, tag_to_close, current_directory):
+    def _handle_link(element, tag_to_close, context):
         return export_html_link(element), True
     tag_registry.register('link', _handle_link)
 
-    def _handle_img(element, tag_to_close, current_directory):
+    def _handle_img(element, tag_to_close, context):
         return export_html_img(element), True
     tag_registry.register('img', _handle_img)
 
-    def _handle_video(element, tag_to_close, current_directory):
-        return export_html_video(element, '', current_directory), True
+    def _handle_video(element, tag_to_close, context):
+        return export_html_video(element, '', getattr(context, 'media', None)), True
     tag_registry.register('video', _handle_video)
 
-    def _handle_videoplay(element, tag_to_close, current_directory):
-        return export_html_video(element, 'autoplay loop muted', current_directory), True
+    def _handle_videoplay(element, tag_to_close, context):
+        return export_html_video(element, 'autoplay loop muted', getattr(context, 'media', None)), True
     tag_registry.register('videoplay', _handle_videoplay)
 
 
@@ -162,7 +163,7 @@ class ProcessingPipeline:
 
     def run(self, text: str, meta_arg: dict | None = None) -> str:
         from .process import (
-            ProtectionStores, process_yaml, process_include_recursive,
+            ProtectionStores, process_yaml, process_prepare,
             process_unprotect, process_title, process_listing,
             process_bold, process_italic, process_tag,
             render_inline_code, render_code_block, process_line_breaks,
@@ -182,10 +183,10 @@ class ProcessingPipeline:
         ctx.text, meta_yaml = process_yaml(ctx.text)
         ctx.meta = {**ctx.meta, **meta_yaml}
         ctx.current_directory = str(ctx.meta.get('current_directory') or '')
-        directory_include = ctx.meta.get('directory_include') or []
-        if isinstance(directory_include, (str, os.PathLike)):
-            directory_include = [directory_include]
-        ctx.meta['directory_include'] = [str(d) for d in directory_include]
+        media = (meta_arg or {}).get('media')
+        if media is not None and not callable(media):
+            raise TypeError(f'meta "media" must be callable, got {type(media).__name__}')
+        ctx.media = media
 
         # Macros (custom tags) declared in the meta, then in the front matter:
         # the front matter adds definitions (and replaces those of same name)
@@ -197,10 +198,9 @@ class ProcessingPipeline:
                       else os.path.join(ctx.current_directory, m) for m in macros]
             registry = registry_with_macros(macros, self.tag_registry)
 
-        # Phase 2: For each file: verbatim/code blocks and protected zones
-        # (HTML, inline code, URLs, math) are replaced by placeholders,
-        # comments are removed, then includes are expanded (recursive)
-        ctx.text = process_include_recursive(ctx.text, ctx.meta['directory_include'], stores)
+        # Phase 2: verbatim/code blocks and protected zones (HTML, inline
+        # code, URLs, math) are replaced by placeholders, comments removed
+        ctx.text = process_prepare(ctx.text, stores)
 
         # Phase 3: Block-level elements
         ctx.text = process_title(ctx.text, stores)
@@ -215,10 +215,9 @@ class ProcessingPipeline:
         def resolve_attributes(s):
             return stores.restore(stores.restore(s, 'A'), 'U')
 
-        ctx.text = process_tag(ctx.text, ctx.current_directory, registry,
-                               resolve=resolve_attributes)
+        ctx.text = process_tag(ctx.text, ctx, registry, resolve=resolve_attributes)
         ctx.text = stores.restore(ctx.text, 'I', lambda content: render_inline_code(
-            process_tag(content, ctx.current_directory, self.tag_registry, inline=True)))
+            process_tag(content, ctx, self.tag_registry, inline=True)))
 
         # Optional: source line breaks become <br> (protected zones are
         # still placeholders, so their content is not affected)

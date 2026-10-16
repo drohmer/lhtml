@@ -148,7 +148,7 @@ def make_handler(name, spec, base=None):
         attrs = ' '.join(a for a in (attrs, f'style="{_attr(style)}"') if a)
         style = ''
 
-    def handler(element, tag_to_close, current_directory):
+    def handler(element, tag_to_close, context):
         text = element['text']
         all_classes = list(classes)
         if variant:
@@ -182,7 +182,7 @@ def make_handler(name, spec, base=None):
             merged['text'] += '::'   # closed at once
         depth = len(tag_to_close)
         if delegate is not None:
-            html, real = delegate(merged, tag_to_close, current_directory)
+            html, real = delegate(merged, tag_to_close, context)
         else:
             html, real = export_html_generic(merged, tag, tag_to_close), True
         if len(tag_to_close) > depth:

@@ -58,16 +58,9 @@ def _output_path_for(input_path, output_arg):
 
 
 def _process_file(f_in, meta_base):
-    """Process a single LHTML file and return (html, warning_messages).
-
-    Includes are looked up first in the file's directory, then in the
-    current directory.
-    """
+    """Process a single LHTML file and return (html, warning_messages)."""
     meta = dict(meta_base)
-    dir_of_file = os.path.dirname(os.path.abspath(f_in)) + '/'
-    meta['directory_include'] = [dir_of_file] + [
-        d for d in meta.get('directory_include', []) if d != dir_of_file]
-    meta['current_directory'] = dir_of_file
+    meta['current_directory'] = os.path.dirname(os.path.abspath(f_in)) + '/'
 
     txt = _ensure_trailing_newline(read_source(f_in))
     with warnings.catch_warnings(record=True) as caught:
@@ -94,7 +87,7 @@ def main():
                         version=f'lhtml {__version__}')
     args = parser.parse_args()
 
-    meta = {'directory_include': [os.getcwd() + '/']}
+    meta = {}
     if args.wrapAuto:
         meta['wrap-auto'] = True
     if args.line_breaks:

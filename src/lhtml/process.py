@@ -9,7 +9,6 @@ Content that must not be transformed is replaced early by placeholders
 content are listed in ProtectionStores.
 """
 
-import os
 import re
 import warnings
 from dataclasses import dataclass, field
@@ -23,17 +22,14 @@ from .export_html import (
 )
 from .listing import process_listing  # noqa: F401 — re-exported
 from .code import export_html_code
-from .errors import (
-    LHTMLFileNotFound, LHTMLTagStackError, LHTMLIncludeLoopError,
-    LHTMLParseError, LHTMLWarning,
-)
+from .errors import LHTMLTagStackError, LHTMLParseError, LHTMLWarning
 from .patterns import (
     YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, PROTECTED, PROTECTED_BLOCKS,
     HEADING, BOLD, ITALIC, INLINE_CODE,
     COMMENT, INCLUDE, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
     JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
-    MAX_INCLUDE_ITERATIONS, PLACEHOLDER_CHAR, PLACEHOLDER,
+    PLACEHOLDER_CHAR, PLACEHOLDER,
     regex_transform, store_to_index, restore_from_index, make_placeholder,
 )
 
@@ -149,7 +145,7 @@ def render_inline_code(content):
     return f'<code class="code-inline">{content}</code>'
 
 
-def process_protect(text, stores, directories=None, _stack=()):
+def process_protect(text, stores, blocks=False):
     """Replace zones that LHTML must not transform with placeholders.
 
     Protected (the leftmost zone wins): HTML comments, <script>/<style>
@@ -157,22 +153,22 @@ def process_protect(text, stores, directories=None, _stack=()):
     ($...$, $$...$$, \\(...\\), \\[...\\]) and HTML tags themselves (so
     attribute values are never modified). Text between HTML tags is
     still processed. Jinja expressions, statements and comments are opaque.
-    With directories supplied, code/verbatim blocks participate in the same
-    left-to-right scan and code includes use those directories.
+    With `blocks`, code/verbatim blocks participate in the same
+    left-to-right scan.
     """
     def _protect(m):
-        if directories is not None:
+        if blocks:
             if m.group('verbatim') is not None:
                 return stores.add('V', m.group('vbody'))
             if m.group('code') is not None:
-                body = _expand_includes_raw(m.group('body'), directories, _stack)
-                return stores.add('C', (m.group('header'), body))
+                _refuse_include(m.group('body'))
+                return stores.add('C', (m.group('header'), m.group('body')))
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')))
         if m.group('url') is not None:
             return m.group('urltag') + stores.add('U', m.group('url'))
         return stores.add('R', m.group(0))
-    pattern = PROTECTED if directories is None else PROTECTED_BLOCKS
+    pattern = PROTECTED_BLOCKS if blocks else PROTECTED
     return regex_transform(text, pattern, _protect)
 
 
@@ -239,99 +235,33 @@ def process_remove_comment(text):
 
 
 # ---------------------------------------------------------------------------
-# File inclusion
+# Preparation of the text
 # ---------------------------------------------------------------------------
 
-def find_file(directories, filename):
-    """Locate a file in the given directory list."""
-    for d in directories:
-        pathname = os.path.join(d, filename)
-        if os.path.isfile(pathname):
-            return pathname
-    raise LHTMLFileNotFound(filename, directories)
+def _refuse_include(text):
+    """include:: was removed in LHTML 3.0: LHTML reads no file. Raise where
+    LHTML 2 would have expanded one, rather than leave the directive as text."""
+    m = INCLUDE.search(text)
+    if m is None:
+        return
+    try:
+        name = extract_bracket_elements(text, m.end())['text']
+    except LHTMLParseError:
+        name = text[m.end():].split(None, 1)[0] if text[m.end():].strip() else ''
+    raise LHTMLParseError(
+        f'include::{name} was removed in LHTML 3.0 (LHTML reads no file): include '
+        f'the file before calling LHTML, with Jinja {{% include "{name}" %}} for instance')
 
 
-def process_include(text, directory):
-    """Expand include:: directives (one level). Returns (new_text, found_any)."""
-    found_include = False
-    parts = []
-    prev = 0
-
-    for m in INCLUDE.finditer(text):
-        if m.start() < prev:
-            continue
-        found_include = True
-        element = extract_bracket_elements(text, m.end())
-        filename = find_file(directory, element['text'])
-        included = read_source(filename)
-
-        parts.append(text[prev:m.start()])
-        parts.append(included)
-        prev = element['index_end']
-
-    parts.append(text[prev:])
-    return ''.join(parts), found_include
-
-
-def _include_target(text, m, directories, stack):
-    """Resolve the include:: directive matched by m. Returns (element, filename)."""
-    element = extract_bracket_elements(text, m.end())
-    filename = os.path.abspath(find_file(directories, element['text']))
-    if filename in stack or len(stack) >= MAX_INCLUDE_ITERATIONS:
-        raise LHTMLIncludeLoopError(MAX_INCLUDE_ITERATIONS, chain=[*stack, filename])
-    return element, filename
-
-
-def _expand_includes_raw(text, directories, _stack=()):
-    """Expand include:: directives without any other processing (code blocks)."""
-    parts = []
-    prev = 0
-    for m in INCLUDE.finditer(text):
-        if m.start() < prev:
-            continue
-        element, filename = _include_target(text, m, directories, _stack)
-        included = read_source(filename)
-        included = _expand_includes_raw(included, [os.path.dirname(filename) + '/', *directories],
-                                        (*_stack, filename))
-        parts.append(text[prev:m.start()])
-        parts.append(included)
-        prev = element['index_end']
-    parts.append(text[prev:])
-    return ''.join(parts)
-
-
-def process_include_recursive(text, directories, stores, _stack=()):
-    """Prepare a file and expand its include:: directives recursively.
-
-    In each file, verbatim/code blocks and protected zones are replaced
-    by placeholders and comments are removed before includes are
-    expanded, so that include:: or ::# inside code, HTML comments, etc.
-    are left alone. An included file looks for its own includes first in
-    its own directory, then in `directories`.
-    Raises LHTMLIncludeLoopError on circular or too deep inclusion.
-    """
-    text = process_protect(text, stores, directories, _stack)
+def process_prepare(text, stores):
+    """Replace verbatim/code blocks and protected zones (HTML, inline code,
+    URLs, math, attributes) by placeholders, and remove the comments.
+    Raises LHTMLParseError on an include:: directive (removed in 3.0)."""
+    text = process_protect(text, stores, blocks=True)
     text = process_protect_attributes(text, stores)
     text = process_remove_comment(text)
-
-    parts = []
-    prev = 0
-    for m in INCLUDE.finditer(text):
-        if m.start() < prev:
-            continue
-        element, filename = _include_target(text, m, directories, _stack)
-        # The front matter of an included file is not part of its content
-        included, _ = process_yaml(read_source(filename))
-        file_directories = [os.path.dirname(filename) + '/', *directories]
-        included = process_include_recursive(included, file_directories,
-                                             stores, (*_stack, filename))
-
-        parts.append(text[prev:m.start()])
-        parts.append(included)
-        prev = element['index_end']
-
-    parts.append(text[prev:])
-    return ''.join(parts)
+    _refuse_include(text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +332,7 @@ def _warn_unmatched_closing(element):
     return '', False
 
 
-def _dispatch_tag(element, tag_to_close, current_directory, registry=None):
+def _dispatch_tag(element, tag_to_close, context, registry=None):
     """Dispatch a parsed tag element to the appropriate handler.
 
     Named tags go to the plugin registry if provided, then to the global
@@ -415,7 +345,7 @@ def _dispatch_tag(element, tag_to_close, current_directory, registry=None):
         from .pipeline import tag_registry
         handler = (registry.get(tag) if registry is not None else None) or tag_registry.get(tag)
         if handler is not None:
-            return handler(element, tag_to_close, current_directory)
+            return handler(element, tag_to_close, context)
         # Unrecognized tag — pass through
         return '', False
 
@@ -500,10 +430,11 @@ def _adjust_bare_tag(text, m, element):
     return True
 
 
-def process_tag(text, current_directory='', registry=None, inline=False, resolve=None):
+def process_tag(text, run_context=None, registry=None, inline=False, resolve=None):
     """Process all :: tag elements in text.
 
     Args:
+        run_context: the ProcessingContext of the run, passed to the handlers.
         inline: process only named tags (used inside inline code, where a
             bare :: is C++ syntax rather than LHTML).
         resolve: function applied to the parsed fields before dispatch
@@ -544,7 +475,7 @@ def process_tag(text, current_directory='', registry=None, inline=False, resolve
                 element[key] = resolve(element[key])
 
         depth = len(tag_to_close)
-        html_out, is_real_tag = _dispatch_tag(element, tag_to_close, current_directory, registry)
+        html_out, is_real_tag = _dispatch_tag(element, tag_to_close, run_context, registry)
         del open_contexts[len(tag_to_close):]
         open_contexts.extend([element['context']] * (len(tag_to_close) - depth))
 

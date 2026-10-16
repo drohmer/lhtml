@@ -17,6 +17,7 @@ ITALIC           = re.compile(r'__(.*?)__')
 INLINE_CODE      = re.compile(r'`(.*?)`')
 # A comment starts a line or follows whitespace (so link::#anchor is kept)
 COMMENT          = re.compile(r'(?<!\S)::#.*$', re.MULTILINE)
+# include:: was removed in 3.0; still recognized, to be refused by name
 INCLUDE          = re.compile(r'(?<![\w-])include::')
 # In a run of colons, '::' markers are the pairs ending the run:
 # '::::' is two markers, ':::nl' is ':' followed by '::nl'
@@ -108,7 +109,6 @@ VERBATIM_CLOSE = 'verbatim::[-]'
 CODE_CLOSE     = 'code::[-]'
 SPACER_TAG     = 'nl'
 
-MAX_INCLUDE_ITERATIONS = 20
 
 
 # ---------------------------------------------------------------------------

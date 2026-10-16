@@ -6,7 +6,6 @@ an HTML string. The element dict has keys: '[]' (style), '()'
 """
 
 import html
-import os
 import re
 
 from .patterns import JINJA_RE
@@ -103,24 +102,18 @@ def export_html_img(elements):
 
 
 # ---------------------------------------------------------------------------
-# Video rendering with codec detection
+# Video rendering
 # ---------------------------------------------------------------------------
 
-CACHE_VIDEO_DIR = 'cache_video_codecs/'
+def export_html_video(elements, default_inline='', media=None):
+    """Render a video:: or videoplay:: element.
 
-VIDEO_CODECS = [
-    ('-vp9.webm',  'video/webm'),
-    ('-h265.mp4',  'video/mp4'),
-    ('-h264.mp4',  'video/mp4'),
-]
-
-
-def export_html_video(elements, default_inline='', current_directory=''):
-    """Render a video:: or videoplay:: element with codec variants."""
+    `media`, when given, is the caller's resolver: media(src) returns the
+    sources to offer, as a list of (url, mime type), or an empty list for the
+    source as written. LHTML probes no file for variants or posters."""
     source = elements['text']
     extension = source.rsplit('.', 1)[-1]
     mime_extension = re.split(r'[?#]', extension, maxsplit=1)[0].lower()
-    poster_candidate = source.rsplit(f'.{extension}', 1)[0] + '-poster.jpg'
 
     parts = ['<video']
     parts.append(export_html_element_inline(elements['{}']))
@@ -128,28 +121,13 @@ def export_html_video(elements, default_inline='', current_directory=''):
         parts.append(f' {default_inline}')
     parts.append(export_html_element_class_and_id(elements['()']))
     parts.append(export_html_element_style(elements['[]']))
-    if os.path.isfile(os.path.join(current_directory, poster_candidate)):
-        parts.append(f' poster="{_attr(poster_candidate)}"')
     parts.append('>\n')
 
-    # Look for transcoded codec variants
-    source_name, _ = os.path.splitext(source)
-    source_basename = os.path.basename(source_name)
-    source_dirname = os.path.dirname(source_name)
-
-    found_codecs = False
-    if os.path.basename(source_dirname) == 'assets':
-        codec_dir = os.path.join(source_dirname, CACHE_VIDEO_DIR)
-        full_codec_dir = os.path.join(current_directory, codec_dir)
-        if os.path.isdir(full_codec_dir):
-            for suffix, mime in VIDEO_CODECS:
-                candidate = os.path.join(codec_dir, source_basename + suffix)
-                if os.path.isfile(os.path.join(current_directory, candidate)):
-                    parts.append(f'\t<source src="{_attr(candidate)}" type="{mime}">\n')
-                    found_codecs = True
-
-    if not found_codecs:
-        parts.append(f'\t<source src="{_attr(source)}" type="video/{mime_extension}">\n')
+    sources = list(media(source) or []) if media is not None else []
+    if not sources:
+        sources = [(source, f'video/{mime_extension}')]
+    for url, mime in sources:
+        parts.append(f'\t<source src="{_attr(url)}" type="{_attr(mime)}">\n')
 
     parts.append(f'\t Cannot play video {html.escape(source)}\n')
     parts.append('</video>')
