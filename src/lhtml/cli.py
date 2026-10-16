@@ -134,7 +134,7 @@ def main():
             out_dir = os.path.dirname(out_path)
             if out_dir:
                 os.makedirs(out_dir, exist_ok=True)
-            with open(out_path, 'w', encoding='utf-8') as f_out:
+            with open(out_path, 'w', encoding='utf-8', newline='') as f_out:
                 f_out.write(html)
         except (LHTMLError, OSError, UnicodeError, ValueError) as e:
             print(f'lhtml: error in {f_in}: {e}', file=sys.stderr)

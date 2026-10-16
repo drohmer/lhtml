@@ -1,7 +1,7 @@
 """Macros: custom :: tags declared in a configuration (YAML file or dict).
 
-A macro is a named shortcut for an HTML element with default classes,
-style and attributes:
+A macro is a named shortcut for an HTML element with default classes and
+attributes:
 
     macros:
       small:  {class: small}                     # small:: ... ::  -> <div class="small">
@@ -10,25 +10,25 @@ style and attributes:
       demo:   {tag: iframe, class: demo, empty: true, url: src}
 
 Fields (all optional):
-    tag      HTML element (default: div)
+    tag      HTML element (default: div), rendered as it is: never through
+             an LHTML tag (tag: video gives <video>, not video::)
     class    default classes, separated by spaces
-    style    default inline style, placed before the style of the source
     attrs    default HTML attributes, e.g. 'frameborder="0"'
     empty    the element has no content: it is closed immediately
              (gap::, demo::url) instead of waiting for a closing ::
              (always the case for HTML void elements such as br, hr)
     url      the text after :: is the value of this attribute (src,
-             data-src, ...); without it, an img, video or link macro takes
-             its URL like img::, video::, link::
-    variant  the text after :: selects a variant, added as the class
-             '<first class>-<variant>' (gap::l -> class="gap gap-l");
-             a list restricts the allowed variants
+             data-src, ...)
+    variant  the list of the variants: the text after :: selects one,
+             added as the class '<first class>-<variant>'
+             (gap::l -> class="gap gap-l")
     default  variant used when none is given
     doc      description, for documentation (ignored)
 
-The classes, style and attributes of the source are added to the defaults
+The classes and attributes of the source are added to the defaults, and
+its style is the style of the element
 (box::(.good)[margin:0] -> <div class="box good" style="margin:0">).
-A macro is closed by :: or by its name (::box[-]).
+A macro is closed by ::.
 """
 
 from __future__ import annotations
@@ -43,27 +43,14 @@ from .pipeline import TagRegistry, tag_registry
 
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
-FIELDS = {'tag', 'class', 'style', 'attrs', 'empty', 'url', 'variant', 'default', 'doc'}
+FIELDS = {'tag', 'class', 'attrs', 'empty', 'url', 'variant', 'default', 'doc'}
 # HTML elements without closing tag (a macro using them is always empty)
 VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
              'source', 'track', 'wbr'}
-BUILTIN_TAGS = ('div', 'span', 'link', 'img', 'video', 'videoplay', 'code', 'verbatim',
+BUILTIN_TAGS = ('div', 'span', 'link', 'img', 'video', 'videoplay', 'code',
                 'include', 'nl')
-# LHTML tags whose text is a URL, and the attribute their handler sets with it
-# (these handlers render a complete element: never opened, never empty)
-URL_TAGS = {'img': 'src', 'video': 'src', 'videoplay': 'src', 'link': 'href'}
 RESERVED_NAMES = ('macros',)    # a file may hold its macros under 'macros:'
-NOT_ELEMENTS = ('nl', 'code', 'verbatim', 'include')     # LHTML tags that are not elements
-
-
-class OpenTag(str):
-    """HTML tag name on the stack of open tags, remembering the macro name
-    so that ::name[-] closes it."""
-
-    def __new__(cls, tag, name):
-        obj = super().__new__(cls, tag)
-        obj.name = name
-        return obj
+NOT_ELEMENTS = ('nl', 'code', 'include')     # LHTML tags that are not elements
 
 
 def _check(name, spec):
@@ -80,7 +67,7 @@ def _check(name, spec):
     unknown = set(spec) - FIELDS
     if unknown:
         raise LHTMLMacroError(f'macro {name!r}: unknown field(s) {", ".join(sorted(unknown))}')
-    for key in ('tag', 'class', 'style', 'attrs', 'url'):
+    for key in ('tag', 'class', 'attrs', 'url'):
         if spec.get(key) is not None and not isinstance(spec[key], str):
             raise LHTMLMacroError(f'macro {name!r}: {key} must be a string, got {spec[key]!r}')
     if spec.get('empty') is not None and not isinstance(spec['empty'], bool):
@@ -90,13 +77,13 @@ def _check(name, spec):
         raise LHTMLMacroError(f'macro {name!r}: invalid tag {tag!r}')
     if tag in NOT_ELEMENTS:
         raise LHTMLMacroError(f'macro {name!r}: {tag}:: is not an element (tag: {tag})')
-    if spec.get('empty') is False and (tag.lower() in VOID_TAGS or tag in URL_TAGS):
+    if spec.get('empty') is False and tag.lower() in VOID_TAGS:
         raise LHTMLMacroError(f'macro {name!r}: {tag} has no content (empty cannot be false)')
     if spec.get('url') is not None and not NAME_RE.match(spec['url']):
         raise LHTMLMacroError(f'macro {name!r}: url must be an attribute name, got {spec["url"]!r}')
     variant = spec.get('variant')
-    if variant is not None and not isinstance(variant, (bool, list)):
-        raise LHTMLMacroError(f'macro {name!r}: variant must be true or a list')
+    if variant is not None and not isinstance(variant, list):
+        raise LHTMLMacroError(f'macro {name!r}: variant must be a list')
     if isinstance(variant, list) and any(not isinstance(v, (str, int)) or isinstance(v, bool)
                                          for v in variant):
         raise LHTMLMacroError(f'macro {name!r}: the variants must be names')
@@ -112,41 +99,19 @@ def _check(name, spec):
     return spec
 
 
-def _join_styles(*styles):
-    """'color:red', 'margin:0' -> 'color:red; margin:0'"""
-    styles = [s.strip() for s in styles if s and s.strip()]
-    return ' '.join(s if s.endswith(';') or k == len(styles) - 1 else s + ';'
-                    for k, s in enumerate(styles))
-
-
-def make_handler(name, spec, base=None):
-    """Tag handler (see TagRegistry) for one macro definition.
-
-    The macro adds its defaults (classes, style, attributes) to the parsed
-    element, then renders it like any element: with the handler of its tag
-    when LHTML has one (img, video, link, ...: `base` registry, the global one
-    by default), else as a generic element. There is thus one rendering path
-    for an element, whether it is written directly or through a macro."""
+def make_handler(name, spec):
+    """Tag handler (see TagRegistry) for one macro definition: the element
+    of its tag, with the defaults of the macro (classes, attributes) added to
+    those of the source."""
     spec = _check(name, spec)
     tag = spec.get('tag') or 'div'
     void = tag.lower() in VOID_TAGS
     classes = (spec.get('class') or '').split()
-    style = (spec.get('style') or '').strip()
     attrs = (spec.get('attrs') or '').strip()
     empty = bool(spec.get('empty', False))
     url = spec.get('url')
     variant = spec.get('variant')
     default = spec.get('default')
-    delegate = (base if base is not None else tag_registry).get(tag)
-    if url and url != URL_TAGS.get(tag):
-        delegate = None     # the handler of the tag does not set this attribute
-    url_delegate = delegate is not None and tag in URL_TAGS    # the text is its URL
-    if url_delegate:
-        url = None
-    if tag == 'link' and delegate is not None and style:
-        # [] is the text of a link: the style of the macro is an attribute
-        attrs = ' '.join(a for a in (attrs, f'style="{_attr(style)}"') if a)
-        style = ''
 
     def handler(element, tag_to_close, context):
         text = element['text']
@@ -158,7 +123,7 @@ def make_handler(name, spec, base=None):
                 value = value[:-2].strip()
             value = value or (str(default) if default is not None else '')
             if value:
-                if isinstance(variant, list) and value not in [str(v) for v in variant]:
+                if value not in [str(v) for v in variant]:
                     warnings.warn(f'{name}::{value}: unknown variant (expected one of '
                                   f'{", ".join(str(v) for v in variant)}) '
                                   f'near {element.get("context", "")!r}',
@@ -173,26 +138,15 @@ def make_handler(name, spec, base=None):
             text = '::' if closed else ''
         merged = {**element,
                   '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
-                  '[]': _join_styles(style, element['[]']),
                   '{}': inline,
                   'text': text}
-        if void and delegate is None:
+        if void:
             return f'<{tag}{_build_attrs(merged)}>' + ('' if text == '::' else text), True
-        if empty and not url_delegate and not merged['text'].endswith('::'):
+        if empty and not merged['text'].endswith('::'):
             merged['text'] += '::'   # closed at once
-        depth = len(tag_to_close)
-        if delegate is not None:
-            html, real = delegate(merged, tag_to_close, context)
-        else:
-            html, real = export_html_generic(merged, tag, tag_to_close), True
-        if len(tag_to_close) > depth:
-            tag_to_close[-1] = OpenTag(tag_to_close[-1], name)
-        return html, real
+        return export_html_generic(merged, tag, tag_to_close), True
 
     return handler
-
-
-HTML_TAGS = {'link': 'a', 'videoplay': 'video'}     # LHTML tag -> HTML element
 
 
 def describe_macro(name, spec):
@@ -201,17 +155,16 @@ def describe_macro(name, spec):
     (empty), its variants (a list, True for any, or None) and default, doc."""
     spec = _check(name, spec)
     tag = spec.get('tag') or 'div'
-    html = '<' + HTML_TAGS.get(tag, tag)
-    for attribute in ('class', 'style'):
-        if spec.get(attribute):
-            html += f' {attribute}="{_attr(spec[attribute])}"'
+    html = '<' + tag
+    if spec.get('class'):
+        html += f' class="{_attr(spec["class"])}"'
     if spec.get('attrs'):
         html += ' ' + spec['attrs'].strip()
     variant = spec.get('variant')
     return {'html': html + '>',
-            'url': spec.get('url') or URL_TAGS.get(tag),
-            'empty': bool(spec.get('empty')) or tag.lower() in VOID_TAGS or tag in URL_TAGS,
-            'variants': [str(v) for v in variant] if isinstance(variant, list) else (True if variant else None),
+            'url': spec.get('url'),
+            'empty': bool(spec.get('empty')) or tag.lower() in VOID_TAGS,
+            'variants': [str(v) for v in variant] if variant else None,
             'default': None if spec.get('default') is None else str(spec['default']),
             'doc': spec.get('doc')}
 
@@ -258,12 +211,8 @@ def register_macros(macros, registry: TagRegistry | None = None):
     """Register macro definitions (see load_macros) in a tag registry
     (the global one by default). Returns the registry."""
     registry = registry if registry is not None else tag_registry
-    # Macros render through the tags known before them (not through each other)
-    base = TagRegistry()
-    for tag in registry.registered_tags():
-        base.register(tag, registry.get(tag))
     for name, spec in load_macros(macros).items():
-        registry.register(name, make_handler(name, spec, base))
+        registry.register(name, make_handler(name, spec))
     return registry
 
 

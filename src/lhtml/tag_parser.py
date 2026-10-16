@@ -27,7 +27,7 @@ from .errors import LHTMLParseError
 
 _GRAMMAR_PATH = os.path.join(os.path.dirname(__file__), 'tag_element.lark')
 
-with open(_GRAMMAR_PATH) as _f:
+with open(_GRAMMAR_PATH, encoding='utf-8') as _f:
     _GRAMMAR_TEXT = _f.read()
 
 _parser = Lark(_GRAMMAR_TEXT, parser='earley', ambiguity='resolve')

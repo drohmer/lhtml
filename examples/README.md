@@ -57,7 +57,7 @@ This text should be red
 
 ## example_video.l.html
 
-An image and a video. `videoplay::` adds `autoplay loop muted`; the poster is an attribute written in `{}`:
+An image and a video. `videoplay::` adds `autoplay loop muted playsinline`; the poster is an attribute written in `{}`:
 
 ```
 img::assets/video-poster.jpg[width:400px;]
@@ -70,7 +70,7 @@ videoplay::assets/video.mp4{poster="assets/video-poster.jpg"}[width:400px;]
 ```html
 <img style="width:400px;" src="assets/video-poster.jpg" alt="assets/video-poster.jpg">
 
-<video poster="assets/video-poster.jpg" autoplay loop muted style="width:400px;">
+<video poster="assets/video-poster.jpg" autoplay loop muted playsinline style="width:400px;">
 	<source src="assets/video.mp4" type="video/mp4">
 	 Cannot play video assets/video.mp4
 </video>

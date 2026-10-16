@@ -55,9 +55,9 @@ Without `-o`, `page.l.html` is written to `page.html` next to its source.
 - Files are read and written as UTF-8 (a BOM is accepted).
 - Errors and warnings are reported on stderr with the file name. The remaining files are still processed, and the exit code is non-zero if any file failed.
 - An input file is never overwritten: `lhtml page.html` (output `page.html`) is an error, as is an output that is another input of the batch, or a symbolic or hard link to one.
-- LHTML reads no file but its input and the macro files given with `--macros`; macro files named in the front matter are relative to the input file.
+- LHTML reads no file but its input and the macro files given with `--macros`, and no front matter: its options come from its caller (the command line, or the `meta` of `lhtml.run()`).
 
-With `-w`, the result is wrapped in a minimal HTML document using the `title`, `css` and `js` of the front matter:
+With `-w`, the result is wrapped in a minimal HTML document using the `title`, `css` and `js` of the meta (from the command line, the defaults: title `Webpage`, no CSS or JS):
 
 ```html
 <!DOCTYPE html>
@@ -178,7 +178,7 @@ This is <em>italic</em> text.
 This is <code class="code-inline">inline code</code> text.
 ```
 
-Inside inline code, `<` and `>` are escaped (so `` `std::vector<float>` `` displays correctly), and `**`, `__`, `$`, `include::`, `code::` and `::#` are not interpreted. Existing entities such as `&lt;` are kept. Named tags such as `link::` remain active, but a bare `::` is C++ (`` `::glfwInit()` ``), not a closing tag.
+Inline code is literal: `<` and `>` are escaped (so `` `std::vector<float>` `` displays correctly), and nothing in it is interpreted - not `**`, `__`, `code::`, nor any tag (`` `link::x` `` stays text; write `<code class="code-inline">link::url[name]</code>` for a link in code). Existing entities such as `&lt;` are kept.
 
 
 ### Tag Elements (the `::` system)
@@ -193,7 +193,7 @@ All bracket groups are optional. If `tagName` is omitted, defaults to `div`.
 
 Tag names start with a letter and may contain letters, digits, `_` and `-` (useful for custom tags). A tag is only recognized when it is not glued to a preceding word: `std::chrono::seconds`, `obj.link::x` or the Python slice `a[::2]` are left untouched.
 
-A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). In a run of colons, `::` markers are the pairs ending the run: `::::[...]` is a closing `::` followed by `::[...]`, and `x:::nl` is `x:` followed by `::nl`. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
+A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons: a run of three or more (`:::`, `::::`) is text. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
 
 A tag that is opened but never closed, or a `::` without matching opening tag, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
 
@@ -262,25 +262,12 @@ Output:
 <div style="color:blue;"> short text </div>
 ```
 
-#### Explicit Closing Tags
+#### Closing Tags
 
-A bare `::` closes the last opened tag. To make long or nested blocks easier to read, name the tag you close with `::name[-]` (`::[-]` closes the last one, like `::`):
-
-```
-div::[color:red;]
-Red **text**
-::div[-]
-```
-
-Output:
-```html
-<div style="color:red;">
-Red <strong>text</strong>
-</div>
-```
-
-If the name does not match the last opened tag, a `LHTMLWarning` is emitted and the last opened tag is closed.
-
+A bare `::` closes the last opened tag. `::name[-]` and `::[-]` were removed
+in 3.0 and raise `LHTMLParseError`. On a named tag, `[-]` is a style
+(`span::[-]` is `<span style="-">`, as in LHTML 2), with a warning, since it
+was most likely meant as a closing tag.
 
 ### Links
 
@@ -317,7 +304,7 @@ video::assets/clip.mp4[width:600px;]
 videoplay::assets/clip.mp4[width:600px;]
 ```
 
-`videoplay` adds `autoplay loop muted` attributes. A poster is an attribute: `video::clip.mp4{poster="clip.jpg"}`. LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
+`videoplay` adds `autoplay loop muted playsinline` attributes (`playsinline`: on an iPhone, the video plays in the page instead of full screen). A poster is an attribute: `video::clip.mp4{poster="clip.jpg"}`. LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
 
 ```python
 def media(src):
@@ -366,22 +353,16 @@ Output:
 ```
 
 
-### Verbatim (raw passthrough)
+### Verbatim
 
-Content inside verbatim blocks is preserved exactly as-is, with no LHTML processing:
-
-```
-verbatim::[]
-This = is not a title
-**not bold** __not italic__
-div::[not a tag]
-verbatim::[-]
-```
+`verbatim::[]` was removed in 3.0 and raises `LHTMLParseError`. A code block
+(`code::[text]` ... `code::[-]`) shows text as it is; a Jinja `{% raw %}`
+block keeps it from Jinja.
 
 
 ### Line breaks
 
-By default, line breaks of the source have no visual effect (as in HTML). With the option `-b` / `--line-breaks` (or `line-breaks: true` in the YAML front matter, or `{'line-breaks': True}` in the `meta` passed to `lhtml.run()`), each line break of the text is rendered with `<br>`, blank lines included:
+By default, line breaks of the source have no visual effect (as in HTML). With the option `-b` / `--line-breaks` (or `{'line-breaks': True}` in the `meta` passed to `lhtml.run()`), each line break of the text is rendered with `<br>`, blank lines included:
 
 ```
 Line 1            Line 1<br>
@@ -390,16 +371,14 @@ Line 2     =>     Line 2<br>
 Other paragraph   Other paragraph
 ```
 
-Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code and verbatim blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, verbatim blocks, scripts, comments and math is never modified.
+Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, scripts, comments and math is never modified.
 
 
 ### Comments
 
-```
-Some text ::# This comment will be removed
-```
-
-A comment starts a line or follows whitespace, so `link::#intro[...]` (link to an anchor) is not a comment.
+`::#` comments were removed in 3.0 and raise `LHTMLParseError`: write an HTML
+comment `<!-- ... -->` (kept in the page) or, through Jinja, `{# ... #}`
+(removed). `link::#intro[...]` (a link to an anchor) was never a comment.
 
 
 ### File Inclusion
@@ -413,7 +392,7 @@ where LHTML 2 would have expanded one, in the text or in a code block, raises
 ### Macros (custom tags from a configuration)
 
 A macro is a named `::` tag declared in YAML (or a dict): a shortcut for an
-HTML element with default classes, style and attributes. The styling stays
+HTML element with default classes and attributes. The styling stays
 in CSS, so a deck or a site changes its look in one place.
 
 ```yaml
@@ -454,31 +433,28 @@ Output:
 |-------|-------------|
 | `tag` | HTML element (default `div`) |
 | `class` | Default classes (space separated) |
-| `style` | Default inline style, placed before the style of the source |
 | `attrs` | Default HTML attributes |
 | `empty` | No content: the element is closed at once (`gap::`, `demo::url`) |
-| `url` | The text after `::` is the value of this attribute (`src`, `data-src`, ...). Not needed for `tag: img`, `video`, `videoplay`, `link`: their text is already the URL |
-| `variant` | The text after `::` selects a variant, added as the class `<first class>-<variant>`; a list restricts the allowed values (an unknown one gives a warning) |
+| `url` | The text after `::` is the value of this attribute (`src`, `data-src`, ...) |
+| `variant` | The list of the variants: the text after `::` selects one, added as the class `<first class>-<variant>` (an unknown one gives a warning) |
 | `default` | Variant used when none is given (one of the variants) |
 | `doc` | Description, ignored by LHTML (for documentation tools; `lhtml.describe_macro(name, spec)` gives what a definition renders) |
 
-The classes, style and attributes written in the source are added to the
-defaults, then the element is rendered like any element: a macro whose `tag`
-is an LHTML tag (`img`, `video`, `videoplay`, `link`, ...) uses that tag
-(`photo: {tag: img, class: photo}` gives `photo::a.png` an `alt`, `videoplay`
-keeps the `media` resolver, the `style` of a `link` macro is an attribute since
-`[]` is the link text); a macro never renders through another macro. A macro is closed by `::` or by its name (`::box[-]`). Macros are
+The classes and attributes written in the source are added to the defaults,
+and its style is the style of the element. The `tag` of a macro is an HTML
+element, rendered as it is - never through an LHTML tag (`tag: video` gives
+`<video>`, not `video::`; `tag: img` with `url: src` gives `<img src>`), nor
+through another macro. A macro is closed by `::`. Macros are
 not active inside inline code (`` `box::` `` stays text), and a macro cannot
 replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
 macro is not protected from inline formatting (avoid `__` in it).
 
 A variant may be closed at once like any element: `gap::l::`.
 
-Declare them with `-m` / `--macros` (repeatable, later files win), with the
-`macros` key of the front matter (file names relative to the page, or
-definitions), or with `lhtml.run(text, {'macros': ...})` (a dict, a file
-name, or a list of them). The macros of the front matter are added to the
-others (a macro of the same name is replaced, `name: null` removes it). A
+Declare them with `-m` / `--macros` (repeatable, later files win), or with
+`lhtml.run(text, {'macros': ...})` (a dict, a file name relative to
+`current_directory`, or a list of them, later ones replacing a macro of the
+same name; `name: null` removes it). A
 file holds the definitions at its top level or under its only key `macros`
 (`macros` is thus not a macro name). An HTML void element
 (`tag: hr`, `br`, ...) is always empty. Invalid definitions (unknown field,
@@ -489,22 +465,13 @@ lhtml -m macros.yaml slide.l.html
 ```
 
 
-### YAML Front Matter
+### Input
 
-The front matter must be at the very beginning of the file (`---` separators elsewhere are kept as text). Input text is normalized first: a leading BOM is removed and CRLF line endings become LF.
+LHTML reads no front matter (3.0): `---` at the top of a document is text,
+and the options come from the caller. Input text is normalized first: a
+leading BOM is removed and CRLF line endings become LF.
 
-```
----
-title: "My Page"
-css: ["style.css", "theme.css"]
-js: "app.js"
-wrap-auto: true
----
-
-= Page content starts here
-```
-
-Supported metadata keys:
+The options, in the `meta` of `lhtml.run()`:
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -513,7 +480,8 @@ Supported metadata keys:
 | `js` | string or list | JavaScript files to include |
 | `wrap-auto` | boolean | Wrap output in full HTML document |
 | `line-breaks` | boolean | Render source line breaks as `<br>` |
-| `macros` | string, list or mapping | Macros: YAML file(s) relative to the page, or definitions (see [Macros](#macros-custom-tags-from-a-configuration)) |
+| `macros` | string, list or mapping | Macros: YAML file(s) relative to `current_directory`, or definitions (see [Macros](#macros-custom-tags-from-a-configuration)) |
+| `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
 
 
 ## Using LHTML with Jinja2
@@ -586,7 +554,7 @@ alert::[background:yellow; padding:10px;] Warning message ::
 A handler receives the parsed element (`'[]'`, `'()'`, `'{}'`, `'text'`: the
 word glued after the brackets) and returns `(html, is_real_tag)`. To wrap the
 content that follows, push the HTML tag name on `tag_to_close`: the next `::`
-(or `::name[-]`) closes it. Returning `is_real_tag=False` leaves the source
+closes it. Returning `is_real_tag=False` leaves the source
 text unchanged.
 
 ### Custom Code Lexers
@@ -635,7 +603,7 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 
 ## Design Principles
 
-- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed (not even by `::#`): HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`, so that `$x**2$` reaches MathJax/KaTeX intact). Text between HTML tags is still processed.
+- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed: HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`\(...\)`, `\[...\]`, so that `\(x**2\)` reaches MathJax/KaTeX intact; since 3.0 a `$` is text, as in a price). Text between HTML tags is still processed.
 - **Attributes stay literal**: styles, classes/IDs and HTML attributes in LHTML tag groups and headings are preserved without inline formatting (`div::(.my__class__)` keeps `my__class__`). Link labels still support formatting.
 - **Template-friendly**: Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.
@@ -647,7 +615,7 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 
 ```
 src/lhtml/
-  __init__.py          # Public API: run(), analyse_tag(), read_yaml(), macro functions
+  __init__.py          # Public API: run(), macro functions, errors
   __main__.py          # python -m lhtml
   cli.py               # Command-line interface
   pipeline.py          # ProcessingPipeline, TagRegistry, LexerRegistry
@@ -662,7 +630,6 @@ src/lhtml/
   code.py              # Code syntax highlighting (Pygments)
   wrap_html.py         # HTML document wrapping
   errors.py            # Structured error types
-  insert_in_text.py    # Store/restore helpers kept for backward compatibility
 test/                  # pytest suite and .l.html / -out.html reference pairs
 examples/              # Example sources (see examples/README.md)
 ```

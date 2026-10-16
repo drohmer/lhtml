@@ -8,52 +8,39 @@ from typing import Callable
 # Compiled regex patterns
 # ---------------------------------------------------------------------------
 
-# Front matter is only recognized at the very beginning of the document
-# (optionally after blank lines), so that '---' separators elsewhere are kept.
-YAML_FRONTMATTER = re.compile(r'\A\s*---\n(.*?)\n---[ \t]*$', re.DOTALL | re.MULTILINE)
 HEADING          = re.compile(r'^(=+)(?:\((.*?)\))? (.*?)$', re.MULTILINE)
 BOLD             = re.compile(r'\*\*(.*?)\*\*')
 ITALIC           = re.compile(r'__(.*?)__')
-INLINE_CODE      = re.compile(r'`(.*?)`')
-# A comment starts a line or follows whitespace (so link::#anchor is kept)
-COMMENT          = re.compile(r'(?<!\S)::#.*$', re.MULTILINE)
 # include:: was removed in 3.0; still recognized, to be refused by name
 INCLUDE          = re.compile(r'(?<![\w-])include::')
-# In a run of colons, '::' markers are the pairs ending the run:
-# '::::' is two markers, ':::nl' is ':' followed by '::nl'
-TAG_MARKER       = re.compile(r'::(?=(?:::)*(?!:))')
+# Removed in 3.0 too, refused by name: ::# comments (a comment started a line
+# or followed whitespace, so link::#anchor is not one) and verbatim:: blocks
+REMOVED_COMMENT  = re.compile(r'(?<!\S)::#')
+REMOVED_VERBATIM = re.compile(r'(?<![\w`:-])verbatim::\[\]')
+# Exactly two colons: a run of three or more is text, not a tag
+TAG_MARKER       = re.compile(r'(?<!:)::(?!:)')
 SPACER           = re.compile(r'nl(?![\w-])')
-LIST_ITEM        = re.compile(r'^(\*+) (.*)')
 
 # Block directives must not follow a backquote (inline code) or a colon.
 # A code block opener needs its [language] group (possibly empty), so that
 # words such as bytecode:: are not taken for a block.
 _DIRECTIVE_START = r'(?<![`:])'
 
-# Verbatim and code blocks, extracted first (the leftmost one wins, so
-# verbatim markers inside a code block are shown as code, and conversely).
-VERBATIM_BLOCK   = re.compile(_DIRECTIVE_START + r'verbatim::\[\](?P<vbody>.*?)verbatim::\[-\]', re.DOTALL)
+# Code blocks, extracted first.
 CODE_BLOCK       = re.compile(
     _DIRECTIVE_START + r'code::(?P<header>\[(?!-\])[^\[\]\n]*\]'
     r'(?:\([^()\n]*\)|\[[^\[\]\n]*\]|\{[^{}\n]*\})*)'
     r'(?P<body>.*?)code::\[-\]', re.DOTALL)
-BLOCKS           = re.compile(f'(?P<verbatim>{VERBATIM_BLOCK.pattern})|(?P<code>{CODE_BLOCK.pattern})',
-                              re.DOTALL)
+BLOCKS           = re.compile(f'(?P<code>{CODE_BLOCK.pattern})', re.DOTALL)
 
 # Zones that are never transformed by LHTML. They are matched by a single
 # regex so that the leftmost zone wins: `<script>` in inline code is code,
 # a backquote inside an HTML attribute belongs to the tag, etc.
-MATH             = re.compile(
-    r'\$\$.+?\$\$'                                    # $$ display $$
-    r'|\\\[.+?\\\]'                                    # \[ display \]
-    r'|\\\(.+?\\\)'                                    # \( inline \)
-    r'|(?<![\\$\w])\$(?![\s$])[^$\n]*?[^\s\\$]\$(?![\w$])'  # $inline$ (pandoc-like rule)
-    r'|(?<![\\$\w])\$[^\s\\$]\$(?![\w$])',                    # $x$ (single char)
-    re.DOTALL)
+# Mathematics: \[ display \] and \( inline \); a $ is text
+MATH             = re.compile(r'\\\[.+?\\\]|\\\(.+?\\\)', re.DOTALL)
 # HTML attributes may span lines; quoted values may contain < or >.
 _HTML_ATTRIBUTE = r"[A-Za-z_:][\w:.-]*(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s<>\"'=\x60]+))?"
 HTML_TAG = re.compile(r'</?[A-Za-z][\w:-]*(?:\s+' + _HTML_ATTRIBUTE + r')*\s*/?>')
-RAW_HTML_BLOCK   = re.compile(r'<!--.*?-->|<(?i:(script|style))\b[^>]*>.*?</(?i:\1)\s*>', re.DOTALL)
 # URL of link::, img::, video::, videoplay:: (parentheses are kept when they
 # are not a (.class #id) group, e.g. Mercury_(planet) or fig(1).png)
 # Quoted strings can contain the Jinja closing delimiter itself. A quote can
@@ -95,20 +82,13 @@ TRAILING_PLACEHOLDER = re.compile(r'\x00([A-Z])(\d+)\x00\s*$')
 JINJA_LINE       = re.compile(r'\s*(\{%.*%\}|\{#.*#\})\s*', re.DOTALL)
 # <pre> and <textarea> keep their line breaks: no <br> inside
 PREFORMATTED_TAG = re.compile(r'<(/?)(?i:pre|textarea)(?=[\s/>])')
-BLOCK_RAW        = re.compile(r'\s*(<!--|<(?i:script|style)\b|\$\$|\\\[)')
+BLOCK_RAW        = re.compile(r'\s*(<!--|<(?i:script|style)\b|\\\[)')
 
 # Placeholders for protected content. They contain no LHTML syntax
 # characters, so no processing step can alter them. Kinds:
-#   V verbatim, C code block, R raw zone (HTML, math), I inline code, U URL
+#   C code block, R raw zone (HTML, math), I inline code, U URL, A attributes
 PLACEHOLDER_CHAR = '\x00'
 PLACEHOLDER      = re.compile(r'\x00([A-Z])(\d+)\x00')
-
-# String constants
-VERBATIM_OPEN  = 'verbatim::[]'
-VERBATIM_CLOSE = 'verbatim::[-]'
-CODE_CLOSE     = 'code::[-]'
-SPACER_TAG     = 'nl'
-
 
 
 # ---------------------------------------------------------------------------

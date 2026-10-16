@@ -13,24 +13,21 @@ import re
 import warnings
 from dataclasses import dataclass, field
 
-import yaml
-
 from .element_extract import extract_bracket_elements
 from .export_html import (
-    export_html_element_class_and_id, export_html_generic,
-    check_is_closing_tag, check_is_explicit_closing_tag,
+    export_html_element_class_and_id, export_html_generic, check_is_closing_tag,
 )
 from .listing import process_listing  # noqa: F401 — re-exported
 from .code import export_html_code
 from .errors import LHTMLTagStackError, LHTMLParseError, LHTMLWarning
 from .patterns import (
-    YAML_FRONTMATTER, VERBATIM_BLOCK, CODE_BLOCK, PROTECTED, PROTECTED_BLOCKS,
-    HEADING, BOLD, ITALIC, INLINE_CODE,
-    COMMENT, INCLUDE, TAG_MARKER, SPACER,
+    PROTECTED, PROTECTED_BLOCKS,
+    HEADING, BOLD, ITALIC,
+    INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
     JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
     PLACEHOLDER_CHAR, PLACEHOLDER,
-    regex_transform, store_to_index, restore_from_index, make_placeholder,
+    regex_transform, restore_from_index, make_placeholder,
 )
 
 
@@ -38,13 +35,12 @@ from .patterns import (
 class ProtectionStores:
     """Content replaced by placeholders during processing.
 
-    V: verbatim blocks (raw text)        C: code blocks (header, body)
+    C: code blocks (header, body)
     R: raw zones: HTML tags, comments, <script>/<style>, math
     I: inline code (content with < and > escaped)
     U: URL of link::/img::/video::/videoplay:: tags
     A: LHTML styles, classes/IDs and HTML attributes
     """
-    V: list = field(default_factory=list)
     C: list = field(default_factory=list)
     R: list = field(default_factory=list)
     I: list = field(default_factory=list)
@@ -78,56 +74,14 @@ def read_source(filename):
         return normalize_input(fid.read())
 
 
-# ---------------------------------------------------------------------------
-# YAML front matter
-# ---------------------------------------------------------------------------
-
-def process_yaml(text):
-    """Extract YAML front matter and return (remaining_text, meta_dict).
-
-    The front matter must start the document. If its content is not a
-    YAML mapping, the text is left untouched.
-    """
-    match = YAML_FRONTMATTER.search(text)
-    if not match:
-        return text, {}
-    try:
-        yaml_content = yaml.safe_load(match.group(1))
-    except yaml.YAMLError as e:
-        warnings.warn(f'Invalid YAML front matter ignored: {e}', LHTMLWarning, stacklevel=2)
-        return text, {}
-    if yaml_content is None:
-        yaml_content = {}
-    if not isinstance(yaml_content, dict):
-        return text, {}
-    return text[match.end():], yaml_content
-
-
-# ---------------------------------------------------------------------------
-# Verbatim and code blocks (protect / restore)
-# ---------------------------------------------------------------------------
-
-def process_verbatim_to_index(text, verbatim_index_store):
-    """Replace verbatim blocks with placeholders."""
-    return store_to_index(text, VERBATIM_BLOCK, 'V', verbatim_index_store,
-                          lambda m: m.group('vbody'))
-
-
-def process_verbatim_back_from_index(text, verbatim_index_store):
-    """Restore verbatim blocks from placeholders."""
-    return restore_from_index(text, 'V', verbatim_index_store)
-
-
 def _code_language(header):
     m = re.search(r'\[([^\[\]\n]*)\]', header)
     return m.group(1) if m else ''
 
 
-def render_code_block(entry, verbatim_store=None):
+def render_code_block(entry):
     """Highlight a stored (header, body) code block."""
     header, body = entry
-    if verbatim_store is not None:
-        body = restore_from_index(body, 'V', verbatim_store)
     return export_html_code(body, _code_language(header))
 
 
@@ -150,19 +104,15 @@ def process_protect(text, stores, blocks=False):
 
     Protected (the leftmost zone wins): HTML comments, <script>/<style>
     blocks, inline code, URLs of link::/img::/video:: tags, math
-    ($...$, $$...$$, \\(...\\), \\[...\\]) and HTML tags themselves (so
-    attribute values are never modified). Text between HTML tags is
-    still processed. Jinja expressions, statements and comments are opaque.
-    With `blocks`, code/verbatim blocks participate in the same
-    left-to-right scan.
+    (\\(...\\), \\[...\\]) and HTML tags themselves (so attribute values
+    are never modified). Text between HTML tags is still processed. Jinja
+    expressions, statements and comments are opaque. With `blocks`, code
+    blocks participate in the same left-to-right scan.
     """
     def _protect(m):
-        if blocks:
-            if m.group('verbatim') is not None:
-                return stores.add('V', m.group('vbody'))
-            if m.group('code') is not None:
-                _refuse_include(m.group('body'))
-                return stores.add('C', (m.group('header'), m.group('body')))
+        if blocks and m.group('code') is not None:
+            _refuse_include(m.group('body'))
+            return stores.add('C', (m.group('header'), m.group('body')))
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')))
         if m.group('url') is not None:
@@ -189,7 +139,7 @@ def process_protect_attributes(text, stores):
         except LHTMLParseError:
             continue
         tag = element['tag']
-        if tag in ('include', 'code', 'verbatim') or not _is_tag_boundary(
+        if tag in ('include', 'code') or not _is_tag_boundary(
                 text, m.start() - len(tag), tag):
             continue
         end = element['index_end']
@@ -226,17 +176,21 @@ def process_unprotect(text, stores):
 
 
 # ---------------------------------------------------------------------------
-# Comments
-# ---------------------------------------------------------------------------
-
-def process_remove_comment(text):
-    """Remove ::# comments (to the end of the line)."""
-    return regex_transform(text, COMMENT, lambda m: '')
-
-
-# ---------------------------------------------------------------------------
 # Preparation of the text
 # ---------------------------------------------------------------------------
+
+def _refuse_removed(text):
+    """::# comments and verbatim:: blocks were removed in LHTML 3.0: raise
+    rather than leave them as text, with the replacement in the message."""
+    m = REMOVED_COMMENT.search(text)
+    if m is not None:
+        raise LHTMLParseError(f'::# comments were removed in LHTML 3.0: use a Jinja comment '
+                              f'{{# ... #}} or an HTML comment <!-- ... --> (near {text[m.start():m.start() + 30]!r})')
+    m = REMOVED_VERBATIM.search(text)
+    if m is not None:
+        raise LHTMLParseError('verbatim:: was removed in LHTML 3.0: use code::[] ... code::[-] '
+                              'or a Jinja {% raw %} block')
+
 
 def _refuse_include(text):
     """include:: was removed in LHTML 3.0: LHTML reads no file. Raise where
@@ -255,11 +209,11 @@ def _refuse_include(text):
 
 def process_prepare(text, stores):
     """Replace verbatim/code blocks and protected zones (HTML, inline code,
-    URLs, math, attributes) by placeholders, and remove the comments.
-    Raises LHTMLParseError on an include:: directive (removed in 3.0)."""
+    URLs, math, attributes) by placeholders. Raises LHTMLParseError on an
+    include:: directive (removed in 3.0)."""
     text = process_protect(text, stores, blocks=True)
+    _refuse_removed(text)
     text = process_protect_attributes(text, stores)
-    text = process_remove_comment(text)
     _refuse_include(text)
     return text
 
@@ -276,12 +230,6 @@ def process_bold(text):
 def process_italic(text):
     """Convert __text__ to <em>text</em>."""
     return regex_transform(text, ITALIC, lambda m: f'<em>{m.group(1)}</em>')
-
-
-def process_code_inline(text):
-    """Convert `text` to <code class="code-inline">text</code> (< and > escaped)."""
-    return regex_transform(text, INLINE_CODE,
-                           lambda m: render_inline_code(escape_inline_code(m.group(1))))
 
 
 # ---------------------------------------------------------------------------
@@ -312,16 +260,6 @@ def process_title(text, stores=None):
 
 
 # ---------------------------------------------------------------------------
-# Code blocks
-# ---------------------------------------------------------------------------
-
-def process_code(text):
-    """Highlight the raw code:: blocks contained in text."""
-    return regex_transform(text, CODE_BLOCK,
-                           lambda m: render_code_block((m.group('header'), m.group('body'))))
-
-
-# ---------------------------------------------------------------------------
 # Tag elements (the :: system)
 # ---------------------------------------------------------------------------
 
@@ -340,6 +278,8 @@ def _dispatch_tag(element, tag_to_close, context, registry=None):
     or anonymous divs.
     """
     tag = element['tag']
+    if element['[]'] == '-' and tag != 'link':     # link::url[-] is the text '-'
+        _refuse_explicit_closing(element)
 
     if tag != '':
         from .pipeline import tag_registry
@@ -348,21 +288,6 @@ def _dispatch_tag(element, tag_to_close, context, registry=None):
             return handler(element, tag_to_close, context)
         # Unrecognized tag — pass through
         return '', False
-
-    # Explicit closing tag: ::div[-], ::span[-], or ::[-]
-    if check_is_explicit_closing_tag(element) or (
-            element['[]'] == '-' and not (element['text'] or element['()'] or element['{}'])):
-        closing_name = element['text']
-        if not tag_to_close:
-            return _warn_unmatched_closing(element)
-        if closing_name and closing_name not in (tag_to_close[-1],
-                                                 getattr(tag_to_close[-1], 'name', None)):
-            warnings.warn(
-                f'Closing ::{closing_name}[-] but last opened tag is <{tag_to_close[-1]}> '
-                f'(near {element.get("context", "")!r})',
-                LHTMLWarning, stacklevel=3,
-            )
-        return '</' + tag_to_close.pop() + '>', True
 
     if check_is_closing_tag(element):
         if not tag_to_close:
@@ -375,6 +300,18 @@ def _dispatch_tag(element, tag_to_close, context, registry=None):
     return '', False
 
 
+def _refuse_explicit_closing(element):
+    """::[-] and ::name[-] were removed in LHTML 3.0: a tag is closed by ::.
+    On a named tag, x::[-] is a style '-' (as in LHTML 2): kept, with a
+    warning, since it was most likely meant as a closing tag."""
+    context = element.get('context', '')
+    if element['tag'] == '':
+        raise LHTMLParseError(f'{context}: ::name[-] and ::[-] were removed in LHTML 3.0: '
+                              f'close a tag with ::')
+    warnings.warn(f'{context}: [-] is a style here, not a closing tag (close a tag with ::)',
+                  LHTMLWarning, stacklevel=4)
+
+
 def _context(text, start, end, max_len=40):
     """Short excerpt of the source around a tag, for warning messages."""
     excerpt = PLACEHOLDER.sub('…', text[start:min(end, start + max_len)])
@@ -385,16 +322,13 @@ def _is_tag_boundary(text, index, tag, last_tag_end=-1):
     """True if a tag (named, or bare :: when tag is '') may start at `index`.
 
     A tag name must not be glued to a preceding word (x.link::, std::a::).
-    A bare :: must not follow an opening bracket, a colon or a word
-    character, which leaves constructs like a[::2] or 2::3 untouched
-    (except ':::' as in 'x:::nl', read as ':' followed by '::nl').
-    A tag may always directly follow the previous tag.
+    A bare :: must not follow an opening bracket or a word character, which
+    leaves constructs like a[::2] or 2::3 untouched. A tag may always
+    directly follow the previous tag.
     """
     if index == 0 or index == last_tag_end:
         return True
     ch = text[index - 1]
-    if not tag and ch == ':':
-        return index < 2 or not (text[index - 2].isalnum() or text[index - 2] in '_:')
     if ch.isalnum() or ch in '_:':
         return False
     if tag:
@@ -406,8 +340,7 @@ def _adjust_bare_tag(text, m, element):
     """Adjust the extent of a bare :: tag. Returns False if it is not a tag.
 
     - '::nl' followed by other characters is a spacer ending after 'nl'.
-    - '::' followed by punctuation (e.g. '::,', '::**' or '::::[...]')
-      is a closing tag.
+    - '::' followed by punctuation (e.g. '::,' or '::**') is a closing tag.
     - A '::' between two protected zones (e.g. <span>::</span> in
       pre-highlighted C++), or glued after one and followed by a word,
       is not a tag.
@@ -430,13 +363,11 @@ def _adjust_bare_tag(text, m, element):
     return True
 
 
-def process_tag(text, run_context=None, registry=None, inline=False, resolve=None):
+def process_tag(text, run_context=None, registry=None, resolve=None):
     """Process all :: tag elements in text.
 
     Args:
         run_context: the ProcessingContext of the run, passed to the handlers.
-        inline: process only named tags (used inside inline code, where a
-            bare :: is C++ syntax rather than LHTML).
         resolve: function applied to the parsed fields before dispatch
             (used to restore protected URLs).
     """
@@ -464,7 +395,7 @@ def process_tag(text, run_context=None, registry=None, inline=False, resolve=Non
             element.update({'tag': '', 'index_start': tag_start})
         if not _is_tag_boundary(text, tag_start, tag, last_tag_end):
             continue
-        if not tag and (inline or not _adjust_bare_tag(text, m, element)):
+        if not tag and not _adjust_bare_tag(text, m, element):
             continue
         context = text[tag_start:element['index_end']]
         if resolve is not None:
@@ -501,7 +432,7 @@ def process_tag(text, run_context=None, registry=None, inline=False, resolve=Non
 def _is_block_placeholder(kind, idx, stores):
     """True if a protected zone is a block: code/verbatim block, HTML
     comment, <script>/<style>, display math or block-level HTML tag."""
-    if kind in 'CV':
+    if kind == 'C':
         return True
     if kind != 'R':
         return False

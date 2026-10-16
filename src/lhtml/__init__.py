@@ -11,19 +11,6 @@ Usage:
 
 __version__ = '3.0.0'
 
-from .element_extract import extract_bracket_elements
-from .insert_in_text import insert_element_from_index, remove_element_to_index
-from .wrap_html import wrap_auto
-
-from .process import (
-    process_yaml, process_verbatim_to_index, process_verbatim_back_from_index,
-    process_remove_comment, process_prepare,
-    process_protect, process_unprotect, process_line_breaks,
-    process_bold, process_italic, process_code_inline,
-    process_title, process_tag, process_code,
-    process_listing,
-)
-
 from .errors import (
     LHTMLError, LHTMLParseError,
     LHTMLTagStackError, LHTMLWarning, LHTMLMacroError,
@@ -34,7 +21,7 @@ from .macros import describe_macro, load_macros, register_macros, registry_with_
 
 
 # ---------------------------------------------------------------------------
-# Public API (backward-compatible with the old lhtml.py module)
+# Public API
 # ---------------------------------------------------------------------------
 
 _pipeline = ProcessingPipeline()
@@ -49,23 +36,13 @@ def run(text, meta_arg=None):
             Keys: wrap-auto, title, css, js, line-breaks, macros, current_directory
             (where relative macro files are read from), media (a callable:
             media(src) -> [(url, mime type)], the sources of a video).
-            LHTML reads no file but the macro files named here.
+            LHTML reads no file but the macro files named here, and no
+            front matter: its options come from the caller only.
 
     Returns:
         HTML string.
     """
     return _pipeline.run(text, meta_arg)
-
-
-def analyse_tag(text_in):
-    """Parse a single :: tag expression (utility)."""
-    return extract_bracket_elements(text_in, text_in.find('::') + 2)
-
-
-def read_yaml(text_in):
-    """Extract YAML front matter from text (utility)."""
-    _, yaml_parameter = process_yaml(text_in)
-    return yaml_parameter
 
 
 def main():
@@ -75,18 +52,7 @@ def main():
 
 
 __all__ = [
-    # Core API
-    '__version__', 'run', 'analyse_tag', 'read_yaml', 'main',
-    # Processing functions
-    'extract_bracket_elements',
-    'process_yaml', 'process_verbatim_to_index', 'process_verbatim_back_from_index',
-    'process_remove_comment', 'process_prepare',
-    'process_protect', 'process_unprotect', 'process_line_breaks',
-    'process_bold', 'process_italic', 'process_code_inline',
-    'process_title', 'process_tag', 'process_code',
-    'process_listing',
-    'insert_element_from_index', 'remove_element_to_index',
-    'wrap_auto',
+    '__version__', 'run', 'main',
     # Pipeline & plugins
     'ProcessingPipeline', 'tag_registry', 'lexer_registry',
     'describe_macro', 'load_macros', 'register_macros', 'registry_with_macros',

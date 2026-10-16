@@ -110,7 +110,7 @@ def _register_builtin_tags():
     tag_registry.register('video', _handle_video)
 
     def _handle_videoplay(element, tag_to_close, context):
-        return export_html_video(element, 'autoplay loop muted', getattr(context, 'media', None)), True
+        return export_html_video(element, 'autoplay loop muted playsinline', getattr(context, 'media', None)), True
     tag_registry.register('videoplay', _handle_videoplay)
 
 
@@ -163,7 +163,7 @@ class ProcessingPipeline:
 
     def run(self, text: str, meta_arg: dict | None = None) -> str:
         from .process import (
-            ProtectionStores, process_yaml, process_prepare,
+            ProtectionStores, process_prepare,
             process_unprotect, process_title, process_listing,
             process_bold, process_italic, process_tag,
             render_inline_code, render_code_block, process_line_breaks,
@@ -179,27 +179,24 @@ class ProcessingPipeline:
         )
         stores = ctx.stores
 
-        # Phase 1: YAML front matter
-        ctx.text, meta_yaml = process_yaml(ctx.text)
-        ctx.meta = {**ctx.meta, **meta_yaml}
+        # Phase 1: the options, from the caller only (LHTML reads no front matter)
         ctx.current_directory = str(ctx.meta.get('current_directory') or '')
         media = (meta_arg or {}).get('media')
         if media is not None and not callable(media):
             raise TypeError(f'meta "media" must be callable, got {type(media).__name__}')
         ctx.media = media
 
-        # Macros (custom tags) declared in the meta, then in the front matter:
-        # the front matter adds definitions (and replaces those of same name)
+        # Macros (custom tags) declared in the meta
         registry = self.tag_registry
-        macros = _macro_sources((meta_arg or {}).get('macros')) + _macro_sources(meta_yaml.get('macros'))
+        macros = _macro_sources((meta_arg or {}).get('macros'))
         if macros:
             from .macros import registry_with_macros
             macros = [m if not isinstance(m, str) or os.path.isabs(m)
                       else os.path.join(ctx.current_directory, m) for m in macros]
             registry = registry_with_macros(macros, self.tag_registry)
 
-        # Phase 2: verbatim/code blocks and protected zones (HTML, inline
-        # code, URLs, math) are replaced by placeholders, comments removed
+        # Phase 2: code blocks and protected zones (HTML, inline code, URLs,
+        # math) are replaced by placeholders
         ctx.text = process_prepare(ctx.text, stores)
 
         # Phase 3: Block-level elements
@@ -210,25 +207,21 @@ class ProcessingPipeline:
         ctx.text = process_bold(ctx.text)
         ctx.text = process_italic(ctx.text)
 
-        # Phase 5: Tag elements (uses tag_registry). Inside inline code,
-        # only named tags (e.g. link::) are processed, macros excepted.
+        # Phase 5: Tag elements (uses tag_registry). Inline code is literal.
         def resolve_attributes(s):
             return stores.restore(stores.restore(s, 'A'), 'U')
 
         ctx.text = process_tag(ctx.text, ctx, registry, resolve=resolve_attributes)
-        ctx.text = stores.restore(ctx.text, 'I', lambda content: render_inline_code(
-            process_tag(content, ctx, self.tag_registry, inline=True)))
+        ctx.text = stores.restore(ctx.text, 'I', render_inline_code)
 
         # Optional: source line breaks become <br> (protected zones are
         # still placeholders, so their content is not affected)
         if ctx.meta.get('line-breaks') is True:
             ctx.text = process_line_breaks(ctx.text, stores)
 
-        # Phase 6: Restore protected zones, code blocks (highlighted) and
-        # verbatim blocks
+        # Phase 6: Restore protected zones and code blocks (highlighted)
         ctx.text = process_unprotect(ctx.text, stores)
-        ctx.text = stores.restore(ctx.text, 'C', lambda entry: render_code_block(entry, stores.V))
-        ctx.text = stores.restore(ctx.text, 'V')
+        ctx.text = stores.restore(ctx.text, 'C', render_code_block)
 
         # Phase 7: Optional HTML wrapping
         if ctx.meta.get('wrap-auto') is True:

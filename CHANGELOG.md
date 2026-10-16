@@ -20,17 +20,36 @@ page depends on.
   looked for. Write it: `video::clip.mp4{poster="clip.jpg"}`.
 - The detection of codec variants in `cache_video_codecs/` (and
   `CACHE_VIDEO_DIR`, `VIDEO_CODECS`): see `media` below.
+- What no project of the corpus of the generator writes (1333 sources
+  counted). Refused by name with `LHTMLParseError`, the replacement in the
+  message: `::name[-]` and `::[-]` (close with `::`; on a named tag, `[-]`
+  stays a style, with a warning), `::#` comments (HTML or Jinja comments),
+  `verbatim::[]` (`code::[text]`, Jinja `{% raw %}`). Now text: `$...$`,
+  `$$...$$` and the one-character `$x$` rule (mathematics is `\(...\)` and
+  `\[...\]`), runs of three colons or more (`:::nl`), tags inside inline
+  code (`` `link::x` ``), the YAML front matter (options come from the
+  caller: `title`, `css`, `js`, `line-breaks`, `macros`, `wrap-auto` in the
+  meta).
+- Macros: the `style` field, `variant: true` (a variant is a list), and the
+  rendering through an LHTML tag (`tag: img`, `video`, `link` give the HTML
+  element; `url` names the attribute).
+- From the public API: `analyse_tag`, `read_yaml`, `process_yaml`, the
+  `process_*` functions, `extract_bracket_elements`, `wrap_auto`,
+  `insert_element_from_index` / `remove_element_to_index`
+  (`insert_in_text.py`), and the dead constants of `patterns.py`. The API is
+  `run`, the macro functions, the registries and the errors.
 
 ### Added
 - `media`, a key of the meta of `lhtml.run()`: a callable,
   `media(src) -> [(url, mime type)]`, listing the sources of a video. An
   empty list, or no resolver, keeps the source as written. It is read from
   the meta given by the caller only, not from the front matter.
-- `process_prepare(text, stores)`: the protection of the zones and the
-  removal of the comments, what `process_include_recursive` did besides
-  including.
 
 ### Changed
+- `videoplay::` adds `playsinline` to `autoplay loop muted`: on an iPhone,
+  the video plays in the page instead of opening full screen.
+- The CLI writes `\n` line endings on Windows too, and reads its grammar as
+  UTF-8.
 - A tag handler receives the `ProcessingContext` of the run as its third
   argument (it received the current directory); `process_tag` takes it as
   `run_context`.
