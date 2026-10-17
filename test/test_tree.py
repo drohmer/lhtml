@@ -772,3 +772,15 @@ class TestAttributesReview:
     def test_a_macro_is_described_as_it_renders(self):
         info = lhtml.describe_macro('x', {'class': 'a', 'attrs': 'class="b" title="t"'})
         assert info['html'] == '<div class="a b" title="t">'
+
+
+def test_attributes_in_many_jinja_blocks_stay_linear():
+    import time
+
+    def duration(n):
+        text = 'span::{' + ' '.join(f'{{% if x %}}a{k}="1"{{% endif %}}' for k in range(n)) + '} x ::'
+        start = time.perf_counter()
+        lhtml.run(text)
+        return time.perf_counter() - start
+    small, large = duration(1000), duration(4000)
+    assert large < 8 * small + 0.02, (small, large)

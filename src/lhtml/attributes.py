@@ -184,10 +184,12 @@ class Attributes(MutableMapping):
         """The attributes of an attribute text (`title="a" alt`)."""
         text = text or ''
         attributes, position = cls(), 0
-        depths = _depths(text)
+        depths, k, depth = _depths(text), 0, 0
         for a in read(text):
             position = attributes._fragments(text, position, a.start)
-            depth = next((d for end, d in reversed(depths) if end <= a.start), 0)
+            while k < len(depths) and depths[k][0] <= a.start:     # both in order: one walk
+                depth = depths[k][1]
+                k += 1
             attributes._items.append(_Entry(a.name, a.value, text[a.start:a.end],
                                             attributes._space(text, position, a.start), depth > 0))
             position = a.end
