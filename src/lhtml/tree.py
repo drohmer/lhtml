@@ -48,7 +48,7 @@ from .patterns import (
 )
 from .process import (
     ProtectionStores, normalize_input, process_prepare, process_unprotect,
-    process_line_breaks, render_inline_code, render_code_block, _code_language,
+    line_breaks, render_inline_code, render_code_block, _code_language,
     _is_tag_boundary, _adjust_bare_tag, _context, _warn, check_is_closing_tag,
     _refuse_explicit_closing,
 )
@@ -774,10 +774,10 @@ def _node_html(node, children, context):
     return html
 
 
-def _render_tree(document, context):
-    """The HTML of the nodes, children first (no recursion: a document may
+def _render_tree(root, context):
+    """The HTML of a node, its children first (no recursion: a document may
     nest deeper than Python's recursion limit)."""
-    stack = [(document, iter(document.children), [])]
+    stack = [(root, iter(root.children), [])]
     while True:
         node, children, parts = stack[-1]
         child = next(children, None)
@@ -795,6 +795,41 @@ def _render_tree(document, context):
             stack.append((child, iter(child.children), []))
 
 
+_CHILDREN = '\ue001'               # where a tag writes its children
+
+
+def _tokens(document, context):
+    """The HTML of the nodes as tokens, in order: (html, kind), kind 'text',
+    'leaf' or 'markup' (process.line_breaks). An element writes its opening
+    and its closing around its children when its render puts them in one
+    place; otherwise its HTML is one token."""
+    out, stack = [], [(iter(document.children), None)]
+    while stack:
+        children, closing = stack[-1]
+        child = next(children, None)
+        if child is None:
+            stack.pop()
+            if closing is not None:
+                out.append((closing, 'markup'))
+        elif isinstance(child, Text):
+            out.append((child.raw, 'text'))
+        elif type(child) in _STORE:
+            out.append((f'\x00{_STORE[type(child)]}{child.index}\x00', 'leaf'))
+        else:
+            parts = None
+            if type(child) in _MARKUP:
+                parts = _MARKUP[type(child)](child)
+            elif child.children:
+                html = _node_html(child, _CHILDREN, context)
+                parts = html.split(_CHILDREN) if html.count(_CHILDREN) == 1 else None
+            if parts is None:
+                out.append((_render_tree(child, context), 'markup'))
+                continue
+            out.append((parts[0], 'markup'))
+            stack.append((iter(child.children), parts[1]))
+    return out
+
+
 def render(document, meta=None, media=None):
     """The HTML of a document tree, with the options of `run` (line-breaks,
     wrap-auto, title, css, js) and the media resolver (`media`, or
@@ -805,10 +840,11 @@ def render(document, meta=None, media=None):
         raise TypeError(f'"media" must be callable, got {type(media).__name__}')
     context = ProcessingContext(meta, media)
     stores = document.stores
-    text = _render_tree(document, context)
-    text = stores.restore(text, 'I', render_inline_code)
     if meta.get('line-breaks') is True:
-        text = process_line_breaks(text, stores)
+        text = line_breaks(_tokens(document, context), stores)
+    else:
+        text = _render_tree(document, context)
+    text = stores.restore(text, 'I', render_inline_code)
     text = process_unprotect(text, stores)
     text = stores.restore(text, 'C', render_code_block)
     if meta.get('wrap-auto') is True:

@@ -259,3 +259,22 @@ class TestStages:
     def test_an_unclosed_bracket_quotes_the_source(self):
         [(line, column, said)] = problems('= a link::u[x\n')
         assert (line, column) == (1, 5) and said.endswith("near 'link::u[x'")
+
+
+class TestLineBreaks:
+    """line-breaks, decided on the tree: a line break of the source (a Text)
+    gets a <br> when its line and the next are not structure."""
+    ON = {'line-breaks': True}
+
+    def test_a_line_break_inside_the_html_of_a_tag_gets_none(self):
+        html = lhtml.run('a\nspan::[color:red;\nfont-size:90%] b ::\nc', self.ON)
+        assert html == 'a<br>\n<span style="color:red;\nfont-size:90%"> b </span><br>\nc'
+        html = lhtml.run('a\nvideo::v.mp4\nb', self.ON)
+        assert '<br>' not in html.split('<video')[1].split('</video>')[0]
+
+    def test_a_block_element_is_structure_at_both_ends(self):
+        assert lhtml.run('a\ndiv::[x] b\nc ::\nd', self.ON) == 'a\n<div style="x"> b\nc </div>\nd'
+
+    def test_a_tag_that_writes_its_children_twice_is_one_piece(self):
+        twice = lhtml.Tag(lambda element, children, context: f'<i>{children}{children}</i>', container=True)
+        assert lhtml.run('a\nt:: b ::\nc', self.ON, tags={'t': twice}) == 'a<br>\n<i> b  b </i><br>\nc'

@@ -87,6 +87,13 @@ functions and the errors.
   end of a heading, an item or a bold, are left as text, with a warning.
   The HTML was malformed (`<li><span>...</li>...</span>`,
   `<strong><em>...</strong>...</em>`).
+- `line-breaks` is decided on the document tree: a line break of the source
+  gets a `<br>` when its line and the next are not structure, a line being
+  structure when the node at its start or its end is a block (a heading, a
+  list, a block element, a code block, block raw HTML). The line breaks a
+  tag writes in its own HTML get none: LHTML 2 wrote one into a style or an
+  attribute written on two lines (breaking it), into a link label on two
+  lines, and into the fallback text of a `video::`.
 - The CLI prints a problem as one line, `file:line:column: level: message`;
   `--wrapAuto` is `--wrap` (`-w` unchanged).
 - An unknown language of a `code::` block is reported where the block starts.
