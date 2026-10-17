@@ -1,17 +1,7 @@
 """The tags: Tag, the built-in TAGS, and the attributes of an element.
 
-A tag builds the nodes of an element from what the source wrote, the
-element dict (tag_parser.extract_bracket_elements, then the parser):
-
-    'tag'      the name written ('img'; '' for a bare ::)
-    'text'     the word glued after the groups (a URL, a variant), without
-               the final :: of `name::text::`
-    'inline'   written `name::text::`: closed at once
-    '()'       classes and id as written (.a .b #c)
-    '[]'       style as written (for link::, its label as written)
-    '{}'       HTML attributes as written
-    'label'    the nodes of the label of a link (its [...]), else None
-    'line', 'column', 'context'   where it is, what a message quotes
+A tag builds the nodes of an element from what the source wrote, a
+Written (nodes.py): its name, its groups as written, the word after them.
 """
 
 import re
@@ -93,11 +83,12 @@ def _parts(class_id, style, written):
     return head, styled, rest
 
 
-def element_attributes(element, style=True):
-    """The attributes of an element: its classes and id (.a #b), its style
-    [...] (`style=False`: a link, whose [...] is its label), then those
-    written {...}."""
-    head, styled, rest = _parts(element['()'], element['[]'] if style else '', element['{}'])
+def element_attributes(written):
+    """The attributes of a Written: its classes and id (.a #b), its style
+    [...] (not for link::, whose [...] is its label), then those written
+    {...}."""
+    style = '' if written.tag == 'link' else written.brackets
+    head, styled, rest = _parts(written.parentheses, style, written.braces)
     return head.extend(styled).extend(rest)
 
 
@@ -107,52 +98,53 @@ def element_attributes(element, style=True):
 
 @dataclass
 class Tag:
-    """A `name::` tag. `build(element)` gives its node (an Element, a Raw...)
-    or a list of nodes, from the element dict (above); a container's is one
-    Element, which holds what follows until its `::`. `container`: a bool,
-    or a function of the element; written `name::text::`, it holds nothing
-    either way. `url`: its text is a URL, kept as written (img::a__b.png)."""
+    """A `name::` tag. `build(written)` gives its node (an Element, a Raw
+    for HTML as it is...) or a list of nodes, from what the source wrote (a
+    Written); a container's is one Element, and the parser puts in it what
+    follows until its `::`. `container`: a bool, or a function of the
+    Written; written `name::text::`, it holds nothing either way. `url`:
+    its text is a URL, kept as written (img::a__b.png)."""
     build: Callable
     container: bool | Callable = False
     url: bool = False
 
-    def holds(self, element):
-        if element['inline']:
+    def holds(self, written):
+        if written.inline:
             return False
-        return self.container(element) if callable(self.container) else bool(self.container)
+        return self.container(written) if callable(self.container) else bool(self.container)
 
 
 def generic(name):
     """div::, span::: holds what follows, unless written div::text::"""
-    def build(element):
-        node = Element(name=name, attributes=element_attributes(element))
-        if element['text']:
-            node.children.append(Text(value=element['text']))
+    def build(written):
+        node = Element(name, written.attributes)
+        if written.text:
+            node.children.append(Text(written.text))
         return node
     return Tag(build, container=True)
 
 
-def _link(element):
-    attributes = element_attributes(element, style=False)
+def _link(written):
+    attributes = written.attributes
     if 'href' not in attributes:
-        attributes['href'] = element['text']
-    return Element(name='a', attributes=attributes, children=list(element['label'] or []))
+        attributes['href'] = written.text
+    return Element('a', attributes, children=list(written.label or []))
 
 
-def _img(element):
+def _img(written):
     """<img src alt>: an alt or a src written replaces the default."""
-    attributes = element_attributes(element)
+    attributes = written.attributes
     for name in ('src', 'alt'):
         if name not in attributes:
-            attributes[name] = element['text']
-    return Element(name='img', attributes=attributes, void=True)
+            attributes[name] = written.text
+    return Element('img', attributes, void=True)
 
 
 def _video(defaults):
-    def build(element):
-        head, styled, rest = _parts(element['()'], element['[]'], element['{}'])
-        given = Attributes.read(without(defaults, names(element['{}'])))
-        return Video(attributes=rest.extend(given).extend(head).extend(styled), src=element['text'])
+    def build(written):
+        head, styled, rest = _parts(written.parentheses, written.brackets, written.braces)
+        given = Attributes.read(without(defaults, names(written.braces)))
+        return Video(attributes=rest.extend(given).extend(head).extend(styled), src=written.text)
     return build
 
 
@@ -166,7 +158,7 @@ TAGS = MappingProxyType({
     'videoplay': Tag(_video('autoplay loop muted playsinline'), url=True),
 })
 
-SPACER = Tag(lambda element: Element(name='div', attributes=Attributes({'style': 'height:1em;'})))     # ::nl
+SPACER = Tag(lambda written: Element('div', {'style': 'height:1em;'}))     # ::nl
 
 
 def node_list(built):

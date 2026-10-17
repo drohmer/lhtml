@@ -210,8 +210,8 @@ class TestVerbatim:
 
 class TestPluginSystem:
     def test_custom_tag(self):
-        tags = {'alert': lhtml.Tag(lambda el: lhtml.Element(attributes=lhtml.Attributes({'class': 'alert'}),
-                                                            children=[lhtml.Text(value=el['text'])]))}
+        tags = {'alert': lhtml.Tag(lambda written: lhtml.Element('div', {'class': 'alert'},
+                                                                 children=[lhtml.Text(written.text)]))}
         r = lhtml.run('\nalert::Warning\n', tags=tags)
         assert '<div class="alert">Warning</div>' in r
         assert 'alert' not in lhtml.TAGS
@@ -421,7 +421,7 @@ class TestTagBoundaries:
 
 class TestTagNames:
     def test_plugin_name_with_digit_dash_underscore(self):
-        tags = {name: lhtml.Tag(lambda el, name=name: lhtml.Raw(text=f'<{name}/>'))
+        tags = {name: lhtml.Tag(lambda written, name=name: lhtml.Raw(f'<{name}/>'))
                 for name in ('h2', 'my-tag', 'my_tag')}
         assert lhtml.run('h2::x my-tag::y my_tag::z\n', tags=tags) == '<h2/> <my-tag/> <my_tag/>\n'
 
@@ -882,18 +882,18 @@ class TestBareTagEdgeCases:
 
 class TestPluginReadmeExample:
     def test_alert_example(self):
-        from lhtml.export_html import element_attributes
+        import dataclasses
 
-        def alert_element(element):
-            attributes = element_attributes({**element, '()': '.alert ' + element['()']})
-            return lhtml.Element(name='div', attributes=attributes, children=[lhtml.Text(value=element['text'])])
+        def alert_element(written):
+            attributes = dataclasses.replace(written, parentheses='.alert ' + written.parentheses).attributes
+            return lhtml.Element('div', attributes, children=[lhtml.Text(written.text)])
         alert = lhtml.Tag(alert_element, container=True)
         r = lhtml.run('alert::[background:yellow; padding:10px;] Warning message ::\n',
                       tags={'alert': alert})
         assert r == '<div class="alert" style="background:yellow; padding:10px;"> Warning message </div>\n'
         seen = []
-        lhtml.run('spy::(.c)[s]{a=1}w', tags={'spy': lhtml.Tag(lambda element: seen.append(element) or [])})
-        assert sorted(seen[0]) == ['()', '[]', 'column', 'context', 'inline', 'label', 'line', 'tag', 'text', '{}']
+        lhtml.run('spy::(.c)[s]{a=1}w', tags={'spy': lhtml.Tag(lambda written: seen.append(written) or [])})
+        assert seen[0] == lhtml.Written('spy', 'w', False, '.c', 's', 'a=1', None, 1, 1, 'spy::(.c)[s]{a=1}w')
 
 
 # ---------------------------------------------------------------------------

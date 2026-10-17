@@ -10,7 +10,7 @@ Usage:
     page = lhtml.wrap(html, title='My Page', css=['style.css'])
     document = lhtml.parse(text)          # the document tree: lhtml.Element, lhtml.Text... (nodes.py)
     html = lhtml.render(document)         # its HTML, from the fields of the nodes
-    tags = {'alert': lhtml.Tag(build)}    # a tag of the caller builds its nodes (docs/advanced.md)
+    tags = {'alert': lhtml.Tag(build)}    # build(written) -> nodes: a tag of the caller (docs/advanced.md)
 
 run is documented in pipeline.py.
 """
@@ -29,6 +29,7 @@ from .pipeline import run
 from .attributes import Attributes
 from .nodes import (
     Code, Document, Element, Emphasis, Heading, InlineCode, Item, List, Math, Node, Raw, Strong, Text, Video,
+    Written,
 )
 from .render import render
 from .tree import parse
@@ -45,7 +46,7 @@ __all__ = [
     '__version__', 'run', 'parse', 'render', 'wrap', 'main', 'TAGS', 'Tag', 'LEXERS',
     'describe_macro', 'load_macros', 'registry_with_macros', 'Attributes',
     'Node', 'Document', 'Text', 'Heading', 'List', 'Item', 'Strong', 'Emphasis', 'Element', 'Video',
-    'Code', 'InlineCode', 'Math', 'Raw',
+    'Code', 'InlineCode', 'Math', 'Raw', 'Written',
     # Errors
     'LHTMLError', 'LHTMLParseError',
     'LHTMLWarning', 'LHTMLMacroError',

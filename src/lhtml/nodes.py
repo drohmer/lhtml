@@ -1,13 +1,16 @@
 """The nodes of the document tree (lhtml.parse gives it, lhtml.render
 writes its HTML from these fields alone: change a node, the HTML changes).
 
-Every node has its `span`, the offsets of its source in the text given to
-parse, `line` and `column` (1-based) of its start, and its `children`. A
-node made by the caller, or by a tag, may have no place (line None).
+Every node has its `children`, and its place in the text given to parse:
+`span`, the offsets of its source, `line` and `column` (1-based) of its
+start. They are keyword arguments, so a node is made as it reads:
+Text('Hello'), Element('div', {'class': 'note'}, children=[...]). A node
+made by the caller, or by a tag, may have no place (line None).
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 
 from .attributes import Attributes
@@ -15,14 +18,19 @@ from .attributes import Attributes
 
 @dataclass(eq=False, repr=False)
 class Node:
-    span: tuple = (0, 0)            # offsets in the text given to parse (end excluded)
-    line: int | None = None         # 1-based, of span[0]
-    column: int | None = None
-    children: list = field(default_factory=list)
+    children: list = field(default_factory=list, kw_only=True)
+    span: tuple = field(default=(0, 0), kw_only=True)       # offsets in the text given to parse (end excluded)
+    line: int | None = field(default=None, kw_only=True)    # 1-based, of span[0]
+    column: int | None = field(default=None, kw_only=True)
 
     @property
     def kind(self):
         return type(self).__name__
+
+    def __post_init__(self):
+        if isinstance(getattr(self, 'attributes', None), Mapping) \
+                and not isinstance(self.attributes, Attributes):
+            self.attributes = Attributes(self.attributes)    # a dict of the caller
 
     def __repr__(self):
         """Its fields, and the number of its children (not them: a tree may
@@ -39,6 +47,40 @@ class Node:
             node = stack.pop()
             yield node
             stack.extend(reversed(node.children))
+
+
+@dataclass(frozen=True)
+class Written:
+    """What the source wrote for a `name::` tag: what its Tag builds from.
+
+    tag          the name written ('img', a macro; '' for a bare ::)
+    text         the word glued after the groups (a URL, a variant), without
+                 the final :: of `name::text::`
+    inline       written `name::text::`: closed at once
+    parentheses  classes and id as written (.a .b #c)
+    brackets     style as written (for link::, its label)
+    braces       HTML attributes as written
+    label        the nodes of the label of a link (its [...]), else None
+    line, column where it is; context: what a message quotes
+
+    `attributes`: the HTML attributes it writes, a new Attributes - its
+    classes and id, its style (not for a link: its [...] is its label),
+    then its {...}."""
+    tag: str = ''
+    text: str = ''
+    inline: bool = False
+    parentheses: str = ''
+    brackets: str = ''
+    braces: str = ''
+    label: list | None = None
+    line: int | None = None
+    column: int | None = None
+    context: str = ''
+
+    @property
+    def attributes(self):
+        from .export_html import element_attributes
+        return element_attributes(self)
 
 
 @dataclass(eq=False, repr=False)
@@ -84,20 +126,15 @@ class Element(Node):
     """An HTML element: <name attributes>children</name>.
 
     `void`: an element without content nor closing tag (<img>, <hr>).
-    `closed`: how the source ends it - 'tag' (its ::), 'inline'
-    (div::text::), 'void' (it holds nothing), 'container' (the end of the
-    heading, item, bold or italic it is opened in), 'never' (not closed:
-    no closing tag is written). `tag`: the LHTML tag written (`img`, a
-    macro, '' for a bare ::); `written`: its groups and the word after them
-    as written in the source ('()', '[]', '{}', 'text'). Both are
-    information on the source: render reads name, attributes, void, closed,
-    children (and the src of a Video)."""
-    name: str = 'div'
+    `end_tag`: False when its closing tag is not written (the source never
+    closes it). `written`: what the source wrote, the Written its tag was
+    given (None for an element of the caller): information on the source,
+    render does not read it."""
+    name: str
     attributes: Attributes = field(default_factory=Attributes)
     void: bool = False
-    closed: str = 'tag'
-    tag: str = ''
-    written: dict = field(default_factory=dict)
+    end_tag: bool = True
+    written: Written | None = field(default=None, kw_only=True)
 
 
 @dataclass(eq=False, repr=False)
@@ -110,8 +147,8 @@ class Video(Element):
 
 @dataclass(eq=False, repr=False)
 class Code(Node):
-    language: str = ''
     body: str = ''
+    language: str = ''
 
 
 @dataclass(eq=False, repr=False)

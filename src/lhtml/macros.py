@@ -40,7 +40,7 @@ from .errors import LHTMLMacroError
 from . import attributes
 from .attributes import quoted
 from .export_html import TAGS, Tag, _class_and_id, _words, element_attributes, join_styles
-from .nodes import Element, Text
+from .nodes import Element, Text, Written
 from .process import _warn
 
 
@@ -114,16 +114,16 @@ def macro_tag(name, spec):
     variant = spec.get('variant')
     default = spec.get('default')
 
-    def build(element):
-        word = element['text']
+    def build(written):
+        word = written.text
         all_classes = list(classes)
         if variant:
             value = word.strip() or (str(default) if default is not None else '')
             if value:
                 if value not in [str(v) for v in variant]:
                     _warn(f'{name}::{value}: unknown variant (expected one of '
-                          f'{", ".join(str(v) for v in variant)}) near {element.get("context", "")!r}',
-                          element, stacklevel=5)
+                          f'{", ".join(str(v) for v in variant)}) near {written.context!r}',
+                          written, stacklevel=5)
                 all_classes.append(f'{classes[0]}-{value}')
             word = ''
         url_attribute = ''
@@ -133,21 +133,21 @@ def macro_tag(name, spec):
                 url_attribute = f'{url}="{quoted(value)}"'
             word = ''
         # the macro, then its url, then the page: a later one replaces an attribute
-        defaults, url_attribute, written = attributes.layered(attrs, url_attribute, element['{}'])
+        defaults, url_attribute, given = attributes.layered(attrs, url_attribute, written.braces)
         # the classes and the style of the macro's attrs come before those of the page;
         # an id of the page (#id) replaces the macro's
         written_by_macro = attributes.Attributes.read(defaults)
         macro_classes = [w for v in written_by_macro.values_of('class') if v for w in _words(v)]
         macro_styles = [v for v in written_by_macro.values_of('style') if v]
-        removed = ({'class', 'style'} & set(written_by_macro)) | ({'id'} if _class_and_id(element['()'])[1] else set())
+        removed = ({'class', 'style'} & set(written_by_macro)) | ({'id'} if _class_and_id(written.parentheses)[1] else set())
         defaults = attributes.without(defaults, removed)
-        node = Element(name=tag, void=void, attributes=element_attributes({
-            '()': ' '.join(['.' + c for c in all_classes + macro_classes] + ([element['()']] if element['()'] else [])),
-            '[]': join_styles(*macro_styles, element['[]']), '{}': attributes.join(url_attribute, defaults, written)}))
+        node = Element(tag, element_attributes(Written(
+            parentheses=' '.join(['.' + c for c in all_classes + macro_classes] + ([written.parentheses] if written.parentheses else [])),
+            brackets=join_styles(*macro_styles, written.brackets), braces=attributes.join(url_attribute, defaults, given))), void=void)
         if void:                        # the word after it is text
-            return [node] + ([Text(value=word)] if word else [])
+            return [node] + ([Text(word)] if word else [])
         if word:
-            node.children.append(Text(value=word))
+            node.children.append(Text(word))
         return node
 
     return Tag(build, container=not void and not empty, url=bool(url))

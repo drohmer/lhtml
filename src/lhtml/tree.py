@@ -47,7 +47,7 @@ from .errors import LHTMLError, LHTMLParseError
 from .export_html import SPACER, TAGS, Tag, class_and_id, node_list
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
 from .nodes import (
-    Code, Document, Element, Emphasis, Heading, InlineCode, Item, List, Math, Node, Raw, Strong, Text,
+    Code, Document, Element, Emphasis, Heading, InlineCode, Item, List, Math, Node, Raw, Strong, Text, Written,
 )
 from .patterns import (
     BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
@@ -473,7 +473,10 @@ class _Parser:
     def _open(self, element, tag, name, container):
         """The nodes the tag builds: ('open', its element) when it holds
         what follows, else ('leaf', [nodes])."""
-        given = {k: v for k, v in element.items() if k not in _INTERNAL}
+        given = Written(tag=element['tag'], text=element['text'], inline=element['inline'],
+                        parentheses=element['()'], brackets=element['[]'], braces=element['{}'],
+                        label=element['label'], line=element['line'], column=element['column'],
+                        context=element['context'])
         try:
             holds = tag.holds(given)
         except LHTMLError:
@@ -488,11 +491,9 @@ class _Parser:
             raise _tag_error(f'{name}::', 'build', e, element) from e
         if holds and (len(built) != 1 or not isinstance(built[0], Element)):
             raise _tag_error(f'{name}::', 'build', TypeError('a container builds one Element'), element)
-        written = {k: element[k] for k in ('()', '[]', '{}', 'text')}
-        closed = 'tag' if holds else 'inline' if element['inline'] else 'void'
         for node in built:
             if isinstance(node, Element):
-                node.tag, node.closed, node.written = name, closed, written
+                node.written = given
         if holds:
             self.parsed[built[0]] = (element, container)
             self.open.append(built[0])
@@ -552,18 +553,18 @@ class _Parser:
                         k -= 1
                     if isinstance(stack[k], Item):
                         while len(stack) > k + 1:
-                            stack.pop().closed = 'container'
+                            stack.pop()
                 stack[-1].children.append(node)
                 stack.append(node)
             elif what == 'leaf':
                 stack[-1].children.extend(node if isinstance(node, list) else [node])
             else:                       # the elements still open in it end with it (warned)
                 while stack[-1] is not node:
-                    stack.pop().closed = 'container'
+                    stack.pop()
                 stack.pop()
         flush()
         for node in stack[1:]:          # elements never closed: no closing tag
-            node.closed = 'never'
+            node.end_tag = False
         self._spans(document)
         return document
 
@@ -678,11 +679,8 @@ class _Parser:
 _KINDS = {Heading: 'heading', List: 'list', Item: 'list item', Strong: 'bold', Emphasis: 'italic'}
 
 
-_INTERNAL = ('groups', 'index_start', 'index_end', 'stray')     # not given to a tag
-
-
 def _label(node):
-    return f'{node.tag}::'
+    return f'{node.written.tag}::'
 
 
 def _tag_error(label, what, error, element):

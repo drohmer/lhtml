@@ -48,9 +48,9 @@ class TestShape:
     def test_an_element_keeps_its_groups_and_value_and_a_code_block_its_language(self):
         document = lhtml.parse('img::a.png(.wide)[width:3px]\ncode::[python]\nx = 1\ncode::[-]\n')
         image = next(n for n in document.walk() if n.kind == 'Element')
-        assert (image.name, image.tag, image.closed, image.void) == ('img', 'img', 'void', True)
+        assert (image.name, image.written.tag, image.void, image.end_tag) == ('img', 'img', True, True)
         assert dict(image.attributes) == {'class': 'wide', 'style': 'width:3px', 'src': 'a.png', 'alt': 'a.png'}
-        assert (image.written['text'], image.written['()'], image.written['[]']) == ('a.png', '.wide', 'width:3px')
+        assert (image.written.text, image.written.parentheses, image.written.brackets) == ('a.png', '.wide', 'width:3px')
         code = next(n for n in document.walk() if n.kind == 'Code')
         assert (code.language, code.body) == ('python', '\nx = 1\n')
 
@@ -156,7 +156,7 @@ class TestPlaces:
         document, _ = quiet(lhtml.parse, '**a div:: b** c :: d')
         strong = next(n for n in document.walk() if n.kind == 'Strong')
         element = next(n for n in document.walk() if n.kind == 'Element')
-        assert (strong.span, element.span, element.closed) == ((0, 13), (4, 11), 'container')
+        assert (strong.span, element.span, element.end_tag) == ((0, 13), (4, 11), True)
 
     def test_spans_are_offsets_in_the_text_given(self):
         text = '\ufeffa\r\n**b**\r\n'
@@ -193,13 +193,12 @@ class TestDepth:
 class TestTags:
 
     def test_a_tag_declares_whether_it_holds_what_follows(self):
-        alert = lhtml.Tag(lambda element: lhtml.Element(attributes=lhtml.Attributes({'class': 'alert'})),
-                          container=True)
+        alert = lhtml.Tag(lambda written: lhtml.Element('div', {'class': 'alert'}), container=True)
         html, _ = quiet(lhtml.run, 'alert:: warning **here** ::\n', tags={'alert': alert})
         assert html == '<div class="alert"> warning <strong>here</strong> </div>\n'
-        badge = lhtml.Tag(lambda element: lhtml.Element(name='b', children=[lhtml.Text(value=element['text'])]))
+        badge = lhtml.Tag(lambda written: lhtml.Element('b', children=[lhtml.Text(written.text)]))
         assert quiet(lhtml.run, 'badge::new and more\n', tags={'badge': badge})[0] == '<b>new</b> and more\n'
-        raw = lhtml.Tag(lambda element: lhtml.Raw(text='<hr class="x">'))
+        raw = lhtml.Tag(lambda written: lhtml.Raw('<hr class="x">'))
         assert lhtml.run('a raw:: b', tags={'raw': raw}) == 'a <hr class="x"> b'
 
     def test_a_macro_is_a_tag_and_warns_where_it_is(self):
@@ -213,33 +212,32 @@ class TestTags:
         assert [n.kind for n in document.walk()] == ['Document', 'Text', 'Raw', 'Text']
 
     def test_the_anonymous_div_is_the_div_of_the_run(self):
-        div = lhtml.Tag(lambda element: lhtml.Element(name='section'), container=True)
+        div = lhtml.Tag(lambda written: lhtml.Element('section'), container=True)
         assert quiet(lhtml.run, '::(.a) x ::', tags={'div': div})[0] == '<section> x </section>'
         assert quiet(lhtml.run, '::(.a) x ::')[0] == '<div class="a"> x </div>'
 
     def test_the_built_in_tags_are_read_only(self):
         with pytest.raises(TypeError):
-            lhtml.TAGS['foo'] = lhtml.Tag(lambda element: lhtml.Text(value='FOO'))
+            lhtml.TAGS['foo'] = lhtml.Tag(lambda written: lhtml.Text('FOO'))
 
     def test_an_inline_form_holds_nothing_even_in_a_container(self):
-        cont = lhtml.Tag(lambda element: lhtml.Element(name='c', children=[lhtml.Text(value=element['text'])]),
-                         container=True)
+        cont = lhtml.Tag(lambda written: lhtml.Element('c', children=[lhtml.Text(written.text)]), container=True)
         assert quiet(lhtml.run, 'cont::x:: y', tags={'cont': cont})[0] == '<c>x</c> y'
 
     def test_a_tag_that_fails_names_itself_and_its_place(self):
-        def fails(element):
+        def fails(written):
             return 1 / 0
         with pytest.raises(lhtml.LHTMLError) as error:
             quiet(lhtml.run, 'a\nbad:: x ::', tags={'bad': lhtml.Tag(fails, container=True)})
         assert (error.value.line, error.value.column) == (2, 1) and 'bad::' in str(error.value)
         assert isinstance(error.value.__cause__, ZeroDivisionError)
         with pytest.raises(lhtml.LHTMLError, match='got NoneType'):
-            quiet(lhtml.run, 'none::', tags={'none': lhtml.Tag(lambda element: None)})
+            quiet(lhtml.run, 'none::', tags={'none': lhtml.Tag(lambda written: None)})
         with pytest.raises(lhtml.LHTMLError, match='a container builds one Element'):
-            quiet(lhtml.run, 'two:: x ::', tags={'two': lhtml.Tag(lambda element: [lhtml.Text(), lhtml.Text()],
+            quiet(lhtml.run, 'two:: x ::', tags={'two': lhtml.Tag(lambda written: [lhtml.Text(), lhtml.Text()],
                                                                   container=True)})
         with pytest.raises(lhtml.LHTMLError, match='container raised'):
-            quiet(lhtml.run, 'bad:: x', tags={'bad': lhtml.Tag(str, container=lambda element: 1 / 0)})
+            quiet(lhtml.run, 'bad:: x', tags={'bad': lhtml.Tag(str, container=lambda written: 1 / 0)})
 
     def test_the_tags_given_are_checked(self):
         with pytest.raises(TypeError, match='lhtml.Tag'):
@@ -255,7 +253,7 @@ class TestTags:
             lhtml.render(lhtml.parse('x'), media='x')
 
     def test_a_warning_names_the_tag_written(self):
-        cont = lhtml.Tag(lambda element: lhtml.Element(), container=True)
+        cont = lhtml.Tag(lambda written: lhtml.Element('div'), container=True)
         [(_, _, said)] = problems('a\ncont:: x\n', tags={'cont': cont})
         assert said.startswith('cont:: is never closed')
 
@@ -291,7 +289,7 @@ class TestLineBreaks:
         assert lhtml.run('a\ndiv::[x] b\nc ::\nd', **self.ON) == 'a\n<div style="x"> b\nc </div>\nd'
 
     def test_the_children_of_a_tag_of_the_caller_get_their_line_breaks(self):
-        box = lhtml.Tag(lambda element: lhtml.Element(name='b'), container=True)
+        box = lhtml.Tag(lambda written: lhtml.Element('b'), container=True)
         assert lhtml.run('x\nbox:: a\nb ::\ny', **self.ON, tags={'box': box}) == 'x<br>\n<b> a<br>\nb </b><br>\ny'
 
 class TestMarksOfTheCaller:
@@ -313,8 +311,9 @@ class TestWritten:
     def test_the_groups_and_value_of_an_element_are_as_written(self):
         document = lhtml.parse('div::[top:{{ top }}px](.c){title="\\(x\\)"} a ::\nimg::{{ base }}/a.png\n')
         div, img = [n for n in document.walk() if n.kind == 'Element']
-        assert div.written == {'[]': 'top:{{ top }}px', '()': '.c', '{}': 'title="\\(x\\)"', 'text': ''}
-        assert img.written['text'] == img.attributes['src'] == '{{ base }}/a.png'
+        assert (div.written.brackets, div.written.parentheses, div.written.braces, div.written.text) == \
+            ('top:{{ top }}px', '.c', 'title="\\(x\\)"', '')
+        assert img.written.text == img.attributes['src'] == '{{ base }}/a.png'
         assert lhtml.render(document).startswith('<div class="c" style="top:{{ top }}px" title="\\(x\\)">')
 
 
@@ -333,7 +332,7 @@ class TestAuthoritativeTree:
         document = lhtml.parse('link::page.html[Un **lien**]')
         link = next(n for n in document.walk() if n.kind == 'Element')
         assert [n.kind for n in link.walk()] == ['Element', 'Text', 'Strong', 'Text']
-        assert (link.name, link.attributes['href'], link.written['[]']) == ('a', 'page.html', 'Un **lien**')
+        assert (link.name, link.attributes['href'], link.written.brackets) == ('a', 'page.html', 'Un **lien**')
         assert [(n.line, n.column) for n in link.children] == [(1, 17), (1, 20)]
         link.children[0].value = 'A '
         assert lhtml.render(document) == '<a href="page.html">A <strong>lien</strong></a>'
@@ -348,7 +347,7 @@ class TestAuthoritativeTree:
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'class': 'demo', 'empty': True}}
         document = lhtml.parse('demo::a.html', macros=macros)
         demo = next(n for n in document.walk() if n.kind == 'Element')
-        assert (demo.name, demo.tag, dict(demo.attributes)) == ('iframe', 'demo', {'class': 'demo', 'src': 'a.html'})
+        assert (demo.name, demo.written.tag, dict(demo.attributes)) == ('iframe', 'demo', {'class': 'demo', 'src': 'a.html'})
 
     def test_no_placeholder_in_the_tree(self):
         document = lhtml.parse('span::[c:{{ x }}](.{{ k }}) `i` \\(m\\) <b>r</b> link::{{ u }}[l `c`] ::\n')
@@ -372,7 +371,7 @@ class TestReviewSurprises:
         html = lhtml.run('demo::my__demo__.html and **b**', macros=macros)
         assert 'src="my__demo__.html"' in html and '<em>' not in html and '<strong>b</strong>' in html
         assert 'style="width:3px"' in lhtml.run('demo::a.html#x[width:3px]', macros=macros)
-        url = lhtml.Tag(lambda element: lhtml.Raw(text=f'<a href="{element["text"]}">'), url=True)
+        url = lhtml.Tag(lambda written: lhtml.Raw(f'<a href="{written.text}">'), url=True)
         assert lhtml.run('u::a__b__c', tags={'u': url}) == '<a href="a__b__c">'
 
     def test_a_quoted_attribute_value_holds_its_brackets(self):
@@ -414,7 +413,7 @@ class TestReviewSurprises:
         assert lhtml.run("span::{title=it's}x :: and it's") == "<span title=it's>x </span> and it's"
 
     def test_the_url_tags_are_those_of_the_run(self):
-        plain = lhtml.Tag(lambda element: lhtml.Element(name='i', children=[lhtml.Text(value=element['text'])]))
+        plain = lhtml.Tag(lambda written: lhtml.Element('i', children=[lhtml.Text(written.text)]))
         assert '<em>' in lhtml.run('img::a__b__.png', tags={'img': plain})      # an img of the caller: no URL
         assert '<em>' in lhtml.run('img::a__b__.png', tags={n: plain for n in ('img', 'link', 'video', 'videoplay')})
         assert '<em>' not in lhtml.run('img::a__b__.png')
@@ -515,7 +514,7 @@ class TestReviewSurprises:
         assert quiet(lhtml.run, 'div::\n* a\n** b\n::\n')[0].endswith('</ul>\n</div>\n')   # an element around the list holds it
         document, _ = quiet(lhtml.parse, '* a span:: x\n** b\n')
         span = next(n for n in document.walk() if n.kind == 'Element')
-        assert span.closed == 'container' and span.span[1] <= len('* a span:: x\n')
+        assert span.end_tag and span.span[1] <= len('* a span:: x\n')
 
 
 class TestSecondReview:
@@ -547,7 +546,7 @@ class TestSecondReview:
         assert lhtml.run('::()::') == '<div></div>'
 
     def test_a_text_a_tag_builds_is_its_own(self):
-        box = lhtml.Tag(lambda element: lhtml.Element(children=[lhtml.Text(value='head:')]), container=True)
+        box = lhtml.Tag(lambda written: lhtml.Element('div', children=[lhtml.Text('head:')]), container=True)
         element = next(n for n in lhtml.parse('box:: x ::', tags={'box': box}).walk() if n.kind == 'Element')
         assert [c.value for c in element.children] == ['head:', ' x ']
 
@@ -597,14 +596,61 @@ class TestLineBreaksOnTheNodes:
     """The line breaks read the nodes: an element by its name, a raw zone as written."""
 
     def test_an_element_built_as_pre_keeps_its_lines(self):
-        pre = lhtml.Tag(lambda element: lhtml.Element(name='pre'), container=True)
+        pre = lhtml.Tag(lambda written: lhtml.Element('pre'), container=True)
         assert lhtml.run('a\np:: x\ny ::\nb', line_breaks=True, tags={'p': pre}) == 'a\n<pre> x\ny </pre>\nb'
 
     def test_a_block_element_by_its_name(self):
-        section = lhtml.Tag(lambda element: lhtml.Element(name='section'), container=True)
+        section = lhtml.Tag(lambda written: lhtml.Element('section'), container=True)
         assert lhtml.run('a\ns:: x ::\nb', line_breaks=True, tags={'s': section}) == 'a\n<section> x </section>\nb'
-        aside = lhtml.Tag(lambda element: lhtml.Element(name='q'), container=True)
+        aside = lhtml.Tag(lambda written: lhtml.Element('q'), container=True)
         assert lhtml.run('a\ns:: x ::\nb', line_breaks=True, tags={'s': aside}) == 'a<br>\n<q> x </q><br>\nb'
 
     def test_a_zone_is_one_piece(self):
         assert lhtml.run('a\n<div>\nx\n</div>\nb', line_breaks=True) == 'a\n<div>\nx\n</div>\nb'
+
+
+class TestPublicModel:
+    """The nodes are made as they read; render reads the HTML fields of the
+    nodes, never what the source wrote."""
+
+    def test_a_node_is_made_as_it_reads(self):
+        assert lhtml.Text('Bonjour').value == 'Bonjour'
+        note = lhtml.Element('div', {'class': 'note'}, children=[lhtml.Strong(children=[lhtml.Text('!')])])
+        assert isinstance(note.attributes, lhtml.Attributes)
+        assert lhtml.render(note) == '<div class="note"><strong>!</strong></div>'
+        assert lhtml.render(lhtml.Code('x = 1\n', 'python')).startswith('<div class="code"><pre>')
+        assert lhtml.render(lhtml.Raw('<hr>')) == '<hr>'
+        with pytest.raises(TypeError):
+            lhtml.Text('a', (0, 1))     # a place is a keyword
+
+    def test_what_the_source_wrote_does_not_change_the_html(self):
+        import dataclasses
+        document = lhtml.parse('span::x:: link::u[l]')
+        before = lhtml.render(document)
+        for node in document.walk():
+            if isinstance(node, lhtml.Element):
+                node.written = dataclasses.replace(node.written, tag='other', inline=False)
+        assert lhtml.render(document) == before
+
+    def test_an_element_never_closed_writes_no_closing_tag(self):
+        document, _ = quiet(lhtml.parse, 'div:: a')
+        div = next(n for n in document.walk() if n.kind == 'Element')
+        assert not div.end_tag and lhtml.render(document) == '<div> a'
+        div.end_tag = True
+        assert lhtml.render(document) == '<div> a</div>'
+
+    @pytest.mark.parametrize('name', ['span', 'a', 'div'])
+    @pytest.mark.parametrize('line_breaks', [False, True])
+    def test_a_deep_tree_needs_no_recursion(self, name, line_breaks):
+        root = inner = lhtml.Element(name)
+        for k in range(5000):
+            child = lhtml.Element(name if k % 3 else 'span')
+            inner.children.append(child)
+            inner = child
+        inner.children.append(lhtml.Text('x\ny'))
+        html = lhtml.render(lhtml.Document(children=[root]), line_breaks=line_breaks)
+        assert html.count(f'</{name}>') >= 3333 and 'x' in html
+
+    def test_a_label_keeps_its_line_breaks_at_any_depth(self):
+        assert lhtml.run('link::u[a **b**\nc]', line_breaks=True) == '<a href="u">a <strong>b</strong>\nc</a>'
+        assert lhtml.run('x\nspan:: a\nb ::\ny', line_breaks=True) == 'x<br>\n<span> a<br>\nb </span><br>\ny'

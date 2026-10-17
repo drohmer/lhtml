@@ -1,6 +1,7 @@
 """The HTML of a document tree, from the fields of its nodes alone
 (nodes.py): render(document, line_breaks=False, media=None)."""
 
+from dataclasses import dataclass
 from html import escape
 import re
 
@@ -61,8 +62,7 @@ def _around(node):
     if isinstance(node, Emphasis):
         return '<em>', '</em>'
     if isinstance(node, Element):
-        return (f'<{node.name}{node.attributes.html()}>',
-                '' if node.closed == 'never' else f'</{node.name}>')
+        return f'<{node.name}{node.attributes.html()}>', f'</{node.name}>' if node.end_tag else ''
     return '', ''                       # the document, a node of the caller
 
 
@@ -94,45 +94,68 @@ def _preformatted(node, closing=False):
     return 0
 
 
-def _tokens(root, media):
-    """The pieces of the HTML of a tree, in order: (html, kind, block,
-    preformatted, whole). `whole`: an element with its children and its
-    closing tag (it ends where its HTML ends). kind 'text' (a Text: its line breaks are those of the
-    source), 'zone' (a code block, raw HTML, mathematics, inline code: one
-    piece, its lines its own) or 'markup' (what a node writes around its
-    children, or an element written without them; one that holds nothing
-    of what follows, a link and its label, is one piece). No recursion: a
-    document may nest deeper than Python's recursion limit."""
-    out, stack = [], [(iter([root]), None)]
+@dataclass(slots=True)
+class _Piece:
+    """A piece of the HTML. `kind`: 'text' (of a Text: its line breaks are
+    those of the source), 'zone' (a code block, raw HTML, mathematics,
+    inline code: its lines are its own) or 'markup' (what a node writes
+    around its children, or an element written without them). `block`: a
+    block starts or ends here; `preformatted`: +1 where a <pre> opens, -1
+    where it closes; `whole`: an element with its content (it ends where
+    its HTML ends)."""
+    html: str
+    kind: str
+    block: bool = False
+    preformatted: int = 0
+    whole: bool = False
+
+
+def _link(node):
+    return isinstance(node, Element) and node.name.lower() == 'a'
+
+
+def _pieces(root, media):
+    """The pieces of the HTML of a tree, in order, in one walk with its own
+    stack (no recursion: a document may nest deeper than Python's
+    recursion limit). Each node is opened, its children visited, then it is
+    closed. In a link (<a>) every piece is markup: its label is one label,
+    its line breaks are not made visible."""
+    out, stack, links = [], [(iter([root]), None, False)], 0
     while stack:
-        children, closing = stack[-1]
+        children, closing, link = stack[-1]
         node = next(children, None)
         if node is None:
             stack.pop()
-            if closing:
+            links -= link
+            if closing is not None:
                 out.append(closing)
-        elif isinstance(node, Text):
-            out.append((node.value, 'text', False, 0, False))
+            continue
+        if links:                       # in a label: markup only
+            if isinstance(node, Text):
+                out.append(_Piece(node.value, 'markup'))
+            elif isinstance(node, _ZONES):
+                out.append(_Piece(_zone(node), 'markup'))
+            elif (html := _leaf(node, media)) is not None:
+                out.append(_Piece(html, 'markup'))
+            else:
+                opening, ending = _around(node)
+                out.append(_Piece(opening, 'markup'))
+                stack.append((iter(node.children), _Piece(ending, 'markup'), False))
+            continue
+        if isinstance(node, Text):
+            out.append(_Piece(node.value, 'text'))
         elif isinstance(node, _ZONES):
-            out.append((_zone(node), 'zone', _is_block(node), _preformatted(node), True))
+            out.append(_Piece(_zone(node), 'zone', _is_block(node), _preformatted(node), True))
         elif (html := _leaf(node, media)) is not None:
-            out.append((html, 'markup', _is_block(node), 0, True))
-        elif isinstance(node, Element) and node.closed in ('void', 'inline') and node.children:
-            out.append((_html(node, media), 'markup', _is_block(node), 0, True))
+            out.append(_Piece(html, 'markup', _is_block(node), 0, True))
         else:
-            opening, closing = _around(node)
-            block = _is_block(node)
-            if opening:
-                out.append((opening, 'markup', block, _preformatted(node), False))
-            stack.append((iter(node.children), (closing, 'markup', block, _preformatted(node, True), False)
-                          if closing else None))
+            opening, ending = _around(node)
+            block, link = _is_block(node), _link(node)
+            out.append(_Piece(opening, 'markup', block, _preformatted(node), False))
+            stack.append((iter(node.children),
+                          _Piece(ending, 'markup', block, _preformatted(node, True), False), link))
+            links += link
     return out
-
-
-def _html(node, media):
-    """The HTML of an element and its children, one piece."""
-    opening, closing = _around(node)
-    return opening + ''.join(html for child in node.children for html, *_ in _tokens(child, media)) + closing
 
 
 def _with_line_breaks(tokens):
@@ -148,16 +171,17 @@ def _with_line_breaks(tokens):
     HTML (video::) get none, and a zone is one piece (its lines are its own).
     """
     lines, ends, changes = [[]], [], [0]
-    for html, kind, block, preformatted, whole in tokens:
-        changes[-1] += preformatted
-        pieces = [html] if kind == 'zone' else html.split('\n')
+    for token in tokens:
+        changes[-1] += token.preformatted
+        pieces = [token.html] if token.kind == 'zone' else token.html.split('\n')
         last = max((k for k, piece in enumerate(pieces) if piece), default=0)
         # a block starts on its first line, and ends on its last one when it is
         # whole or on one line (an opening tag on two lines ends nowhere)
-        ends_here = whole or sum(1 for piece in pieces if piece) == 1
+        ends_here = token.whole or sum(1 for piece in pieces if piece) == 1
+        block = token.block
         for k, piece in enumerate(pieces):
             if k:
-                ends.append(kind)
+                ends.append(token.kind)
                 lines.append([])
                 changes.append(0)
             if piece:                   # a tag on several lines (a style on two lines) is a block
@@ -196,7 +220,7 @@ def render(document, *, line_breaks=False, media=None):
     as written)."""
     if media is not None and not callable(media):
         raise TypeError(f'"media" must be callable, got {type(media).__name__}')
-    tokens = _tokens(document, media)
+    pieces = _pieces(document, media)
     if not line_breaks:
-        return ''.join(html for html, *_ in tokens)
-    return _with_line_breaks(tokens)
+        return ''.join(piece.html for piece in pieces)
+    return _with_line_breaks(pieces)

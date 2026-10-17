@@ -66,9 +66,11 @@ def position(before):
 
 
 def _warn(message, place, stacklevel=3):
-    """A warning at `place`: (line, column), or an element with them."""
+    """A warning at `place`: (line, column), or an element (or Written) with them."""
     if isinstance(place, dict):
         place = place.get('line'), place.get('column')
+    elif hasattr(place, 'line'):
+        place = place.line, place.column
     warnings.warn(LHTMLWarning(message, *(place or (None, None))), stacklevel=stacklevel)
 
 
