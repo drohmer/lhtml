@@ -79,6 +79,7 @@ lhtml input.l.html -b                 # Render source line breaks as <br> (--lin
 lhtml input.l.html -m macros.yaml     # Declare macros, custom :: tags (--macros)
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
+lhtml a.l.html b.l.html -o build/ -v  # ... naming each file written (-q: no summary)
 python -m lhtml input.l.html          # Alternative invocation
 lhtml --version                       # Show the version (also lhtml.__version__)
 ```
@@ -88,12 +89,25 @@ written next to their source (`page.l.html` to `page.html`). With `-o`, one
 input is written to that file, several into that directory; two inputs that
 would be written to the same file are refused before anything is written.
 
+- stdout holds the HTML only, stderr every message: `lhtml page.l.html > page.html` writes a clean file.
+- The destinations are checked before any file is written: an input missing, two inputs written to one file (or to names that differ by case only), an output that is an input (or a symbolic or hard link to one), an output under a file: an error each, and nothing is written.
+- Then each file is converted and written; one that fails does not stop the others. Writing files ends with a summary (`2 converted · 1 warning`).
+- Exit status: 0; 1 when a file is not converted or not written; 2 for a wrong use of the command.
 - Files are read and written as UTF-8 (a BOM is accepted).
-- Errors and warnings are reported on stderr with the file name. The remaining files are still processed, and the exit code is non-zero if any file failed.
-- An input file is never overwritten: `lhtml page.html` (output `page.html`) is an error, as is an output that is another input of the batch, or a symbolic or hard link to one.
-- LHTML reads no file but its input and the macro files given with `--macros`, and no front matter: its options come from its caller (the command line, or the `meta` of `lhtml.run()`).
+- LHTML reads no file but its input and the macro files given with `--macros`, and no front matter: its options come from the command line, or from the caller of `lhtml.run()`.
 
-With `-w`, the result is wrapped in a minimal HTML document using the `title`, `css` and `js` of the meta (from the command line, the defaults: title `Webpage`, no CSS or JS):
+A problem is one line, `file:line:column: level: message`, which editors and
+terminals recognize. In a terminal, the line of the source follows, the
+place underlined, and the level is colored (never only colored: it is
+written; `NO_COLOR` turns colors off, `FORCE_COLOR` on):
+
+```
+page.l.html:3:1: warning: div:: is never closed (near 'div::(.note)')
+  3 │ div::(.note)
+    │ ^^^^^^^^^^^^
+```
+
+With `-w`, the result is wrapped in a minimal HTML document (`lhtml.wrap`; title `Webpage`, no CSS or JS from the command line):
 
 ```html
 <!DOCTYPE html>
@@ -124,13 +138,11 @@ import lhtml
 
 html = lhtml.run('= Hello World\nSome **bold** text.\n')
 
-html = lhtml.run(text, {
-    'wrap-auto': True,
-    'title': 'My Page',
-    'css': ['style.css'],
-    'js': ['script.js'],
-    'macros': {'box': {'class': 'box'}},      # custom :: tags, see Macros below
-})
+html = lhtml.run(text,
+                 macros={'box': {'class': 'box'}},    # custom :: tags, see Macros below
+                 line_breaks=True)                    # source line breaks as <br>
+
+page = lhtml.wrap(html, title='My Page', css=['style.css'], js=['script.js'])
 ```
 
 That is the whole API of a page. Custom tags written in Python, the macro
@@ -348,7 +360,7 @@ videoplay::assets/clip.mp4[width:600px;]
 def media(src):
     return [(f'variants/{src}.webm', 'video/webm'), (src, 'video/mp4')]
 
-html = lhtml.run(text, {'media': media})
+html = lhtml.run(text, media=media)
 ```
 
 An empty list keeps the source as written.
@@ -401,7 +413,7 @@ is text.
 
 ### Line breaks
 
-By default, line breaks of the source have no visual effect (as in HTML). With the option `-b` / `--line-breaks` (or `{'line-breaks': True}` in the `meta` passed to `lhtml.run()`), each line break of the text is rendered with `<br>`, blank lines included:
+By default, line breaks of the source have no visual effect (as in HTML). With the option `-b` / `--line-breaks` (or `lhtml.run(text, line_breaks=True)`), each line break of the text is rendered with `<br>`, blank lines included:
 
 ```
 Line 1            Line 1<br>
@@ -500,9 +512,10 @@ as written, as the one of `img::` (`demo::my__demo__.html`).
 A variant may be closed at once like any element: `gap::l::`.
 
 Declare them with `-m` / `--macros` (repeatable, later files win), or with
-`lhtml.run(text, {'macros': ...})` (a dict, a file name relative to
-`current_directory`, or a list of them, later ones replacing a macro of the
-same name; `name: null` removes it). A
+`lhtml.run(text, macros=...)`, a mapping of definitions;
+`lhtml.load_macros(...)` reads them from a YAML file, or merges a list of
+files and mappings (later ones replacing a macro of the same name;
+`name: null` removes it). A
 file holds the definitions at its top level or under its only key `macros`
 (`macros` is thus not a macro name). An HTML void element
 (`tag: hr`, `br`, ...) is always empty. Invalid definitions (unknown field,
@@ -519,17 +532,8 @@ LHTML reads no front matter (3.0): `---` at the top of a document is text,
 and the options come from the caller. Input text is normalized first: a
 leading BOM is removed and CRLF line endings become LF.
 
-The options, in the `meta` of `lhtml.run()`:
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `title` | string | Page title (used in HTML wrapper) |
-| `css` | string or list | CSS files to include |
-| `js` | string or list | JavaScript files to include |
-| `wrap-auto` | boolean | Wrap output in full HTML document |
-| `line-breaks` | boolean | Render source line breaks as `<br>` |
-| `macros` | string, list or mapping | Macros: YAML file(s) relative to `current_directory`, or definitions (see [Macros](#macros-custom-tags-from-a-configuration)) |
-| `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
+The options are named arguments of `lhtml.run()` (see the
+[Python API reference](#python-api-reference)).
 
 
 ## Using LHTML with Jinja2
@@ -576,26 +580,24 @@ html = template.render(page={'title': 'Blog'},
 Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in tag groups (`div::[color:{{ color }};]`).
 
 
-## Configuration Reference
-
-All keys for the `meta` dict passed to `lhtml.run()`:
+## Python API Reference
 
 ```python
-{
-    'wrap-auto': False,        # Wrap in HTML document
-    'line-breaks': False,      # Render source line breaks as <br>
-    'title': 'Webpage',        # Document title
-    'css': [],                 # CSS files (string or list)
-    'js': [],                  # JS files (string or list)
-    'current_directory': '',   # Base directory of the macro files named by a relative path
-    'media': None,             # media(src) -> [(url, mime)]: the sources of a video
-    'macros': None,            # Macros: dict, YAML file name, or list of them
-}
+lhtml.run(text, *, macros=None, tags=None, line_breaks=False, media=None)  # -> HTML
+lhtml.wrap(html, *, title='Webpage', css=(), js=())    # -> an HTML5 document
+lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a list of them
 ```
 
-A key spelled as one of these but otherwise (`line_breaks`, `Wrap-Auto`) is
-not read: a warning names the option. Other keys are the caller's: a tag
-written in Python may read them in `context.meta`.
+| Argument | Type | Description |
+|----------|------|-------------|
+| `macros` | mapping | The definitions of the macros (see [Macros](#macros-custom-tags-from-a-configuration)); `lhtml.load_macros` reads files |
+| `tags` | mapping | Tags written in Python, `{name: lhtml.Tag}` ([docs/advanced.md](docs/advanced.md)) |
+| `line_breaks` | boolean | Render source line breaks as `<br>` |
+| `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
+| `title`, `css`, `js` | of `wrap` | The title, the stylesheets and the scripts (a name or a list) |
+
+An argument spelled otherwise is a `TypeError`. LHTML reads no file:
+`lhtml.load_macros` is the caller reading its macro files.
 
 
 ## Design Principles

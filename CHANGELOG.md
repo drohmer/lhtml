@@ -28,8 +28,7 @@ page depends on.
   `$$...$$` and the one-character `$x$` rule (mathematics is `\(...\)` and
   `\[...\]`), runs of three colons or more (`:::nl`), tags inside inline
   code (`` `link::x` ``), the YAML front matter (options come from the
-  caller: `title`, `css`, `js`, `line-breaks`, `macros`, `wrap-auto` in the
-  meta).
+  caller, as named arguments).
 - Macros: the `style` field, `variant: true` (a variant is a list), and the
   rendering through an LHTML tag (`tag: img`, `video`, `link` give the HTML
   element; `url` names the attribute).
@@ -43,20 +42,39 @@ page depends on.
   `element_extract.py` and `tag_element.lark` go.
 - `ProcessingPipeline`, `TagRegistry`, `LexerRegistry`, `tag_registry`,
   `lexer_registry` and `register_macros`: the built-in tags are a dict,
-  `lhtml.TAGS`; custom ones are given to the run, `lhtml.run(text, meta,
+  `lhtml.TAGS`; custom ones are given to the run, `lhtml.run(text,
   tags={...})`; the lexers are a dict, `lhtml.LEXERS`;
   `registry_with_macros` returns a dict.
 - `LHTMLTagStackError`, the positions of `LHTMLError` (`source_pos`,
   `source_line`) and `pos_to_line`: the messages quote the source instead.
 
-The API is `run`, `parse`, `render`, `Tag`, `TAGS`, `LEXERS`, the macro
-functions and the errors.
+- The `meta` dict of `run` and `render`, its `current_directory` and
+  `wrap-auto`, and `context.meta`: the options are named arguments,
+  `lhtml.run(text, macros=, tags=, line_breaks=, media=)` (an argument
+  spelled otherwise is a `TypeError`); `lhtml.wrap(html, title=, css=,
+  js=)` makes a document of the HTML; `macros` is a mapping, and the caller
+  reads its files with `lhtml.load_macros(path or [paths])`. A tag written
+  in Python keeps its own options in its closure.
+
+The API is `run`, `parse`, `render`, `wrap`, `Tag`, `TAGS`, `LEXERS`, the
+macro functions and the errors.
 
 ### Added
-- `media`, a key of the meta of `lhtml.run()`: a callable,
+- `media`, an argument of `lhtml.run()`: a callable,
   `media(src) -> [(url, mime type)]`, listing the sources of a video. An
-  empty list, or no resolver, keeps the source as written. It is read from
-  the meta given by the caller only, not from the front matter.
+  empty list, or no resolver, keeps the source as written.
+- The output of the command: stdout holds the HTML only, stderr every
+  message (`lhtml/diagnostics.py`). A problem is
+  `file:line:column: level: message`; in a terminal, the line of the source
+  follows with the place underlined (tabs, wide characters and long lines
+  taken into account), the level colored (`NO_COLOR`, `FORCE_COLOR`,
+  `TERM=dumb` respected). The destinations are computed, then checked, then
+  written: an input missing, two inputs to one file (or to names that
+  differ by case only), an output that is an input or lies under a file
+  are each an error and nothing is written (a destination under a file was
+  a traceback). Writing files ends with a summary (`2 converted · 1
+  warning`; `-q` none, `-v` each file written); exit status 1 when a file
+  is not converted or not written, 2 for a wrong use.
 - `line` and `column` on `LHTMLWarning` and `LHTMLError`: where the problem
   is in the text given to `run` (1-based, `None` when not known, as for a
   macros file). A tag element carries its `line` and `column` to the
@@ -89,7 +107,7 @@ functions and the errors.
   built-in tags and the macros, the anonymous `::` div included; its name
   is checked, and an exception of its `render` becomes an `LHTMLError` with
   its place. `render` receives the `ProcessingContext` of the run as its
-  third argument (`context.meta`, `context.media`).
+  third argument (`context.media`, `context.line_breaks`).
 - The markup nests: an element opened in a heading, a list item, a bold or
   an italic span and not closed there is closed at its end, with a warning;
   a `::` closes the last open element only in the same container (one
@@ -98,8 +116,6 @@ functions and the errors.
   end of a heading, an item or a bold, are left as text, with a warning.
   The HTML was malformed (`<li><span>...</li>...</span>`,
   `<strong><em>...</strong>...</em>`).
-- An option of `run` or `render` spelled otherwise (`line_breaks` for
-  `line-breaks`) is named in a warning instead of being ignored in silence.
 - The README starts with a two-minute sheet and one path, `lhtml.run(text)`;
   the macro functions, custom tags in Python, the document tree and the
   layout of the code move to `docs/advanced.md`. The document tree

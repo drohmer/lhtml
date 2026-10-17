@@ -159,7 +159,7 @@ class Tag:
     HTML, closing tag included; `children` is the HTML of what it holds (''
     for a tag that holds nothing), and element['closed'] is False when
     nothing closed it. `context` is the ProcessingContext of the run
-    (context.meta, context.media)."""
+    (context.media, context.line_breaks)."""
     render: Callable
     container: bool | Callable = False
     url: bool = False               # its text is a URL, kept as written (img::a__b.png)

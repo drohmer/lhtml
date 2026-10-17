@@ -24,9 +24,6 @@ import lhtml
 # ---------------------------------------------------------------------------
 
 INPUT_DIR = os.path.join(os.path.dirname(__file__), 'input_tests')
-META = {}
-
-
 def _normalize_pygments(html):
     """Ignore quote escaping inside <pre> blocks, which varies across Pygments versions."""
     return re.sub(r'<pre>.*?</pre>',
@@ -54,17 +51,14 @@ def _find_test_pairs():
                          ids=[p[0] for p in _find_test_pairs()])
 def test_reference_pair(input_file, ref_file):
     """Each .l.html input should produce output matching -out.html."""
-    meta = dict(META)
-
     with open(os.path.join(INPUT_DIR, input_file)) as f:
         txt = f.read()
     with open(os.path.join(INPUT_DIR, ref_file)) as f:
         expected = f.read()
 
+    result = lhtml.run(txt)
     if input_file.endswith('.w.l.html'):
-        meta['wrap-auto'] = True
-
-    result = lhtml.run(txt, meta)
+        result = lhtml.wrap(result)
 
     # Reference files have trailing newline
     result, expected = _normalize_pygments(result), _normalize_pygments(expected)
@@ -361,10 +355,9 @@ class TestLabWebsite:
                 txt = fid.read()
             if not txt.endswith('\n'):
                 txt += '\n'
-            meta = {}
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                html = lhtml.run(txt, meta)
+                html = lhtml.run(txt)
             assert len(html) > 0, f'Empty output for {f}'
 
 
@@ -372,10 +365,10 @@ class TestLabWebsite:
 # Regression tests for bugs fixed in 2.3.0
 # ---------------------------------------------------------------------------
 
-def _run_with_warnings(text, meta=None):
+def _run_with_warnings(text, **options):
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter('always')
-        result = lhtml.run(text, meta)
+        result = lhtml.run(text, **options)
     return result, [str(x.message) for x in w]
 
 
@@ -631,11 +624,9 @@ class TestCli:
             (tmp_path / d / name).write_text(d.upper())
         code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/Page.l.html'),
                                      str(tmp_path / 'b/page.l.html'), '-o', str(tmp_path / 'out') + '/')
-        folds = (tmp_path / 'out/PAGE.html').exists()       # a file system without case
-        assert code == (1 if folds else 0)
-        if folds:                                           # the second refused, the first kept
-            assert 'the same file under another name' in err
-            assert (tmp_path / 'out/Page.html').read_text().strip() == 'A'
+        # one file on a file system without case (macOS, Windows): refused everywhere
+        assert code == 1 and 'would both be written to' in err and 'nothing written' in err
+        assert not (tmp_path / 'out').exists()
 
     def test_one_input_named_in_two_cases_is_one(self, tmp_path, monkeypatch, capsys):
         (tmp_path / 'a').mkdir()
@@ -653,7 +644,7 @@ class TestCli:
         code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'nope/x.l.html'),
                                      str(tmp_path / 'a/x.l.html'), '-o', out)
         assert code == 1 and 'file not found' in err and 'would both' not in err
-        assert (tmp_path / 'out/x.html').is_file()
+        assert not (tmp_path / 'out').exists()             # checked before any is written
         code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/x.l.html'),
                                      str(tmp_path / 'a/x.l.html'), '-o', out)
         assert code == 0, err
@@ -905,7 +896,7 @@ class TestPluginReadmeExample:
 
 class TestInputNormalization:
     def test_crlf_with_options(self):
-        r = lhtml.run('= T\r\nx\r\n', {'title': 'A', 'wrap-auto': True})
+        r = lhtml.wrap(lhtml.run('= T\r\nx\r\n'), title='A')
         assert '<title>A</title>' in r and '<h1>T</h1>' in r and '\r' not in r
 
     def test_crlf_heading_has_no_carriage_return(self):
@@ -926,7 +917,7 @@ class TestInputNormalization:
 
 class TestWrapAndMisc:
     def test_wrapper_escapes_title_and_paths(self):
-        r = lhtml.run('x', {'wrap-auto': True, 'title': 'A </title> & B', 'css': 'a".css'})
+        r = lhtml.wrap(lhtml.run('x'), title='A </title> & B', css='a".css')
         assert '<title>A &lt;/title&gt; &amp; B</title>' in r
         assert 'href="a&quot;.css"' in r
 
@@ -994,42 +985,42 @@ class TestCliRobustness:
 # ---------------------------------------------------------------------------
 
 class TestLineBreaks:
-    ON = {'line-breaks': True}
+    ON = {'line_breaks': True}
 
     def test_disabled_by_default(self):
         assert lhtml.run('a\nb\n\nc\n') == 'a\nb\n\nc\n'
 
     def test_basic_with_blank_line(self):
-        r = lhtml.run('Ligne 1\nLigne 2\n\nAutre paragraphe\n', self.ON)
+        r = lhtml.run('Ligne 1\nLigne 2\n\nAutre paragraphe\n', **self.ON)
         assert r == 'Ligne 1<br>\nLigne 2<br>\n<br>\nAutre paragraphe\n'
 
     def test_leading_and_trailing_blank_lines_ignored(self):
-        assert lhtml.run('\n\na\nb\n\n\n', self.ON) == '\n\na<br>\nb\n\n\n'
+        assert lhtml.run('\n\na\nb\n\n\n', **self.ON) == '\n\na<br>\nb\n\n\n'
 
     def test_no_break_around_heading_and_list(self):
-        r = lhtml.run('= Titre\n\nTexte a\nTexte b\n\n* item 1\n* item 2\n\nfin\n', self.ON)
+        r = lhtml.run('= Titre\n\nTexte a\nTexte b\n\n* item 1\n* item 2\n\nfin\n', **self.ON)
         assert r == ('<h1>Titre</h1>\n\n\nTexte a<br>\nTexte b\n\n'
                      '<ul>\n<li>\nitem 1\n</li>\n<li>\nitem 2\n</li>\n</ul>\n\nfin\n')
 
     def test_breaks_inside_div_but_not_around(self):
-        r = lhtml.run('div::[x]\nl1\nl2\n::\napres\n::nl\nb\n', self.ON)
+        r = lhtml.run('div::[x]\nl1\nl2\n::\napres\n::nl\nb\n', **self.ON)
         assert r == ('<div style="x">\nl1<br>\nl2\n</div>\napres\n'
                      '<div style="height:1em;"></div>\nb\n')
 
     def test_no_break_after_block_end(self):
         # closing :: on its own line, at the end of a text line, or followed by text
-        assert lhtml.run('div::[x]\ntexte\n::\nsuite\n', self.ON) == \
+        assert lhtml.run('div::[x]\ntexte\n::\nsuite\n', **self.ON) == \
             '<div style="x">\ntexte\n</div>\nsuite\n'
-        assert lhtml.run('div::[x]\ntexte ::\nsuite\n', self.ON) == \
+        assert lhtml.run('div::[x]\ntexte ::\nsuite\n', **self.ON) == \
             '<div style="x">\ntexte </div>\nsuite\n'
-        assert lhtml.run('div::[x]\na\n:: b\nc\n', self.ON) == \
+        assert lhtml.run('div::[x]\na\n:: b\nc\n', **self.ON) == \
             '<div style="x">\na\n</div> b\nc\n'
         # raw HTML block end, blank line after it ignored
-        assert lhtml.run('<div>\na\n</div>\n\nb\n', self.ON) == '<div>\na\n</div>\n\nb\n'
-        assert lhtml.run('x\n</p>\ny\n</ul>\nz\n', self.ON) == 'x\n</p>\ny\n</ul>\nz\n'
+        assert lhtml.run('<div>\na\n</div>\n\nb\n', **self.ON) == '<div>\na\n</div>\n\nb\n'
+        assert lhtml.run('x\n</p>\ny\n</ul>\nz\n', **self.ON) == 'x\n</p>\ny\n</ul>\nz\n'
 
     def test_inline_elements_are_text(self):
-        r = lhtml.run('Use **gras** et span::[c] s :: ici\nsuite `code` link::u[l]\n', self.ON)
+        r = lhtml.run('Use **gras** et span::[c] s :: ici\nsuite `code` link::u[l]\n', **self.ON)
         assert r == ('Use <strong>gras</strong> et <span style="c"> s </span> ici<br>\n'
                      'suite <code class="code-inline">code</code> <a href="u">l</a>\n')
 
@@ -1038,25 +1029,25 @@ class TestLineBreaks:
                '<script>\nx\ny\n</script>\n'
                '\\[\nm1\nm2\n\\]\n'
                '<!--\nc1\nc2\n-->\napres\n')
-        r = lhtml.run(src, self.ON)
+        r = lhtml.run(src, **self.ON)
         assert '<br>' not in r
 
     def test_existing_br_not_doubled(self):
-        assert lhtml.run('a<br>\nb\n', self.ON) == 'a<br>\nb\n'
+        assert lhtml.run('a<br>\nb\n', **self.ON) == 'a<br>\nb\n'
 
     def test_raw_block_html(self):
-        r = lhtml.run('<p>\nx\ny\n</p>\n', self.ON)
+        r = lhtml.run('<p>\nx\ny\n</p>\n', **self.ON)
         assert r == '<p>\nx<br>\ny\n</p>\n'
 
     def test_images_one_per_line_are_stacked(self):
-        r = lhtml.run('img::a.jpg\nimg::b.jpg\nvideo::c.mp4\nfin\n', self.ON)
+        r = lhtml.run('img::a.jpg\nimg::b.jpg\nvideo::c.mp4\nfin\n', **self.ON)
         assert r.startswith('<img src="a.jpg" alt="a.jpg"><br>\n<img src="b.jpg" alt="b.jpg"><br>\n<video')
         assert r.endswith('</video><br>\nfin\n')
         assert '<source src="c.mp4" type="video/mp4">\n' in r
 
     def test_no_break_inside_pre(self):
         src = '<pre>\n**a** x\ny\n</pre>\nt\nu\n'
-        assert lhtml.run(src, self.ON) == '<pre>\n<strong>a</strong> x\ny\n</pre>\nt<br>\nu\n'
+        assert lhtml.run(src, **self.ON) == '<pre>\n<strong>a</strong> x\ny\n</pre>\nt<br>\nu\n'
 
     def test_cli_flag(self, tmp_path, monkeypatch, capsys):
         f = tmp_path / 'a.l.html'
@@ -1137,10 +1128,10 @@ class TestCliSourceProtection:
         second.write_text('Original content\n')
         third.write_text('= Other\n')
         code, _, err = self._run_cli(monkeypatch, capsys, str(first), str(second), str(third))
-        assert code == 1 and 'overwrite' in err
+        assert code == 1 and 'overwrite' in err and 'nothing written' in err
         assert first.read_text() == '= First\n'
         assert second.read_text() == 'Original content\n'
-        assert '<h1>Other</h1>' in (tmp_path / 'other.html').read_text()
+        assert not (tmp_path / 'other.html').exists()
 
     @pytest.mark.parametrize('alias_kind', ['symlink', 'hardlink'])
     def test_output_alias_cannot_overwrite_source(self, tmp_path, monkeypatch, capsys, alias_kind):
@@ -1158,11 +1149,11 @@ class TestCliSourceProtection:
 @pytest.mark.parametrize('statement', ['{% if visible %}', '{# comment #}'])
 def test_jinja_statement_does_not_introduce_line_breaks(statement):
     source = 'before\n' + statement + '\nafter'
-    assert lhtml.run(source, {'line-breaks': True}) == source
+    assert lhtml.run(source, line_breaks=True) == source
 
 
 class TestLineBreakRegressions:
-    ON = {'line-breaks': True}
+    ON = {'line_breaks': True}
 
     @pytest.mark.parametrize('tag', ['pre', 'textarea'])
     @pytest.mark.parametrize('wrapper', [
@@ -1173,24 +1164,24 @@ class TestLineBreakRegressions:
     ])
     def test_fake_preformatted_tag_does_not_disable_following_breaks(self, tag, wrapper):
         prefix = wrapper.replace('{tag}', tag)
-        result = lhtml.run(prefix + '\none\ntwo', self.ON)
+        result = lhtml.run(prefix + '\none\ntwo', **self.ON)
         assert result.startswith(prefix)
         assert result.endswith('one<br>\ntwo')
 
     @pytest.mark.parametrize('tag', ['pre-view', 'textarea-widget'])
     def test_custom_element_is_not_preformatted(self, tag):
         source = f'<{tag}>one\ntwo</{tag}>\nthree\nfour'
-        assert lhtml.run(source, self.ON) == (
+        assert lhtml.run(source, **self.ON) == (
             f'<{tag}>one<br>\ntwo</{tag}><br>\nthree<br>\nfour')
 
     @pytest.mark.parametrize('tag', ['pre', 'textarea', 'PRE', 'TEXTAREA'])
     def test_real_preformatted_block_still_preserves_newlines(self, tag):
         source = f'<{tag}\n class="sample">\none\ntwo\n</{tag}>\nthree\nfour'
-        assert lhtml.run(source, self.ON) == source.replace('three\nfour', 'three<br>\nfour')
+        assert lhtml.run(source, **self.ON) == source.replace('three\nfour', 'three<br>\nfour')
 
     def test_fake_close_in_comment_does_not_end_preformatted_block(self):
         source = '<pre>\n<!-- </pre> -->\none\ntwo\n</pre>\nthree\nfour'
-        assert lhtml.run(source, self.ON) == source.replace('three\nfour', 'three<br>\nfour')
+        assert lhtml.run(source, **self.ON) == source.replace('three\nfour', 'three<br>\nfour')
 
     @pytest.mark.parametrize('statement', [
         '{%\n if visible\n%}',
@@ -1200,11 +1191,11 @@ class TestLineBreakRegressions:
     def test_multiline_jinja_statement_is_structure(self, statement):
         source = 'one\ntwo\n' + statement + '\nthree\nfour'
         expected = 'one<br>\ntwo\n' + statement + '\nthree<br>\nfour'
-        assert lhtml.run(source, self.ON) == expected
+        assert lhtml.run(source, **self.ON) == expected
 
     def test_multiline_jinja_expression_remains_inline(self):
         source = 'one {{\n value\n}}\ntwo'
-        assert lhtml.run(source, self.ON) == 'one {{\n value\n}}<br>\ntwo'
+        assert lhtml.run(source, **self.ON) == 'one {{\n value\n}}<br>\ntwo'
 
 
 class TestJinjaInUrlsAndHeadings:
@@ -1290,7 +1281,7 @@ MACROS = {
 
 
 def _run_macros(text, macros=MACROS):
-    return lhtml.run(text, {'macros': macros})
+    return lhtml.run(text, macros=macros)
 
 
 class TestMacros:
@@ -1329,14 +1320,15 @@ class TestMacros:
         _run_macros('gap::\n')
         assert 'gap' not in lhtml.TAGS
 
-    def test_file_relative_to_current_directory(self, tmp_path):
+    def test_macros_of_a_file_are_loaded_by_the_caller(self, tmp_path):
         (tmp_path / 'design.yaml').write_text('macros:\n  note: {class: note}\n', encoding='utf-8')
-        out = lhtml.run('note:: hi ::\n',
-                        {'macros': 'design.yaml', 'current_directory': str(tmp_path) + '/'})
+        out = lhtml.run('note:: hi ::\n', macros=lhtml.load_macros(tmp_path / 'design.yaml'))
         assert out.strip() == '<div class="note"> hi </div>'
+        with pytest.raises(TypeError, match='load_macros'):
+            lhtml.run('x', macros=str(tmp_path / 'design.yaml'))
 
     def test_later_definition_wins(self):
-        out = lhtml.run('box:: x ::\n', {'macros': [MACROS, {'box': {'class': 'frame'}}]})
+        out = lhtml.run('box:: x ::\n', macros=lhtml.load_macros([MACROS, {'box': {'class': 'frame'}}]))
         assert out == '<div class="frame"> x </div>\n'
 
     @pytest.mark.parametrize('macros', [
@@ -1348,7 +1340,7 @@ class TestMacros:
     ])
     def test_invalid_definitions(self, macros):
         with pytest.raises(lhtml.LHTMLMacroError):
-            lhtml.run('x\n', {'macros': macros})
+            lhtml.run('x\n', macros=macros)
 
     def test_cli(self, tmp_path, monkeypatch, capsys):
         from lhtml import cli
@@ -1363,7 +1355,7 @@ class TestMacros:
 class TestMacrosRegressions:
 
     def test_void_tag(self):
-        out = lhtml.run('a rule::\nb\n', {'macros': {'rule': {'tag': 'hr', 'class': 'rule'}}})
+        out = lhtml.run('a rule::\nb\n', macros={'rule': {'tag': 'hr', 'class': 'rule'}})
         assert out == 'a <hr class="rule">\nb\n'
 
     def test_macros_key_null(self):
@@ -1375,17 +1367,17 @@ class TestMacrosTag:
 
     def test_img_tag_with_url(self):
         out = lhtml.run('photo::a.png[width:10px;]\n',
-                        {'macros': {'photo': {'tag': 'img', 'class': 'photo', 'url': 'src'}}})
+                        macros={'photo': {'tag': 'img', 'class': 'photo', 'url': 'src'}})
         assert out == '<img class="photo" style="width:10px;" src="a.png">\n'
 
     def test_macro_does_not_render_through_another_macro(self):
-        out = lhtml.run('a:: x ::\n', {'macros': {'b': {'class': 'b'}, 'a': {'tag': 'b', 'class': 'a'}}})
+        out = lhtml.run('a:: x ::\n', macros={'b': {'class': 'b'}, 'a': {'tag': 'b', 'class': 'a'}})
         assert out == '<b class="a"> x </b>\n'
 
     @pytest.mark.parametrize('field', [{'style': 'color:red'}, {'variant': True}])
     def test_removed_fields(self, field):
         with pytest.raises(lhtml.LHTMLMacroError):
-            lhtml.run('x\n', {'macros': {'m': {'class': 'm', **field}}})
+            lhtml.run('x\n', macros={'m': {'class': 'm', **field}})
 
 
 class TestMacrosRound2:
@@ -1394,7 +1386,7 @@ class TestMacrosRound2:
         with warnings.catch_warnings():
             warnings.simplefilter('error')
             assert _run_macros('gap::l::\n') == '<div class="gap gap-l"></div>\n'
-            out = lhtml.run('box::warn:: x\n', {'macros': {'box': {'class': 'box', 'variant': ['warn']}}})
+            out = lhtml.run('box::warn:: x\n', macros={'box': {'class': 'box', 'variant': ['warn']}})
         assert out == '<div class="box box-warn"></div> x\n'
 
     def test_macros_key(self, tmp_path):
@@ -1403,40 +1395,40 @@ class TestMacrosRound2:
 
     def test_null_removes_macro(self):
         with pytest.warns(lhtml.LHTMLWarning, match='no matching opening tag'):
-            out = lhtml.run('box:: x ::\n', {'macros': [MACROS, {'box': None}]})
+            out = lhtml.run('box:: x ::\n', macros=lhtml.load_macros([MACROS, {'box': None}]))
         assert out.strip() == 'box:: x ::'
 
     def test_default_must_be_a_variant(self):
         with pytest.raises(lhtml.LHTMLMacroError):
-            lhtml.run('x\n', {'macros': {'gap': {'class': 'gap', 'variant': ['s'], 'default': 'm'}}})
+            lhtml.run('x\n', macros={'gap': {'class': 'gap', 'variant': ['s'], 'default': 'm'}})
 
 
 class TestMacrosRound3:
 
     def test_url_on_container(self):
-        out = lhtml.run('dx::hello\nx\n::\n', {'macros': {'dx': {'class': 'dx', 'url': 'data-x'}}})
+        out = lhtml.run('dx::hello\nx\n::\n', macros={'dx': {'class': 'dx', 'url': 'data-x'}})
         assert out == '<div class="dx" data-x="hello">\nx\n</div>\n'
 
     def test_url_on_span_closed_inline(self):
-        out = lhtml.run('t::Tip:: x\n', {'macros': {'t': {'tag': 'span', 'url': 'title'}}})
+        out = lhtml.run('t::Tip:: x\n', macros={'t': {'tag': 'span', 'url': 'title'}})
         assert out == '<span title="Tip"></span> x\n'
 
     def test_url_other_than_the_handler_attribute(self):
-        out = lhtml.run('lazy::a.png\n', {'macros': {'lazy': {'tag': 'img', 'class': 'lazy',
-                                                                 'url': 'data-src'}}})
+        out = lhtml.run('lazy::a.png\n', macros={'lazy': {'tag': 'img', 'class': 'lazy',
+                                                                 'url': 'data-src'}})
         assert out == '<img class="lazy" data-src="a.png">\n'
 
     def test_design_keys_are_not_special(self):
         with pytest.raises(lhtml.LHTMLMacroError, match="'tokens'"):
-            lhtml.run('x\n', {'macros': {'tokens': {'font': {'small': '85%'}}}})
+            lhtml.run('x\n', macros={'tokens': {'font': {'small': '85%'}}})
 
     def test_macros_is_reserved(self):
         with pytest.raises(lhtml.LHTMLMacroError, match='reserved'):
-            lhtml.run('x\n', {'macros': {'macros': {'macros': {'class': 'm'}}}})
+            lhtml.run('x\n', macros={'macros': {'macros': {'class': 'm'}}})
 
     def test_css_is_not_a_field(self):
         with pytest.raises(lhtml.LHTMLMacroError, match='css'):
-            lhtml.run('x\n', {'macros': {'box': {'class': 'box', 'css': '.box {}'}}})
+            lhtml.run('x\n', macros={'box': {'class': 'box', 'css': '.box {}'}})
 
     def test_describe_macro(self):
         assert lhtml.describe_macro('gap', MACROS['gap']) == {
@@ -1448,7 +1440,7 @@ class TestMacrosRound3:
     @pytest.mark.parametrize('tag', ['nl', 'code', 'include'])
     def test_pseudo_tags_are_rejected(self, tag):
         with pytest.raises(lhtml.LHTMLMacroError, match='not an element'):
-            lhtml.run('x\n', {'macros': {'m': {'tag': tag}}})
+            lhtml.run('x\n', macros={'m': {'tag': tag}})
 
     def test_chained_classes(self):
         assert lhtml.run('div::(.a.b#c) x ::\n') == '<div class="a b" id="c"> x </div>\n'
@@ -1462,25 +1454,25 @@ class TestMedia:
     def test_sources_given_by_the_caller(self):
         def media(src):
             return [(f'cache/{src}.webm', 'video/webm'), (f'cache/{src}.mp4', 'video/mp4')]
-        r = lhtml.run('video::v.mp4\n', {'media': media})
+        r = lhtml.run('video::v.mp4\n', media=media)
         assert '<source src="cache/v.mp4.webm" type="video/webm">' in r
         assert '<source src="cache/v.mp4.mp4" type="video/mp4">' in r
         assert 'src="v.mp4"' not in r
 
     def test_no_source_from_the_caller_writes_the_source(self):
-        r = lhtml.run('videoplay::v.mp4\n', {'media': lambda src: []})
+        r = lhtml.run('videoplay::v.mp4\n', media=lambda src: [])
         assert '<source src="v.mp4" type="video/mp4">' in r and 'autoplay loop muted playsinline' in r
 
     def test_no_file_probed_without_resolver(self, tmp_path):
         variants = tmp_path / 'assets' / 'cache_video_codecs'
         variants.mkdir(parents=True)
         (variants / 'v-h264.mp4').write_bytes(b'')
-        r = lhtml.run('video::assets/v.mp4\n', {'current_directory': str(tmp_path) + '/'})
+        r = lhtml.run('video::assets/v.mp4\n')
         assert r.count('<source') == 1 and 'cache_video_codecs' not in r
 
     def test_resolver_must_be_callable(self):
         with pytest.raises(TypeError):
-            lhtml.run('video::v.mp4\n', {'media': 'cache/'})
+            lhtml.run('video::v.mp4\n', media='cache/')
 
     def test_no_front_matter(self):
         r = lhtml.run('---\nmedia: x\n---\nvideo::v.mp4\n')
@@ -1494,7 +1486,7 @@ class TestPositions:
     def places(text, **meta):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always')
-            lhtml.run(text, meta)
+            lhtml.run(text, **meta)
         return [(w.message.line, w.message.column) for w in caught]
 
     def test_a_tag_after_lines_that_lhtml_adds_or_hides(self):
@@ -1528,3 +1520,93 @@ class TestPositions:
         f.write_text('x\n  ::# no\n')
         code, _, err = TestCli._run_cli(self, monkeypatch, capsys, str(f))
         assert code == 1 and err.startswith(f'{f}:2:3: error: ::# comments were removed')
+
+
+# ---------------------------------------------------------------------------
+# The output of the command (lhtml/diagnostics.py)
+# ---------------------------------------------------------------------------
+
+class TestCommandOutput:
+    _run_cli = TestCli._run_cli
+
+    def test_a_destination_under_a_file_is_refused_without_traceback(self, tmp_path, monkeypatch, capsys):
+        a, b = tmp_path / 'a.l.html', tmp_path / 'b.l.html'
+        a.write_text('A\n')
+        b.write_text('B\n')
+        (tmp_path / 'f').write_text('')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(a), str(b), '-o', str(tmp_path / 'f/sub') + '/')
+        assert code == 1 and 'is a file' in err and 'nothing written' in err and 'Traceback' not in err
+        assert (tmp_path / 'f').read_text() == ''
+
+    def test_stdout_holds_the_html_only(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / 'a.l.html'
+        f.write_text('x\n::\n')
+        code, out, err = self._run_cli(monkeypatch, capsys, str(f))
+        assert code == 0 and out == 'x\n::\n'
+        assert err == f'{f}:2:1: warning: Closing tag :: has no matching opening tag (near \'::\')\n'
+
+    def test_writing_files_ends_with_a_summary(self, tmp_path, monkeypatch, capsys):
+        a, b = tmp_path / 'a.l.html', tmp_path / 'b.l.html'
+        a.write_text('x\n::\n')
+        b.write_text('B\n')
+        out = str(tmp_path / 'out') + '/'
+        code, _, err = self._run_cli(monkeypatch, capsys, str(a), str(b), '-o', out)
+        assert code == 0 and err.splitlines()[-1] in ('2 converted · 1 warning', '2 converted, 1 warning')
+        code, _, err = self._run_cli(monkeypatch, capsys, '-q', str(b), '-o', out)
+        assert err == ''
+        code, _, err = self._run_cli(monkeypatch, capsys, '-v', str(b), '-o', out)
+        assert f'{b} ' in err and str(tmp_path / 'out' / 'b.html') in err
+
+    def test_a_file_not_converted_is_counted(self, tmp_path, monkeypatch, capsys):
+        bad, good = tmp_path / 'bad.l.html', tmp_path / 'good.l.html'
+        bad.write_bytes(b'caf\xe9\n')
+        good.write_text('ok\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(bad), str(good), '-o', str(tmp_path / 'o') + '/')
+        assert code == 1 and err.splitlines()[-1] in ('1 converted · 1 failed', '1 converted, 1 failed')
+
+
+class TestDiagnostics:
+    @staticmethod
+    def shown(source, line, column, **options):
+        import io
+        from lhtml.diagnostics import Diagnostic, Reporter
+        stream = io.StringIO()
+        reporter = Reporter(stream, rich=True, color=False, **options)
+        reporter.report(Diagnostic('p.l.html', 'warning', 'm', line, column), source)
+        return stream.getvalue()
+
+    def test_an_excerpt_underlines_the_word_at_the_place(self):
+        assert self.shown('a\n  div::(.note) x\n', 2, 3) == (
+            'p.l.html:2:3: warning: m\n'
+            '  2 | ' + '  div::(.note) x\n'
+            '    | ' + '  ^^^^^^^^^^^^\n')
+
+    def test_the_underline_follows_tabs_and_wide_characters(self):
+        lines = self.shown('\t日本 div:: x\n', 1, 5).splitlines()
+        assert lines[1].endswith('\t日本 div:: x')
+        assert lines[2].endswith('\t     ^^^^^')
+
+    def test_a_long_line_is_cut_around_the_place(self):
+        lines = self.shown('a' * 300 + ' div:: ' + 'b' * 300 + '\n', 1, 302).splitlines()
+        assert lines[1].count('…') == 2 and 'div::' in lines[1] and len(lines[1]) < 120
+        assert lines[2].index('^') == lines[1].index('div::')
+
+    def test_colors_follow_the_terminal_and_no_color(self, monkeypatch):
+        import io
+        from lhtml.diagnostics import Reporter
+
+        class Terminal(io.StringIO):
+            encoding = 'utf-8'
+
+            def isatty(self):
+                return True
+        monkeypatch.delenv('NO_COLOR', raising=False)
+        monkeypatch.delenv('FORCE_COLOR', raising=False)
+        monkeypatch.setenv('TERM', 'xterm')
+        assert Reporter(Terminal()).color and not Reporter(io.StringIO()).color
+        monkeypatch.setenv('NO_COLOR', '1')
+        assert not Reporter(Terminal()).color
+        monkeypatch.delenv('NO_COLOR')
+        monkeypatch.setenv('FORCE_COLOR', '1')
+        assert Reporter(io.StringIO()).color
+        assert not Reporter(io.StringIO()).rich      # a log: one line each

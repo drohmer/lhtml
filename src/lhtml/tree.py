@@ -1,7 +1,7 @@
 """The document tree of LHTML: parse, then render (lhtml.run is both).
 
-    document = parse(text, tags=None, macros=None)
-    html     = render(document, meta=None, media=None)
+    document = parse(text, macros=None, tags=None)
+    html     = render(document, line_breaks=False, media=None)
 
 The tree holds headings, lists, bold and italic, the `::` elements, and the
 zones LHTML never reads (code, inline code, mathematics, raw HTML, Jinja) as
@@ -37,6 +37,7 @@ from __future__ import annotations
 import bisect
 import re
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -48,12 +49,11 @@ from .patterns import (
 )
 from .process import (
     ProtectionStores, normalize_input, process_prepare, process_unprotect,
-    line_breaks, render_inline_code, render_code_block, _code_language,
+    line_breaks as _with_line_breaks, render_inline_code, render_code_block, _code_language,
     _is_tag_boundary, _adjust_bare_tag, _context, _warn, check_is_closing_tag,
     _refuse_explicit_closing,
 )
 from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
-from .wrap_html import wrap_auto
 
 
 # ---------------------------------------------------------------------------
@@ -168,8 +168,8 @@ class Raw(Node):
 @dataclass
 class ProcessingContext:
     """What a tag receives as the third argument of its render."""
-    meta: dict
     media: Callable | None = None   # media(src) -> [(url, mime)], given by the caller
+    line_breaks: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +720,9 @@ def _tag_error(label, what, error, element):
 
 def _registry(tags, macros):
     """The built-in TAGS, the macros, then the tags given (which win)."""
+    if macros is not None and not isinstance(macros, Mapping):
+        raise TypeError(f'macros: expected a mapping of definitions, got {type(macros).__name__} '
+                        f'(the macros of files: lhtml.load_macros(path or [paths]))')
     registry = registry_with_macros(macros) if macros else dict(TAGS)
     for name, tag in (tags or {}).items():
         if not isinstance(tag, Tag):
@@ -743,11 +746,12 @@ def _given_offsets(given, normalized):
     return lambda o: o + bom + bisect.bisect_left(removed, o)
 
 
-def parse(text, tags=None, macros=None):
-    """The document tree of an LHTML text. `tags`: {name: Tag}, added to the
-    built-in TAGS and the macros (a tag given wins); `macros`: definitions
-    of macros (lhtml.macros). Reads no file but the macro files named. The
-    warnings are emitted, and kept in document.problems, in source order."""
+def parse(text, *, macros=None, tags=None):
+    """The document tree of an LHTML text. `macros`: the definitions of the
+    macros, a mapping (lhtml.load_macros reads them from files); `tags`:
+    {name: Tag}, added to the built-in TAGS and the macros (a tag given
+    wins). Reads no file. The warnings are emitted, and kept in
+    document.problems, in source order."""
     registry = _registry(tags, macros)
     caught = []
     try:
@@ -865,30 +869,19 @@ def _tokens(document, context):
             out[start - 1] = (html, 'markup')
 
 
-def render(document, meta=None, media=None):
-    """The HTML of a document tree, with the options of `run` (line-breaks,
-    wrap-auto, title, css, js) and the media resolver (`media`, or
-    meta['media'])."""
-    return _render(document, meta, media)
-
-
-def _render(document, meta=None, media=None):
-    """render, called by render or by run: their caller is two frames up."""
-    meta = dict(meta or {})
-    from .pipeline import _check_keys
-    _check_keys(meta, stacklevel=4)
-    media = media if media is not None else meta.get('media')
+def render(document, *, line_breaks=False, media=None):
+    """The HTML of a document tree. `line_breaks`: the line breaks of the
+    source are rendered as <br>; `media`: the resolver of the sources of a
+    video, media(src) -> [(url, mime type)] (none: the source as written)."""
     if media is not None and not callable(media):
         raise TypeError(f'"media" must be callable, got {type(media).__name__}')
-    context = ProcessingContext(meta, media)
+    context = ProcessingContext(media, bool(line_breaks))
     stores = document.stores
-    if meta.get('line-breaks') is True:
-        text = line_breaks(_tokens(document, context), stores)
+    if context.line_breaks:
+        text = _with_line_breaks(_tokens(document, context), stores)
     else:
         text = _render_tree(document, context)
     text = stores.restore(text, 'I', render_inline_code)
     text = process_unprotect(text, stores)
     text = stores.restore(text, 'C', render_code_block)
-    if meta.get('wrap-auto') is True:
-        text = wrap_auto(text, meta)
     return text

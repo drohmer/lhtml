@@ -43,7 +43,8 @@ anything is rendered; written `name::text::`, it holds nothing either way
 element (`'[]'`, `'()'`, `'{}'`, `'text'`: the word glued after the
 brackets, `'line'`, `'column'`; `element['closed']` is False when no `::`
 closed it), the HTML of what it holds (`''` for a tag that holds nothing)
-and the context of the run (`context.meta`, `context.media`), and returns
+and the context of the run (`context.media`, `context.line_breaks`; an
+option of the tag itself is in its closure), and returns
 its HTML, closing tag included, as a `str`. An exception raised by `render`
 or `container` becomes an `LHTMLError` naming the tag and its place (the
 exception as its `__cause__`).

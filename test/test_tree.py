@@ -71,7 +71,7 @@ class TestWhatThePassesDid:
 
     def test_an_unknown_name_is_skipped_whole(self):
         html, _ = quiet(lhtml.run, '_tiny::link::http://a.b/c[lspan::[a]link::u[**b**]\t ::nl',
-                        {'macros': {'tiny': {'tag': 'span', 'class': 'tiny'}}})
+                        macros={'tiny': {'tag': 'span', 'class': 'tiny'}})
         assert html == '_tiny::link::http://a.b/c[lspan::[a]link::u[**b**]\t <div style="height:1em;"></div>'
 
     def test_a_last_list_line_gets_its_line_break(self):
@@ -244,9 +244,9 @@ class TestTags:
 
     def test_the_options_are_checked(self):
         with pytest.raises(TypeError, match='mapping'):
-            lhtml.run('x', ['a'])
+            lhtml.run('x', macros=['a'])
         with pytest.raises(TypeError, match='callable'):
-            lhtml.render(lhtml.parse('x'), {'media': 'x'})
+            lhtml.render(lhtml.parse('x'), media='x')
 
     def test_a_warning_names_the_tag_written(self):
         cont = lhtml.Tag(container=True, render=lambda element, children, context: children)
@@ -273,20 +273,20 @@ class TestStages:
 class TestLineBreaks:
     """line-breaks, decided on the tree: a line break of the source (a Text)
     gets a <br> when its line and the next are not structure."""
-    ON = {'line-breaks': True}
+    ON = {'line_breaks': True}
 
     def test_a_line_break_inside_the_html_of_a_tag_gets_none(self):
-        html = lhtml.run('a\nspan::[color:red;\nfont-size:90%] b ::\nc', self.ON)
+        html = lhtml.run('a\nspan::[color:red;\nfont-size:90%] b ::\nc', **self.ON)
         assert html == 'a<br>\n<span style="color:red;\nfont-size:90%"> b </span><br>\nc'
-        html = lhtml.run('a\nvideo::v.mp4\nb', self.ON)
+        html = lhtml.run('a\nvideo::v.mp4\nb', **self.ON)
         assert '<br>' not in html.split('<video')[1].split('</video>')[0]
 
     def test_a_block_element_is_structure_at_both_ends(self):
-        assert lhtml.run('a\ndiv::[x] b\nc ::\nd', self.ON) == 'a\n<div style="x"> b\nc </div>\nd'
+        assert lhtml.run('a\ndiv::[x] b\nc ::\nd', **self.ON) == 'a\n<div style="x"> b\nc </div>\nd'
 
     def test_a_tag_that_writes_its_children_twice_is_one_piece(self):
         twice = lhtml.Tag(lambda element, children, context: f'<i>{children}{children}</i>', container=True)
-        assert lhtml.run('a\nt:: b ::\nc', self.ON, tags={'t': twice}) == 'a<br>\n<i> b  b </i><br>\nc'
+        assert lhtml.run('a\nt:: b ::\nc', **self.ON, tags={'t': twice}) == 'a<br>\n<i> b  b </i><br>\nc'
 
 
 class TestMarksOfTheCaller:
@@ -315,22 +315,22 @@ class TestWritten:
 
 class TestLineBreaksAndTags:
     """With line-breaks, a tag is rendered once, with its children, as without."""
-    ON = {'line-breaks': True}
+    ON = {'line_breaks': True}
 
     def test_a_tag_that_transforms_its_children_keeps_its_html(self):
         strip = lhtml.Tag(lambda element, children, context: f'<p>{children.strip()}</p>', container=True)
-        assert lhtml.run('p:: a\nb ::', self.ON, tags={'p': strip}) == '<p>a\nb</p>'
+        assert lhtml.run('p:: a\nb ::', **self.ON, tags={'p': strip}) == '<p>a\nb</p>'
 
     def test_a_tag_is_rendered_once(self):
         calls = []
         twice = lhtml.Tag(lambda element, children, context: calls.append(1) or f'<i>{children}{children}</i>',
                           container=True)
-        lhtml.run('a\nt:: b\nc ::\nd', self.ON, tags={'t': twice})
+        lhtml.run('a\nt:: b\nc ::\nd', **self.ON, tags={'t': twice})
         assert len(calls) == 1
 
     def test_a_tag_that_writes_its_children_as_given_gets_their_line_breaks(self):
         box = lhtml.Tag(lambda element, children, context: f'<b>{children}</b>', container=True)
-        assert lhtml.run('x\nbox:: a\nb ::\ny', self.ON, tags={'box': box}) == 'x<br>\n<b> a<br>\nb </b><br>\ny'
+        assert lhtml.run('x\nbox:: a\nb ::\ny', **self.ON, tags={'box': box}) == 'x<br>\n<b> a<br>\nb </b><br>\ny'
 
     def test_the_attributes_of_a_heading_are_as_written(self):
         document = lhtml.parse('=(.{{ c }} #i) T\n')
@@ -344,9 +344,9 @@ class TestReviewSurprises:
 
     def test_the_url_of_a_url_macro_is_kept_as_written(self):
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'class': 'demo', 'empty': True}}
-        html = lhtml.run('demo::my__demo__.html and **b**', {'macros': macros})
+        html = lhtml.run('demo::my__demo__.html and **b**', macros=macros)
         assert 'src="my__demo__.html"' in html and '<em>' not in html and '<strong>b</strong>' in html
-        assert 'style="width:3px"' in lhtml.run('demo::a.html#x[width:3px]', {'macros': macros})
+        assert 'style="width:3px"' in lhtml.run('demo::a.html#x[width:3px]', macros=macros)
         url = lhtml.Tag(lambda element, children, context: f'<a href="{element["text"]}">', url=True)
         assert lhtml.run('u::a__b__c', tags={'u': url}) == '<a href="a__b__c">'
 
@@ -362,10 +362,11 @@ class TestReviewSurprises:
         assert lhtml.run('link::u[T]{href="v"}') == '<a href="v">T</a>'
         assert lhtml.run('img::a.png{data-alt="x"}') == '<img data-alt="x" src="a.png" alt="a.png">'
 
-    def test_an_option_spelled_otherwise_is_named(self):
-        html, said = quiet(lhtml.run, 'a\nb', {'line_breaks': True, 'my-own': 1})
-        assert html == 'a\nb' and said == ["option 'line_breaks' is not read: did you mean 'line-breaks'?"]
-        assert quiet(lhtml.run, 'a\nb', {'line-breaks': True, 'current_directory': '.'})[1] == []
+    def test_an_option_spelled_otherwise_is_refused(self):
+        for call in (lambda: lhtml.run('a', line_break=True), lambda: lhtml.run('a', {'line-breaks': True}),
+                     lambda: lhtml.render(lhtml.parse('a'), line_break=True)):
+            with pytest.raises(TypeError):
+                call()
 
     def test_an_attribute_name_in_a_value_replaces_nothing(self):
         assert lhtml.run('link::page.html{onclick="location.href=\'x\'"}[go]') == \
@@ -378,8 +379,8 @@ class TestReviewSurprises:
     def test_a_macro_attribute_written_replaces_the_macro_one(self):
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True},
                   'im': {'tag': 'img', 'url': 'src', 'attrs': 'alt="" loading="lazy"'}}
-        assert lhtml.run('demo::a.html{src="b"}', {'macros': macros}).count('src=') == 1
-        html = lhtml.run('im::a.png{alt="A"}', {'macros': macros})
+        assert lhtml.run('demo::a.html{src="b"}', macros=macros).count('src=') == 1
+        html = lhtml.run('im::a.png{alt="A"}', macros=macros)
         assert html.count('alt=') == 1 and 'alt="A"' in html and 'loading="lazy"' in html
 
     def test_apostrophes_in_text_are_text(self):
@@ -392,10 +393,6 @@ class TestReviewSurprises:
         assert '<em>' in lhtml.run('img::a__b__.png', tags={'img': plain})      # an img of the caller: no URL
         assert '<em>' in lhtml.run('img::a__b__.png', tags={n: plain for n in ('img', 'link', 'video', 'videoplay')})
         assert '<em>' not in lhtml.run('img::a__b__.png')
-
-    def test_render_names_an_option_spelled_otherwise(self):
-        _, said = quiet(lhtml.render, lhtml.parse('a\nb'), {'line_breaks': True})
-        assert said == ["option 'line_breaks' is not read: did you mean 'line-breaks'?"]
 
     def test_attribute_groups_stay_linear(self):
         import time
@@ -415,19 +412,19 @@ class TestReviewSurprises:
 
     def test_the_attributes_of_a_macro_stay_as_written(self):
         macros = {'d': {'tag': 'div', 'attrs': 'data-u=http://x?a=b a=b=c data-x="1"'}}
-        assert '<div data-u=http://x?a=b a=b=c data-x="1">' in lhtml.run('d:: x ::', {'macros': macros})
-        assert '<div data-u=http://x?a=b a=b=c data-x="2">' in lhtml.run('d::{data-x="2"} x ::', {'macros': macros}) \
-            or 'data-x="2"' in lhtml.run('d::{data-x="2"} x ::', {'macros': macros})
+        assert '<div data-u=http://x?a=b a=b=c data-x="1">' in lhtml.run('d:: x ::', macros=macros)
+        assert '<div data-u=http://x?a=b a=b=c data-x="2">' in lhtml.run('d::{data-x="2"} x ::', macros=macros) \
+            or 'data-x="2"' in lhtml.run('d::{data-x="2"} x ::', macros=macros)
 
     def test_replacing_an_attribute_of_a_macro_keeps_the_others_as_written(self):
         macros = {'card': {'tag': 'img', 'attrs': 'title="a  b" loading="lazy"'}}
-        assert lhtml.run('card::{loading="eager"} x.png', {'macros': macros}) == \
+        assert lhtml.run('card::{loading="eager"} x.png', macros=macros) == \
             '<img title="a  b" loading="eager"> x.png'
 
     def test_one_priority_for_the_attributes_of_a_url_macro(self):
         # the macro, then its url, then the page: one src each time
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True, 'attrs': 'src="default.html" title="d"'}}
-        run = lambda text: lhtml.run(text, {'macros': macros})
+        run = lambda text: lhtml.run(text, macros=macros)
         assert run('demo::page.html') == '<iframe src="page.html" title="d"></iframe>'
         assert run('demo::') == '<iframe src="default.html" title="d"></iframe>'
         assert run('demo::page.html{src="b.html"}') == '<iframe title="d" src="b.html"></iframe>'
@@ -437,7 +434,7 @@ class TestReviewSurprises:
         assert lhtml.run('span::[margin:0]{style="color:red"} x ::') == \
             '<span style="margin:0;color:red"> x </span>'
         macros = {'box': {'class': 'box', 'attrs': 'class="m" style="top:0"'}}
-        assert lhtml.run('box::(.p){class="q" style="left:0"} x ::', {'macros': macros}) == \
+        assert lhtml.run('box::(.p){class="q" style="left:0"} x ::', macros=macros) == \
             '<div class="box p m q" style="top:0;left:0"> x </div>'
         # alone, a class written {...} stays where it is written
         assert lhtml.run('span::{title="t" class="c"} x ::') == '<span title="t" class="c"> x </span>'
@@ -474,14 +471,6 @@ class TestReviewSurprises:
             quiet(lhtml.run, text)
             assert time.perf_counter() - start < 2, text[:20]
 
-    def test_the_option_warning_names_the_line_that_calls(self):
-        import warnings as w
-        for call in (lambda: lhtml.run('a', {'line_breaks': 1}), lambda: lhtml.render(lhtml.parse('a'), {'line_breaks': 1})):
-            with w.catch_warnings(record=True) as caught:
-                w.simplefilter('always')
-                call()
-            assert caught[0].filename == __file__, caught[0].filename
-
     def test_a_url_ends_before_marks_that_close_an_emphasis(self):
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True}}
         assert lhtml.run('**img::a.png**') == '<strong><img src="a.png" alt="a.png"></strong>'
@@ -489,7 +478,7 @@ class TestReviewSurprises:
         for text in ('**__img::a.png__**', '__**img::a.png**__'):        # nested, either order
             html = lhtml.run(text)
             assert 'src="a.png"' in html and '**' not in html and '__' not in html, html
-        assert lhtml.run('**demo::a.html**', {'macros': macros}) == '<strong><iframe src="a.html"></iframe></strong>'
+        assert lhtml.run('**demo::a.html**', macros=macros) == '<strong><iframe src="a.html"></iframe></strong>'
         # marks that close nothing are the URL's
         assert 'href="https://d.org/x.html#object.__init__"' in lhtml.run('link::https://d.org/x.html#object.__init__')
         assert 'src="a**b.png"' in lhtml.run('img::a**b.png')

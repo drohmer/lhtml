@@ -1,6 +1,13 @@
 """LHTML command-line interface.
 
-Each problem is one line on stderr, `file:line:column: level: message`.
+The HTML goes to stdout (one input, no -o), every message to stderr: a
+problem is `file:line:column: level: message`, with an excerpt of the line
+in a terminal (lhtml/diagnostics.py). Writing files ends with a summary
+(-q: none; -v: each file written).
+
+The destinations are computed, then checked (an input missing, two inputs
+to one file, an output that is an input or under a file: nothing is
+written), then each file is converted and written.
 
 Usage:
     lhtml [-w] file.l.html                       # Single file → stdout
@@ -11,18 +18,23 @@ Usage:
     lhtml -m macros.yaml file.l.html              # Custom :: tags declared in a YAML file
     lhtml --version
     python -m lhtml [same options]
+
+Exit status: 0, 1 when a file is not converted or not written, 2 for a
+wrong use of the command.
 """
 
+import argparse
 import os
 import sys
-import argparse
 import warnings
 
 from . import __version__
+from .diagnostics import Diagnostic, Reporter, shown_path
 from .errors import LHTMLError
 from .macros import load_macros, registry_with_macros
 from .pipeline import run
 from .process import read_source
+from .wrap_html import wrap
 
 
 def _ensure_trailing_newline(text):
@@ -31,150 +43,178 @@ def _ensure_trailing_newline(text):
     return text
 
 
-def _output_path_for(input_path, output_arg):
-    """Determine the output path for a given input file.
-
-    If output_arg is a directory, write <dir>/<basename>.html.
-    If output_arg is a file path, return it directly (single-file mode).
-    If output_arg is None, derive .html from the input path.
-    """
-    basename = os.path.basename(input_path)
-    name, _ = os.path.splitext(basename)
-    # Strip double extensions like .l.html → .html
-    if name.endswith('.l'):
+def output_path(input_path, output_arg, several=False):
+    """The file an input is written to: <dir>/<name>.html when `output_arg`
+    is a directory (or ends with /, or several inputs share it), the file
+    `output_arg`, or <name>.html next to the input (None). Creates nothing."""
+    name, _ = os.path.splitext(os.path.basename(input_path))
+    if name.endswith('.l'):         # page.l.html → page.html
         name = name[:-2]
-
     if output_arg is None:
-        # Write next to source
         return os.path.join(os.path.dirname(input_path), name + '.html')
-
-    if os.path.isdir(output_arg) or output_arg.endswith('/'):
-        os.makedirs(output_arg, exist_ok=True)
+    if several or os.path.isdir(output_arg) or output_arg.endswith(('/', os.sep)):
         return os.path.join(output_arg, name + '.html')
-
-    # Treat as a direct file path (single-file mode)
     return output_arg
 
 
-def diagnostic(path, level, problem):
-    """`path:line:column: level: message`, the place as far as it is known."""
-    place = ':'.join(str(n) for n in (getattr(problem, 'line', None), getattr(problem, 'column', None))
-                     if n is not None)
-    return f"{path}{':' + place if place else ''}: {level}: {problem}"
+def _identity(path):
+    info = os.stat(path)
+    return info.st_dev, info.st_ino
 
 
-def _process_file(f_in, meta_base):
-    """Process a single LHTML file and return (html, warnings)."""
-    meta = dict(meta_base)
-    meta['current_directory'] = os.path.dirname(os.path.abspath(f_in)) + '/'
+def _blocking_file(path):
+    """The file (not a directory) a directory of `path` would have to be."""
+    directory = os.path.dirname(os.path.abspath(path))
+    while directory and not os.path.exists(directory):
+        directory = os.path.dirname(directory)
+    return directory if directory and not os.path.isdir(directory) else None
 
-    txt = _ensure_trailing_newline(read_source(f_in))
+
+def plan(inputs, output_arg):
+    """[(input, output)], an input given twice (under any name) once; output
+    None: stdout."""
+    if len(inputs) == 1 and output_arg is None:
+        return [(inputs[0], None)]
+    jobs, seen = [], set()
+    for f_in in inputs:
+        key = _identity(f_in) if os.path.isfile(f_in) else ('missing', f_in)
+        if key not in seen:
+            seen.add(key)
+            jobs.append((f_in, output_path(f_in, output_arg, several=len(inputs) > 1)))
+    return jobs
+
+
+def check(jobs):
+    """The diagnostics that stop everything before a file is written."""
+    problems, targets = [], {}
+    inputs = {_identity(f) for f, _ in jobs if os.path.isfile(f)}
+    for f_in, out in jobs:
+        if not os.path.exists(f_in):
+            problems.append(Diagnostic(f_in, 'error', 'file not found'))
+            continue
+        if not os.path.isfile(f_in):
+            problems.append(Diagnostic(f_in, 'error', 'not a file'))
+            continue
+        if out is None:
+            continue
+        if os.path.exists(out) and _identity(out) in inputs:
+            problems.append(Diagnostic(f_in, 'error', f'its output would overwrite the input file {out}'))
+            continue
+        if os.path.isdir(out):
+            problems.append(Diagnostic(f_in, 'error', f'its output {out} is a directory'))
+            continue
+        blocking = _blocking_file(out)
+        if blocking:
+            problems.append(Diagnostic(f_in, 'error', f'cannot write {out}: {blocking} is a file'))
+            continue
+        # one file for both on a file system that ignores case (macOS, Windows)
+        key = os.path.realpath(out).casefold()
+        if key in targets:
+            problems.append(Diagnostic(f_in, 'error', f'{targets[key]} and {f_in} would both be written '
+                                                      f'to {out}'))
+            continue
+        targets[key] = f_in
+    return problems
+
+
+def convert(f_in, macros, line_breaks, wrapped):
+    """(the source, its HTML, its warnings in the order of the file)."""
+    source = read_source(f_in)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        html = _ensure_trailing_newline(run(txt, meta))
-    return html, sorted((w.message for w in caught),       # in the order of the file
-                        key=lambda m: (getattr(m, 'line', None) or 0, getattr(m, 'column', None) or 0))
+        html = run(_ensure_trailing_newline(source), macros=macros, line_breaks=line_breaks)
+    if wrapped:
+        html = wrap(html)
+    found = sorted((w.message for w in caught),
+                   key=lambda m: (getattr(m, 'line', None) or 0, getattr(m, 'column', None) or 0))
+    return source, _ensure_trailing_newline(html), found
 
 
-def main():
+def _summary(reporter, converted, failed):
+    parts = [f'{converted} converted']
+    if failed:
+        parts.append(f'{failed} failed')
+    warned = reporter.counts.get('warning', 0)
+    if warned:
+        parts.append(f'{warned} warning{"s" if warned > 1 else ""}')
+    return reporter.symbol(' · ', ', ').join(parts)
+
+
+def main(argv=None):
     """CLI entry point."""
-    parser = argparse.ArgumentParser(description='Lightweight HTML')
+    parser = argparse.ArgumentParser(prog='lhtml', description='Lightweight HTML')
     parser.add_argument('input', nargs='+', help='Input file(s)')
-    parser.add_argument('-w', '--wrap',
-                        help='Wrap content in basic HTML template',
-                        action='store_true')
-    parser.add_argument('-b', '--line-breaks',
-                        help='Render the line breaks of the source text as <br>',
-                        action='store_true')
+    parser.add_argument('-w', '--wrap', action='store_true',
+                        help='Wrap content in basic HTML template')
+    parser.add_argument('-b', '--line-breaks', action='store_true',
+                        help='Render the line breaks of the source text as <br>')
     parser.add_argument('-m', '--macros', action='append', metavar='FILE',
                         help='YAML file of macros (custom :: tags); may be repeated')
     parser.add_argument('-o', '--output',
                         help='Output file (single input) or directory (multiple inputs)')
-    parser.add_argument('-V', '--version', action='version',
-                        version=f'lhtml {__version__}')
-    args = parser.parse_args()
+    parser.add_argument('-q', '--quiet', action='store_true', help='No summary')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Name each file written')
+    parser.add_argument('-V', '--version', action='version', version=f'lhtml {__version__}')
+    args = parser.parse_args(argv)
 
-    meta = {}
-    if args.wrap:
-        meta['wrap-auto'] = True
-    if args.line_breaks:
-        meta['line-breaks'] = True
-    if args.macros:
-        try:
-            meta['macros'] = load_macros([os.path.abspath(f) for f in args.macros])
-            registry_with_macros(meta['macros'])  # validate before processing files
-        except LHTMLError as e:
-            print(diagnostic(args.macros[0] if len(args.macros) == 1 else 'lhtml', 'error', e), file=sys.stderr)
-            sys.exit(1)
-
-    single_file = len(args.input) == 1
-    single_to_stdout = single_file and args.output is None
-
-    if (not single_file and args.output is not None
-            and not os.path.isdir(args.output) and not args.output.endswith('/')):
+    if (len(args.input) > 1 and args.output is not None
+            and not os.path.isdir(args.output) and not args.output.endswith(('/', os.sep))):
         parser.error(f'-o must be a directory when several input files are given '
                      f'(got {args.output!r}; add a trailing / to create it)')
 
-    def identity(path):
-        info = os.stat(path)
-        return info.st_dev, info.st_ino
-
-    if not single_to_stdout:            # every output before any is written
-        # an input missing, or given twice (under any name), is not a collision
-        written, inputs, seen = {}, {os.path.realpath(f) for f in args.input}, set()
-        for f_in in args.input:
-            if not os.path.isfile(f_in) or identity(f_in) in seen:
-                continue
-            seen.add(identity(f_in))
-            out_path = os.path.realpath(_output_path_for(f_in, args.output))
-            if out_path in inputs:      # an input it would overwrite: refused for that file below
-                continue
-            if out_path in written:
-                print(f'lhtml: error: {written[out_path]} and {f_in} would both be written to '
-                      f'{_output_path_for(f_in, args.output)}: nothing written', file=sys.stderr)
-                sys.exit(1)
-            written[out_path] = f_in
-    outputs = {}                        # the file each output is, and the input it holds
-
-    errors = 0
-    for f_in in args.input:
-        if not os.path.isfile(f_in):
-            print(f'{f_in}: error: file not found', file=sys.stderr)
-            errors += 1
-            continue
-
+    reporter = Reporter(sys.stderr)
+    macros = None
+    if args.macros:
         try:
-            html, messages = _process_file(f_in, meta)
-            for warning in messages:
-                print(diagnostic(f_in, 'warning', warning), file=sys.stderr)
+            macros = load_macros(args.macros)
+            registry_with_macros(macros)    # checked before any file
+        except LHTMLError as e:
+            place = args.macros[0] if len(args.macros) == 1 else 'lhtml'
+            reporter.report(Diagnostic.of(shown_path(place), 'error', e))
+            sys.exit(1)
 
-            if single_to_stdout:
-                sys.stdout.buffer.write(html.encode('utf-8'))
-                sys.stdout.flush()
-                continue
+    jobs = plan(args.input, args.output)
+    problems = check(jobs)
+    if problems:
+        for problem in problems:
+            reporter.report(Diagnostic(shown_path(problem.path), problem.level, problem.message))
+        if any(out is not None for _, out in jobs):
+            reporter.write('lhtml: nothing written')
+        sys.exit(1)
 
-            out_path = _output_path_for(f_in, args.output)
-            if any(os.path.realpath(out_path) == os.path.realpath(source)
-                   or (os.path.exists(out_path) and os.path.exists(source)
-                       and os.path.samefile(out_path, source))
-                   for source in args.input):
-                raise ValueError(f'output file would overwrite the input file [{out_path}]')
-            out_dir = os.path.dirname(out_path)
-            if out_dir:
-                os.makedirs(out_dir, exist_ok=True)
-            if os.path.exists(out_path) and identity(out_path) in outputs \
-                    and outputs[identity(out_path)][0] != identity(f_in):
-                # two names one file (Page.html and page.html on macOS or Windows)
-                raise ValueError(f'{out_path} is the output of {outputs[identity(out_path)][1]} '
-                                 f'already (the same file under another name): not overwritten')
-            with open(out_path, 'w', encoding='utf-8', newline='') as f_out:
+    converted = failed = 0
+    for f_in, out in jobs:
+        shown = shown_path(f_in)
+        try:
+            source, html, found = convert(f_in, macros, args.line_breaks, args.wrap)
+        except (LHTMLError, OSError, UnicodeError) as e:
+            reporter.report(Diagnostic.of(shown, 'error', e))
+            failed += 1
+            continue
+        for warning in found:
+            reporter.report(Diagnostic.of(shown, 'warning', warning), source)
+        if out is None:
+            sys.stdout.buffer.write(html.encode('utf-8'))
+            sys.stdout.flush()
+            converted += 1
+            continue
+        try:
+            directory = os.path.dirname(out)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            with open(out, 'w', encoding='utf-8', newline='') as f_out:
                 f_out.write(html)
-            outputs[identity(out_path)] = (identity(f_in), f_in)
-        except (LHTMLError, OSError, UnicodeError, ValueError) as e:
-            print(diagnostic(f_in, 'error', e), file=sys.stderr)
-            errors += 1
+        except OSError as e:
+            reporter.report(Diagnostic.of(shown, 'error', e))
+            failed += 1
+            continue
+        converted += 1
+        if args.verbose:
+            reporter.write(f'{shown} {reporter.symbol("→", "->")} {shown_path(out)}')
 
-    if errors:
+    if not args.quiet and any(out is not None for _, out in jobs):
+        reporter.write(_summary(reporter, converted, failed))
+    if failed:
         sys.exit(1)
 
 

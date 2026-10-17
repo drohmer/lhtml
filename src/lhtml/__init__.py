@@ -6,11 +6,12 @@ for styling, layout, and content formatting.
 Usage:
     import lhtml
     html = lhtml.run(text)
-    html = lhtml.run(text, {'wrap-auto': True, 'title': 'My Page'})
+    html = lhtml.run(text, macros=lhtml.load_macros('macros.yaml'), line_breaks=True)
+    page = lhtml.wrap(html, title='My Page', css=['style.css'])
     document = lhtml.parse(text)          # the document tree (tree.py)
     html = lhtml.render(document)
 
-run(text, meta, tags) is documented in pipeline.py.
+run is documented in pipeline.py.
 """
 
 __version__ = '3.0.0'
@@ -25,6 +26,7 @@ from .export_html import TAGS, Tag
 from .macros import describe_macro, load_macros, registry_with_macros
 from .pipeline import run
 from .tree import parse, render
+from .wrap_html import wrap
 
 
 def main():
@@ -34,7 +36,7 @@ def main():
 
 
 __all__ = [
-    '__version__', 'run', 'parse', 'render', 'main', 'TAGS', 'Tag', 'LEXERS',
+    '__version__', 'run', 'parse', 'render', 'wrap', 'main', 'TAGS', 'Tag', 'LEXERS',
     'describe_macro', 'load_macros', 'registry_with_macros',
     # Errors
     'LHTMLError', 'LHTMLParseError',

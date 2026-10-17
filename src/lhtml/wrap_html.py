@@ -1,7 +1,7 @@
 """HTML document wrapping for LHTML.
 
 Wraps LHTML output in a complete HTML5 document structure
-with head, meta, CSS/JS includes from the options of the run.
+with head, meta, CSS/JS includes.
 """
 
 from html import escape
@@ -26,27 +26,24 @@ HTML_TEMPLATE = """\
 """
 
 
-def _ensure_list(value):
-    """Normalize a string-or-list meta value to a list."""
+def _names(value, option):
     if isinstance(value, str):
         return [value]
-    if isinstance(value, list):
-        return value
-    return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    raise TypeError(f'{option}: expected a file name or a list of them, got {type(value).__name__}')
 
 
-def wrap_auto(html_in, meta):
-    """Wrap content in a full HTML5 document using meta configuration."""
+def wrap(html_in, *, title='Webpage', css=(), js=()):
+    """A complete HTML5 document of the HTML of a page: its `title`, and the
+    stylesheets `css` and scripts `js` it links (a name or a list)."""
     head_parts = []
-
-    for css in _ensure_list(meta.get('css', [])):
-        head_parts.append(f'\t<link rel="stylesheet" type="text/css" href="{escape(str(css))}">\n')
-
-    for js in _ensure_list(meta.get('js', [])):
-        head_parts.append(f'\t<script src="{escape(str(js))}" defer></script>\n')
-
+    for name in _names(css, 'css'):
+        head_parts.append(f'\t<link rel="stylesheet" type="text/css" href="{escape(str(name))}">\n')
+    for name in _names(js, 'js'):
+        head_parts.append(f'\t<script src="{escape(str(name))}" defer></script>\n')
     return HTML_TEMPLATE.format(
-        title=escape(str(meta.get('title', 'Webpage')), quote=False),
+        title=escape(str(title), quote=False),
         head_extras=''.join(head_parts),
         content=html_in,
     )
