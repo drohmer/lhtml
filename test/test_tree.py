@@ -654,3 +654,58 @@ class TestPublicModel:
     def test_a_label_keeps_its_line_breaks_at_any_depth(self):
         assert lhtml.run('link::u[a **b**\nc]', line_breaks=True) == '<a href="u">a <strong>b</strong>\nc</a>'
         assert lhtml.run('x\nspan:: a\nb ::\ny', line_breaks=True) == 'x<br>\n<span> a<br>\nb </span><br>\ny'
+
+
+class TestAttributeMerges:
+    """The attributes are read once, merged as Attributes, written by render."""
+
+    def test_an_empty_class_or_style_joins_the_others(self):
+        assert lhtml.run('img::x.png(.a){class=""}') == '<img class="a" src="x.png" alt="x.png">'
+        assert lhtml.run('span::[c:d]{style=""} x ::') == '<span style="c:d"> x </span>'
+        assert lhtml.run('span::{class=""} x ::') == '<span class=""> x </span>'      # given: kept
+        assert lhtml.run('span::{class="" class=""} x ::') == '<span class=""> x </span>'
+        assert lhtml.run('span:: x ::') == '<span> x </span>'                       # absent: none
+
+    def test_no_ordinary_attribute_twice(self):
+        macros = {'box': {'class': 'box', 'attrs': 'class="m" title="t" data-a="1"'}}
+        html = lhtml.run('box::(.p #i){class="q" title="u" data-a="2"} x ::', macros=macros)
+        assert html == '<div class="box m p q" id="i" title="u" data-a="2"> x </div>'
+        assert all(html.count(f' {name}=') == 1 for name in ('class', 'id', 'title', 'data-a'))
+
+    def test_the_priorities_of_macro_url_and_page(self):
+        macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True, 'attrs': 'src="d" id="m" allowfullscreen'}}
+        assert lhtml.run('demo::', macros=macros) == '<iframe src="d" id="m" allowfullscreen></iframe>'
+        assert lhtml.run('demo::u', macros=macros) == '<iframe src="u" id="m" allowfullscreen></iframe>'
+        assert lhtml.run('demo::u(#p){src="w"}', macros=macros) == '<iframe id="p" allowfullscreen src="w"></iframe>'
+
+    def test_a_variant_is_one_class(self):
+        macros = {'gap': {'class': 'gap', 'variant': ['a.b'], 'empty': True}}
+        assert lhtml.run('gap::a.b', macros=macros) == '<div class="gap gap-a.b"></div>'
+
+    def test_an_attribute_without_value(self):
+        document = lhtml.parse('video::v.mp4{controls}')
+        video = next(n for n in document.walk() if n.kind == 'Video')
+        assert video.attributes['controls'] is None and 'controls' in video.attributes
+        video.attributes['muted'] = None
+        assert '<video controls muted>' in lhtml.render(document)
+
+    def test_jinja_in_a_name_keeps_its_case(self):
+        document = lhtml.parse('span::{data-{{ K }}="one" DATA-X="y"} x ::')
+        span = next(n for n in document.walk() if n.kind == 'Element')
+        assert list(span.attributes) == ['data-{{ K }}', 'data-x']
+        span.attributes['data-{{ K }}'] = 'two'
+        assert 'data-{{ k }}' not in span.attributes
+        assert lhtml.render(document) == '<span data-{{ K }}="two" DATA-X="y"> x </span>'
+
+    def test_a_conditional_fragment_stays_in_its_place(self):
+        document = lhtml.parse('img::a.png{{% if w %}width="{{ w }}"{% endif %} alt="A"}')
+        image = next(n for n in document.walk() if n.kind == 'Element')
+        image.attributes['alt'] = 'B'
+        assert lhtml.render(document) == '<img {% if w %}width="{{ w }}"{% endif %} alt="B" src="a.png">'
+
+    def test_a_merge_changes_neither_side(self):
+        a, b = lhtml.Attributes({'x': '1'}), lhtml.Attributes({'y': '2'})
+        a.extend(b)
+        b['y'] = '3'
+        assert (a['y'], dict(b)) == ('2', {'y': '3'})
+        assert dict(a.without({'x'})) == {'y': '2'} and 'x' in a

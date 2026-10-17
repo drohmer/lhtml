@@ -51,6 +51,16 @@ def _masked(text):
     return PLACEHOLDER.sub(lambda m: ' ' * len(m.group(0)), JINJA_RE.sub(mask, text))
 
 
+def key(name):
+    """The name an attribute is known by: lower case, its Jinja as written
+    (data-{{ K }} is not data-{{ k }})."""
+    parts, prev = [], 0
+    for m in JINJA_RE.finditer(name):
+        parts += [name[prev:m.start()].lower(), m.group(0)]
+        prev = m.end()
+    return ''.join(parts) + name[prev:].lower()
+
+
 def read(text):
     """The attributes of an attribute text, in order."""
     text = text or ''
@@ -63,7 +73,7 @@ def read(text):
             value = text[m.start(2):m.end(2)]
             if value[:1] in '"\'' and len(value) >= 2:
                 value = value[1:-1]
-        attributes.append(Attribute(text[m.start(1):m.end(1)].lower(), m.start(), m.end(), value))
+        attributes.append(Attribute(key(text[m.start(1):m.end(1)]), m.start(), m.end(), value))
     return attributes
 
 
@@ -79,37 +89,13 @@ def unclosed(text):
     return False
 
 
-def names(text):
-    """The names written in an attribute text, lower case."""
-    return {a.name for a in read(text)}
-
-
-def without(text, removed):
-    """The text without the attributes named in `removed`; the rest kept
-    as written, spaces in values included."""
-    text = text or ''
-    cuts = [a for a in read(text) if a.name in removed]
-    for a in reversed(cuts):
-        end = a.end
-        while end < len(text) and text[end] in ' \t\n':
-            end += 1
-        text = text[:a.start] + text[end:]
-    return text.strip() if cuts else text
-
-
-def join(*parts):
-    """Attribute texts side by side."""
-    return ' '.join(p for p in parts if p)
-
-
 def layered(*layers):
-    """The attribute texts of `layers`, the first ones the defaults: an
-    attribute a later layer writes is removed from the earlier ones (class
-    and style add up). The texts stay in the order given."""
-    result, written = [], set()
+    """Attributes, the first ones the defaults: a copy of each, without the
+    attributes a later one gives (class and style add up: kept)."""
+    result, given = [], set()
     for layer in reversed(layers):
-        result.append(without(layer, written - set(ADDED)))
-        written |= names(layer)
+        result.append(layer.without(given - set(ADDED)))
+        given |= set(layer)
     return list(reversed(result))
 
 
@@ -128,18 +114,36 @@ def quoted(value):
     return ''.join(parts)
 
 
+@dataclass(slots=True)
+class _Entry:
+    """An item of Attributes: an attribute (`name`, its key), or a fragment
+    among them (name None: a Jinja zone). `written`: as the source wrote it
+    (None once set: written from name and value); `space`: the spaces
+    before it as written (None: one)."""
+    name: str | None
+    value: str | None = None
+    written: str | None = None
+    space: str | None = None
+
+    def html(self):
+        written = self.written
+        if written is None:
+            written = self.name if self.value is None else f'{self.name}="{quoted(self.value)}"'
+        return (' ' if self.space is None else self.space) + written
+
+
 class Attributes(MutableMapping):
     """The attributes of an element, in order: name -> value, a str as in
     HTML source (entities as written; a `"` in a value set here is written
     &quot;), or None for an attribute without value (`autoplay`). A name is
-    read in any case. What sits among them and is not an attribute (a Jinja
-    fragment: `{% if x %}alt="y"{% endif %}`) stays in its place.
+    read in any case, its Jinja as written (key). What sits among them and
+    is not an attribute (a Jinja fragment: `{% if x %}alt="y"{% endif %}`)
+    stays in its place.
 
     An attribute read from the source is written back as it was written
     (its quotes, the spaces before it) until it is set."""
 
     def __init__(self, values=None):
-        # [name (lower case) or None, value, as written or None, the spaces before it or None: one]
         self._items = []
         for name, value in (values or {}).items():
             self[name] = value
@@ -151,7 +155,8 @@ class Attributes(MutableMapping):
         attributes, position = cls(), 0
         for a in read(text):
             position = attributes._fragments(text, position, a.start)
-            attributes._items.append([a.name, a.value, text[a.start:a.end], attributes._space(text, position, a.start)])
+            attributes._items.append(_Entry(a.name, a.value, text[a.start:a.end],
+                                            attributes._space(text, position, a.start)))
             position = a.end
         attributes._fragments(text, position, len(text))
         return attributes
@@ -163,65 +168,75 @@ class Attributes(MutableMapping):
     def _fragments(self, text, start, end):
         """What is not an attribute: its pieces (a Jinja zone is one piece)."""
         for m in _FRAGMENT.finditer(text, start, end):
-            self._items.append([None, None, m.group(0), self._space(text, start, m.start())])
+            self._items.append(_Entry(None, None, m.group(0), self._space(text, start, m.start())))
             start = m.end()
         return start
 
     def __getitem__(self, name):
-        if not isinstance(name, str):
-            raise KeyError(name)
-        for item in self._items:
-            if item[0] == name.lower():
-                return item[1]
+        if isinstance(name, str):
+            name = key(name)
+            for entry in self._items:
+                if entry.name == name:
+                    return entry.value
         raise KeyError(name)
 
     def __setitem__(self, name, value):
         if not isinstance(name, str) or not (value is None or isinstance(value, str)):
             raise TypeError(f'an attribute is a str name and a str value or None, got {name!r}: {value!r}')
-        key = name.lower()
-        found = [item for item in self._items if item[0] == key]
-        if found:
-            found[0][1:3] = [value, None]
-            self._items = [item for item in self._items if item[0] != key or item is found[0]]
-        else:
-            self._items.append([key, value, None, None])
+        name = key(name)
+        found = next((entry for entry in self._items if entry.name == name), None)
+        if found is None:
+            self._items.append(_Entry(name, value))
+        else:                           # in its place, written once
+            found.value, found.written = value, None
+            self._items = [entry for entry in self._items if entry.name != name or entry is found]
 
     def __delitem__(self, name):
         if name not in self:
             raise KeyError(name)
-        key = name.lower()
-        self._items = [item for item in self._items if item[0] != key]
+        self._items = self.without({key(name)})._items
 
     def __contains__(self, name):
-        return isinstance(name, str) and any(item[0] == name.lower() for item in self._items)
+        return isinstance(name, str) and any(entry.name == key(name) for entry in self._items)
 
     def __iter__(self):
-        seen = set()
-        for item in self._items:
-            if item[0] is not None and item[0] not in seen:
-                seen.add(item[0])
-                yield item[0]
+        return iter(dict.fromkeys(entry.name for entry in self._items if entry.name is not None))
 
     def __len__(self):
-        return len(set(item[0] for item in self._items if item[0] is not None))
+        return len(set(entry.name for entry in self._items if entry.name is not None))
 
     def __repr__(self):
         return f'Attributes({self.html().strip()!r})'
 
+    def copy(self):
+        copied = Attributes()
+        copied._items = [_Entry(e.name, e.value, e.written, e.space) for e in self._items]
+        return copied
+
+    def without(self, names):
+        """A copy without the attributes named in `names` (keys); the item
+        after one removed takes its spaces (as if it was cut out of the
+        text)."""
+        copied, space, cut = Attributes(), None, False
+        for entry in self._items:
+            if entry.name is not None and entry.name in names:
+                if not cut:
+                    space, cut = entry.space, True
+                continue
+            entry = _Entry(entry.name, entry.value, entry.written, space if cut else entry.space)
+            copied._items.append(entry)
+            cut = False
+        return copied
+
     def extend(self, other):
         """The attributes of `other` added after these, as they are."""
-        self._items += [list(item) for item in other._items]
+        self._items += other.copy()._items
         return self
 
     def values_of(self, name):
         """Every value written for `name` (an attribute written twice)."""
-        return [item[1] for item in self._items if item[0] == name.lower()]
+        return [entry.value for entry in self._items if entry.name == key(name)]
 
     def html(self):
         """The attributes as HTML: ` name="value"` each."""
-        parts = []
-        for name, value, written, space in self._items:
-            if written is None:
-                written = name if value is None else f'{name}="{quoted(value)}"'
-            parts.append((' ' if space is None else space) + written)
-        return ''.join(parts)
+        return ''.join(entry.html() for entry in self._items)

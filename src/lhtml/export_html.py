@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable
 
-from .attributes import Attributes, names, without
+from .attributes import Attributes
 from .nodes import Element, Node, Text, Video
 from .patterns import JINJA_RE
 
@@ -52,34 +52,35 @@ def join_styles(*styles):
 
 def class_and_id(text):
     """The attributes class and id of '.class1 .class2 #id'."""
-    return _parts(text, '', '')[0]
+    classes, ids = _class_and_id(text)
+    return assemble(classes, ids, '', Attributes())[0]
 
 
-def _parts(class_id, style, written):
-    """(class and id, style, the attributes written left), as Attributes:
-    the classes and styles written {...} join those of (...) and [...] when
-    both are given, or when {...} writes one twice (the defaults of a
-    macro, then the page); otherwise they stay where they are written. An
-    id written {...} replaces the one of (#id)."""
-    classes, ids = _class_and_id(class_id)
-    rest = Attributes.read(written)
-    values = [v for v in rest.values_of('class') if v]
-    if values and (classes or len(rest.values_of('class')) > 1):
-        for value in values:
-            classes += _words(value)
+def assemble(classes, ids, style, rest):
+    """(class and id, style, the attributes left), as Attributes, from the
+    classes and ids of (...), the style of [...] and the attributes `rest`
+    (changed): the classes and styles of `rest` join those of (...) and
+    [...] when both are given, or when `rest` gives one twice (the defaults
+    of a macro, then the page); otherwise they stay where they are. An
+    empty one is given too: (.a){class=""} is class="a", {class=""} alone
+    class="". An id of `rest` replaces the one of (#id)."""
+    head, styled = Attributes(), Attributes()
+    written = rest.values_of('class')
+    if written and (classes or len(written) > 1):
+        classes = classes + [word for value in written if value for word in _words(value)]
         del rest['class']
-    values = [v for v in rest.values_of('style') if v]
-    if values and (style or len(rest.values_of('style')) > 1):
-        style = join_styles(style, *values)
+        head['class'] = ''
+    written = rest.values_of('style')
+    if written and (style or len(written) > 1):
+        style = join_styles(style, *(value for value in written if value))
         del rest['style']
-    if 'id' in rest:
-        ids = []
-    head = Attributes()
+        styled['style'] = ''
     if classes:
         head['class'] = ' '.join(dict.fromkeys(classes))
-    if ids:
+    if ids and 'id' not in rest:
         head['id'] = ' '.join(ids)
-    styled = Attributes({'style': style} if style else {})
+    if style:
+        styled['style'] = style
     return head, styled, rest
 
 
@@ -87,8 +88,9 @@ def element_attributes(written):
     """The attributes of a Written: its classes and id (.a #b), its style
     [...] (not for link::, whose [...] is its label), then those written
     {...}."""
+    classes, ids = _class_and_id(written.parentheses)
     style = '' if written.tag == 'link' else written.brackets
-    head, styled, rest = _parts(written.parentheses, style, written.braces)
+    head, styled, rest = assemble(classes, ids, style, Attributes.read(written.braces))
     return head.extend(styled).extend(rest)
 
 
@@ -141,9 +143,13 @@ def _img(written):
 
 
 def _video(defaults):
+    defaults = Attributes.read(defaults)
+
     def build(written):
-        head, styled, rest = _parts(written.parentheses, written.brackets, written.braces)
-        given = Attributes.read(without(defaults, names(written.braces)))
+        page = Attributes.read(written.braces)
+        given = defaults.without(set(page))
+        classes, ids = _class_and_id(written.parentheses)
+        head, styled, rest = assemble(classes, ids, written.brackets, page)
         return Video(attributes=rest.extend(given).extend(head).extend(styled), src=written.text)
     return build
 
