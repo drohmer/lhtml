@@ -10,6 +10,7 @@ a protected zone, or at text that follows a group that itself followed text
 (`link::url[label]rest`). A protected URL (placeholder of kind U) is text.
 """
 
+import functools
 import re
 
 from .errors import LHTMLParseError
@@ -17,6 +18,21 @@ from .errors import LHTMLParseError
 PAIRS = {'(': ')', '[': ']', '{': '}'}
 _TAG_NAME_BEFORE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*\Z')
 _MAX_TAG_NAME = 64
+
+
+@functools.lru_cache(maxsize=8)
+def _matches(text):
+    """The closing bracket of each opening one, by position, each kind of
+    bracket nesting its own kind only (an unclosed one has none): computed
+    once per text, so that unclosed brackets do not each scan to its end."""
+    matches, stacks = {}, {ch: [] for ch in PAIRS}
+    closing = {close: ch for ch, close in PAIRS.items()}
+    for i, ch in enumerate(text):
+        if ch in PAIRS:
+            stacks[ch].append(i)
+        elif ch in closing and stacks[closing[ch]]:
+            matches[stacks[closing[ch]].pop()] = i
+    return matches
 
 
 def extract_bracket_elements(text, index_start):
@@ -58,15 +74,11 @@ def extract_bracket_elements(text, index_start):
         if ch.isspace() or ch == '\x00' or ch == '<':
             break
         if ch in PAIRS:
-            close, depth, j = PAIRS[ch], 1, i + 1
-            while j < len(text) and depth:
-                if text[j] == ch:
-                    depth += 1
-                elif text[j] == close:
-                    depth -= 1
-                j += 1
-            if depth:
+            close = PAIRS[ch]
+            j = _matches(text).get(i)
+            if j is None:
                 raise LHTMLParseError(f'Unclosed bracket {ch!r} (expected {close!r})')
+            j += 1
             groups.append((ch + close, i + 1, j - 1))
             group_after_text = group_after_text or seen_text
             i = j

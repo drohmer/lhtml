@@ -68,25 +68,116 @@ class TestWhatThePassesDid:
     def test_a_last_list_line_gets_its_line_break(self):
         assert quiet(lhtml.run, '* last')[0] == '<ul>\n<li>\nlast\n</li>\n</ul>\n'
 
-    def test_the_markup_a_link_label_holds_is_written_once(self):
-        html, _ = quiet(lhtml.run, '**x link::u[**b**] y')
-        assert html == '<strong>x <a href="u"></strong>b**</a> y'
-        html, _ = quiet(lhtml.run, 'link::http://a.b/c[l\n== box::(]x')
-        assert html == '<a href="http://a.b/c">l\n<h2>box::(</a>x</h2>\n'
+
+
+def problems(text, **options):
+    document, said = quiet(lhtml.parse, text, **options)
+    return [(p.line, p.column, str(p)) for p in document.problems]
 
 
 class TestCrossings:
 
     def test_an_element_opened_in_an_item_is_closed_there(self):
-        html, said = quiet(lhtml.run, '* a span::[c] b\n* d ::\n')
+        html, _ = quiet(lhtml.run, '* a span::[c] b\n* d ::\n')
         assert html == '<ul>\n<li>\na <span style="c"> b\n</span></li>\n<li>\nd ::\n</li>\n</ul>\n'
-        assert any('closed at the end of the item it is opened in' in w for w in said)
-        assert any('this :: closes nothing' in w for w in said)
+        (l1, c1, closed), (l2, c2, nothing) = problems('* a span::[c] b\n* d ::\n')
+        assert 'span:: is closed at the end of the list item it is opened in' in closed
+        assert (l1, c1) == (1, 5)
+        assert 'this :: closes nothing: span:: was closed at the end of the list item' in nothing
+        assert (l2, c2) == (2, 5)                     # at the ::, not at the element
 
     def test_a_close_inside_a_later_item_closes_nothing(self):
-        html, said = quiet(lhtml.run, 'div::[x]\n* a ::\n')
-        assert html == '<div style="x">\n<ul>\n<li>\na ::\n</li>\n</ul>\n</div>'
-        assert any('its :: is inside a heading, list item, bold or italic' in w for w in said)
+        html, _ = quiet(lhtml.run, 'div::[x]\n* a ::\n')
+        assert html == '<div style="x">\n<ul>\n<li>\na ::\n</li>\n</ul>\n'
+        said = problems('div::[x]\n* a ::\n')
+        assert said[0][:2] == (1, 1) and 'div:: is never closed' in said[0][2]
+        assert said[1][:2] == (2, 5) and 'it is inside a list item that div:: is not in' in said[1][2]
+
+    def test_a_close_inside_a_bold_leaves_the_element_open_for_its_own(self):
+        html, _ = quiet(lhtml.run, 'div:: a **x :: y** b ::')
+        assert html == '<div> a <strong>x :: y</strong> b </div>'
+        [(line, column, said)] = problems('div:: a **x :: y** b ::')
+        assert (line, column) == (1, 13) and 'inside a bold that div:: is not in' in said
+
+    def test_one_warning_per_crossing_naming_its_container(self):
+        for text, kind in [('* a span::x\n', 'list item'), ('= T div:: x\n', 'heading'),
+                           ('**a span:: b** c', 'bold'), ('__a span:: b__ c', 'italic')]:
+            [(_, _, said)] = problems(text)
+            assert f'closed at the end of the {kind} it is opened in' in said, said
+
+    def test_an_italic_does_not_cross_a_bold(self):
+        html, _ = quiet(lhtml.run, '**b __c** d__')
+        assert html == '<strong>b __c</strong> d__'
+        [(line, column, said)] = problems('**b __c** d__')
+        assert (line, column) == (1, 5) and "would cross a bold" in said and "'__c** d__'" in said
+
+    def test_a_link_label_does_not_cross_an_item_or_a_bold(self):
+        html, _ = quiet(lhtml.run, '* link::u[a\n* b] c\n')
+        assert html == '<ul>\n<li>\nlink::u[a\n</li>\n<li>\nb] c\n</li>\n</ul>\n'
+        html, _ = quiet(lhtml.run, '**x link::u[**b**] y')
+        assert html == '<strong>x link::u[</strong>b**] y'
+        [(line, column, said)] = problems('**x link::u[**b**] y')
+        assert (line, column) == (1, 5) and "link:: is left as text" in said and "'link::u[**b**]'" in said
+        assert quiet(lhtml.run, 'link::u[a **b** c]')[0] == '<a href="u">a <strong>b</strong> c</a>'
+
+
+class TestPlaces:
+
+    CASES = ['* a', 'abc\n* x\n* ', 'xx\ndiv:: a **:: y**\n', '**a div:: b** c :: d',
+             '* a span::[c] b\n* d ::\n', '\n* ', 'span::\n=() ::', '* ::c', '::z__::__',
+             '= T div:: x\nmore\n* a\n** b **c**\n']
+
+    def test_every_node_is_placed_and_nests_in_its_parent(self):
+        for text in self.CASES:
+            document, _ = quiet(lhtml.parse, text)
+            for node in document.walk():
+                if node is document:
+                    continue
+                assert node.line is not None, (text, node)
+                start, end = node.span
+                assert 0 <= start <= end <= len(text), (text, node)
+                assert (node.line, node.column) == (text.count('\n', 0, start) + 1,
+                                                    start - text.rfind('\n', 0, start)), (text, node)
+                spans = [child.span for child in node.children]
+                assert all(start <= a <= b <= end for a, b in spans), (text, node)
+                assert all(b <= a for (_, b), (a, _) in zip(spans, spans[1:])), (text, node)
+
+    def test_an_element_closed_by_its_container_ends_there(self):
+        document, _ = quiet(lhtml.parse, '**a div:: b** c :: d')
+        strong = next(n for n in document.walk() if n.kind == 'Strong')
+        element = next(n for n in document.walk() if n.kind == 'Element')
+        assert (strong.span, element.span, element.closed) == ((0, 13), (4, 11), 'container')
+
+    def test_spans_are_offsets_in_the_text_given(self):
+        text = '\ufeffa\r\n**b**\r\n'
+        document, _ = quiet(lhtml.parse, text)
+        strong = next(n for n in document.walk() if n.kind == 'Strong')
+        assert text[strong.span[0]:strong.span[1]] == '**b**' and (strong.line, strong.column) == (2, 1)
+        assert document.span == (0, len(text))
+
+    def test_problems_are_in_source_order(self):
+        said = problems('div:: a **x :: y** b\n')
+        assert [(l, c) for l, c, _ in said] == sorted((l, c) for l, c, _ in said)
+
+    def test_an_unknown_name_is_one_text(self):
+        document = lhtml.parse('foo::(.x) y\n')
+        assert [(n.kind, getattr(n, 'value', None)) for n in document.children] == [('Text', 'foo::(.x) y\n')]
+
+
+class TestDepth:
+
+    def test_deep_nesting_parses_and_renders(self):
+        for text in ['div:: ' * 3000, 'div:: a **b :: c**\n' * 2000, '*' * 1500 + ' x\n',
+                     ''.join('*' * k + ' x\n' for k in range(1, 1500))]:
+            document, _ = quiet(lhtml.parse, text)
+            assert lhtml.render(document)
+            assert sum(1 for _ in document.walk()) > 1000
+
+    def test_unclosed_brackets_take_linear_time(self):
+        import time
+        start = time.perf_counter()
+        quiet(lhtml.run, 'span::[ x ' * 20000)
+        assert time.perf_counter() - start < 3
 
 
 class TestTags:
@@ -108,3 +199,47 @@ class TestTags:
     def test_an_unknown_name_is_text(self):
         document = lhtml.parse('std::vector<int> v;\n')
         assert [n.kind for n in document.walk()] == ['Document', 'Text', 'Raw', 'Text']
+
+    def test_the_anonymous_div_is_the_div_of_the_run(self):
+        div = lhtml.Tag(container=True, render=lambda element, children, context: f'<section>{children}</section>')
+        assert quiet(lhtml.run, '::(.a) x ::', tags={'div': div})[0] == '<section> x </section>'
+        assert quiet(lhtml.run, '::(.a) x ::')[0] == '<div class="a"> x </div>'
+
+    def test_the_built_in_tags_are_read_only(self):
+        with pytest.raises(TypeError):
+            lhtml.TAGS['foo'] = lhtml.Tag(render=lambda element, children, context: 'FOO')
+
+    def test_an_inline_form_holds_nothing_even_in_a_container(self):
+        cont = lhtml.Tag(container=True, render=lambda element, children, context:
+                         f'<c>{element["text"]}|{children}</c>')
+        assert quiet(lhtml.run, 'cont::x:: y', tags={'cont': cont})[0] == '<c>x::|</c> y'
+
+    def test_a_tag_that_fails_names_itself_and_its_place(self):
+        def fails(element, children, context):
+            return 1 / 0
+        with pytest.raises(lhtml.LHTMLError) as error:
+            quiet(lhtml.run, 'a\nbad:: x ::', tags={'bad': lhtml.Tag(fails, container=True)})
+        assert (error.value.line, error.value.column) == (2, 1) and 'bad::' in str(error.value)
+        assert isinstance(error.value.__cause__, ZeroDivisionError)
+        with pytest.raises(lhtml.LHTMLError, match='returned NoneType'):
+            quiet(lhtml.run, 'none::', tags={'none': lhtml.Tag(lambda element, children, context: None)})
+        with pytest.raises(lhtml.LHTMLError, match='container raised'):
+            quiet(lhtml.run, 'bad:: x', tags={'bad': lhtml.Tag(str, container=lambda element: 1 / 0)})
+
+    def test_the_tags_given_are_checked(self):
+        with pytest.raises(TypeError, match='lhtml.Tag'):
+            lhtml.run('x', tags={'old': lambda element, context: ''})
+        for name in ('my tag', '1x', 'nl', 'code'):
+            with pytest.raises(ValueError):
+                lhtml.run('x', tags={name: lhtml.Tag(str)})
+
+    def test_the_options_are_checked(self):
+        with pytest.raises(TypeError, match='mapping'):
+            lhtml.run('x', ['a'])
+        with pytest.raises(TypeError, match='callable'):
+            lhtml.render(lhtml.parse('x'), {'media': 'x'})
+
+    def test_a_warning_names_the_tag_written(self):
+        cont = lhtml.Tag(container=True, render=lambda element, children, context: children)
+        [(_, _, said)] = problems('a\ncont:: x\n', tags={'cont': cont})
+        assert said.startswith('cont:: is never closed')

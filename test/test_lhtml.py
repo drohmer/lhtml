@@ -214,7 +214,7 @@ class TestVerbatim:
 # ---------------------------------------------------------------------------
 
 class TestPluginSystem:
-    def test_custom_tag_handler(self):
+    def test_custom_tag(self):
         tags = {'alert': lhtml.Tag(lambda el, children, context: f'<div class="alert">{el.get("text", "")}</div>')}
         r = lhtml.run('\nalert::Warning\n', tags=tags)
         assert '<div class="alert">Warning</div>' in r
@@ -547,7 +547,7 @@ class TestUnclosedTags:
     def test_unclosed_div_warns(self):
         r, w = _run_with_warnings('div::[x]\nhello\n')
         assert r == '<div style="x">\nhello\n'
-        assert any('<div> is never closed' in x and 'div::[x]' in x for x in w)
+        assert any('div:: is never closed' in x and 'div::[x]' in x for x in w)
 
     def test_closed_div_no_warning(self):
         _, w = _run_with_warnings('div::[x]\nhello\n::\n')

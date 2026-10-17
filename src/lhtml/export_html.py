@@ -8,6 +8,7 @@ string. The element dict has keys: '[]' (style), '()' (class/id), '{}'
 import html
 import re
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Callable
 
 from .patterns import JINJA_RE
@@ -127,17 +128,18 @@ def export_html_video(elements, default_inline='', media=None):
 @dataclass
 class Tag:
     """A `name::` tag. `container`: whether it holds what follows until its
-    `::` (a bool, or a function of the element: div::text:: closes at once).
-    `render(element, children, context)`: its HTML, closing tag included;
-    `children` is the HTML of what it holds ('' for a tag that holds
-    nothing), and element['closed'] is False when nothing closed it.
-    `context` is the ProcessingContext of the run (context.meta,
-    context.media)."""
+    `::` (a bool, or a function of the element); written `name::text::`, it
+    holds nothing either way. `render(element, children, context)`: its
+    HTML, closing tag included; `children` is the HTML of what it holds (''
+    for a tag that holds nothing), and element['closed'] is False when
+    nothing closed it. `context` is the ProcessingContext of the run
+    (context.meta, context.media)."""
     render: Callable
     container: bool | Callable = False
-    html: str = 'div'               # the HTML tag it opens, for the warnings
 
     def holds(self, element):
+        if element['text'].endswith('::'):
+            return False
         return self.container(element) if callable(self.container) else bool(self.container)
 
 
@@ -153,11 +155,11 @@ def element_html(tag, element, children):
 
 def generic(tag):
     """div::, span::: holds what follows, unless written div::text::"""
-    return Tag(lambda element, children, context: element_html(tag, element, children),
-               container=lambda element: not element['text'].endswith('::'), html=tag)
+    return Tag(lambda element, children, context: element_html(tag, element, children), container=True)
 
 
-TAGS = {
+# Read-only: a run adds its own tags with run(..., tags=)
+TAGS = MappingProxyType({
     'div': generic('div'),
     'span': generic('span'),
     'link': Tag(lambda element, children, context: export_html_link(element)),
@@ -165,6 +167,6 @@ TAGS = {
     'video': Tag(lambda element, children, context: export_html_video(element, '', context.media)),
     'videoplay': Tag(lambda element, children, context: export_html_video(
         element, 'autoplay loop muted playsinline', context.media)),
-}
+})
 
 SPACER = Tag(lambda element, children, context: '<div style="height:1em;"></div>')     # ::nl

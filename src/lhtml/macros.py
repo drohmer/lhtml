@@ -149,7 +149,7 @@ def macro_tag(name, spec):
             return f'<{tag}{_build_attrs(m)}>' + ('' if m['text'] == '::' else m['text'])
         return element_html(tag, m, children)
 
-    return Tag(render, container=holds, html=tag)
+    return Tag(render, container=holds)
 
 
 def describe_macro(name, spec):

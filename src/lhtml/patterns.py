@@ -124,7 +124,7 @@ def regex_transform(text: str, pattern: re.Pattern, transform_fn: Callable[[re.M
     For each match of `pattern` in `text`, calls `transform_fn(match)`
     to produce the replacement string. Non-matching text passes through.
 
-    Used by process_bold, process_italic, process_title, etc.
+    Used to restore the placeholders (restore_from_index).
     """
     parts = []
     prev = 0
