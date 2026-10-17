@@ -138,7 +138,7 @@ With classes/IDs:
 * Back to top level
 ```
 
-Output (a nested list is placed in its own `<li>`):
+Output (a nested list is inside the item before it):
 ```html
 <ul>
 <li>
@@ -146,8 +146,6 @@ First item
 </li>
 <li>
 Second item
-</li>
-<li>
 <ul>
 <li>
 Nested item
@@ -160,7 +158,7 @@ Back to top level
 </ul>
 ```
 
-Each `*` adds one level (`***` is level 3). A list ends at the first line that is not an item.
+Each `*` adds one level (`***` is level 3). A list ends at the first line that is not an item. A nested list with no item before it to hold it (a list that starts at `**`, or a jump of two levels) gets an item of its own.
 
 
 ### Inline Formatting
@@ -587,7 +585,7 @@ html = lhtml.render(document)
 ```
 
 The nodes are `Document`, `Heading` (`level`, `attributes`), `List`,
-`Item` (a deeper list is a `List` inside an `Item` of its own), `Strong`,
+`Item` (a deeper list is a `List` inside the `Item` before it), `Strong`,
 `Emphasis`, `Element` (`name`, '' for an anonymous `::`; `groups`; `value`;
 `closed`), `Text` (`value`) and the leaves `Code` (`language`, `body`),
 `InlineCode`, `Math` and `Raw` (`text`; `raw_kind`: html, comment, script,

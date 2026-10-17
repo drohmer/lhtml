@@ -283,8 +283,11 @@ class _Parser:
         return text.transform(HEADING, pieces)
 
     def lists(self, text):
-        """`* item` lines: a run of them is a
-        list, a deeper level a list inside an item of its own."""
+        """`* item` lines: a run of them is a list. A deeper level is a list
+        inside the item before it (`* a` then `** b`: b's list is in a's
+        item); in an item of its own only when there is none to hold it (a
+        list that starts at `**`, a jump of two levels). An item stays open
+        until the next line at its level, or shallower."""
         chars, origins = [], []
 
         def gen(event):
@@ -302,22 +305,25 @@ class _Parser:
         for a, b in lines:
             m = item.match(text.chars, a, b)
             levels.append(len(m.group(1)) if m else 0)
-        stack, level = [], 0            # the open List and wrapper Item nodes
+        open_lists = []                 # one per level: [List, the item open in it, or None]
         for k, (a, b) in enumerate(lines):
             line_level = levels[k]
-            while level < line_level:
-                level += 1
-                if level > 1:
-                    wrapper = Item()
-                    gen(self.event('open', wrapper))
-                    stack.append(wrapper)
-                lst = List()
-                gen(self.event('open', lst))
-                stack.append(lst)
-            if level > 0:
+            if line_level:
+                if len(open_lists) == line_level and open_lists[-1][1] is not None:
+                    gen(self.event('close', open_lists[-1][1]))     # the item before, at this level
+                    open_lists[-1][1] = None
+                while len(open_lists) < line_level:
+                    if open_lists and open_lists[-1][1] is None:     # nothing to hold the deeper list
+                        wrapper = Item()
+                        gen(self.event('open', wrapper))
+                        open_lists[-1][1] = wrapper
+                    lst = List()
+                    gen(self.event('open', lst))
+                    open_lists.append([lst, None])
                 node = Item()
                 m = item.match(text.chars, a, b)
                 gen(self.event('open', node))
+                open_lists[-1][1] = node
                 span = self.source_of(text.origins[a:b])
                 if span:
                     node.span = span
@@ -334,16 +340,15 @@ class _Parser:
                         brk.span = (span[1], span[1])
                         brk.line, brk.column = self.place(span[1])
                     gen(self.event('leaf', brk))
-                gen(self.event('close', node))
             else:
                 chars.append(text.chars[a:b])
                 origins.extend(text.origins[a:b])
             next_level = levels[k + 1] if k + 1 < len(lines) else 0
-            while level > next_level:
-                level -= 1
-                gen(self.event('close', stack.pop()))
-                if level >= 1:
-                    gen(self.event('close', stack.pop()))
+            while len(open_lists) > next_level:      # the deeper lists end here, with their item
+                lst, open_item = open_lists.pop()
+                if open_item is not None:
+                    gen(self.event('close', open_item))
+                gen(self.event('close', lst))
         return _Text(''.join(chars), origins)
 
     def inline(self, text, pattern, kind):

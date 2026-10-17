@@ -87,6 +87,12 @@ functions and the errors.
   end of a heading, an item or a bold, are left as text, with a warning.
   The HTML was malformed (`<li><span>...</li>...</span>`,
   `<strong><em>...</strong>...</em>`).
+- A nested list is inside the item before it, as HTML expects
+  (`<li>a<ul>...</ul></li>`); LHTML 2 put it in an item of its own
+  (`<li>a</li><li><ul>...</ul></li>`), which a page without a theme showed
+  as a second bullet. It keeps an item of its own only when there is none
+  to hold it (a list starting at `**`, a jump of two levels). The themes of
+  the corpus draw no bullet: their renders are unchanged.
 - `line-breaks` is decided on the document tree: a line break of the source
   gets a `<br>` when its line and the next are not structure, a line being
   structure when the node at its start or its end is a block (a heading, a

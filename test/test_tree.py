@@ -27,12 +27,21 @@ def quiet(fn, *args, **options):
 
 class TestShape:
 
+    def test_a_deeper_list_is_in_the_item_before_it(self):
+        document = lhtml.parse('* Parent\n** Child\n* Next\n')
+        assert kinds(document)[:8] == ['Document', '  List', '    Item', '      Text', '      List', '        Item',
+                                       '          Text', '    Item']
+        assert lhtml.render(document) == ('<ul>\n<li>\nParent\n<ul>\n<li>\nChild\n</li>\n</ul>\n</li>\n'
+                                          '<li>\nNext\n</li>\n</ul>\n')
+        # an item of its own only when there is none to hold it
+        assert lhtml.run('** a\n* b') == '<ul>\n<li>\n<ul>\n<li>\na\n</li>\n</ul>\n</li>\n<li>\nb\n</li>\n</ul>\n'
+
     def test_nodes_nest_what_the_passes_wrote_flat(self):
         document = lhtml.parse('= Title\n* a **b**\n** c\ndiv::[x:y]\n`code` \\(m\\) <b>raw</b>\n::\n')
         assert kinds(document) == [
             'Document', '  Heading', '    Text', '  Text',
             '  List', '    Item', '      Text', '      Strong', '        Text', '      Text',
-            '    Item', '      List', '        Item', '          Text',
+            '      List', '        Item', '          Text',
             '  Element', '    Text', '    InlineCode', '    Text', '    Math', '    Text',
             '    Raw', '    Text', '    Raw', '    Text', '  Text']
 
