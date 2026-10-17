@@ -96,9 +96,6 @@ BLOCK_TAGS       = frozenset((
     'pre blockquote section article header footer nav aside main figure figcaption '
     'hr br source track details summary form').split())
 LEADING_TAG      = re.compile(r'^\s*</?([A-Za-z][\w-]*)')
-TRAILING_TAG     = re.compile(r'</?([A-Za-z][\w-]*)(?:[^<>"\']|"[^"]*"|\'[^\']*\')*/?>\s*$')
-LEADING_PLACEHOLDER  = re.compile(r'^\s*\x00([A-Z])(\d+)\x00')
-TRAILING_PLACEHOLDER = re.compile(r'\x00([A-Z])(\d+)\x00\s*$')
 JINJA_LINE       = re.compile(r'\s*(\{%.*%\}|\{#.*#\})\s*', re.DOTALL)
 # <pre> and <textarea> keep their line breaks: no <br> inside
 PREFORMATTED_TAG = re.compile(r'<(/?)(?i:pre|textarea)(?=[\s/>])')

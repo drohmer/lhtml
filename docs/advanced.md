@@ -143,11 +143,11 @@ src/lhtml/
   pipeline.py          # run(): parse, then render
   tree.py              # parse(): the document tree
   nodes.py             # The nodes of the tree
-  render.py            # render(): the HTML of a tree, from its nodes
+  render.py            # render(): the HTML of a tree, from its nodes, and its line breaks
   attributes.py        # The attributes: one reader, Attributes, one rule of priority
   diagnostics.py       # The problems as the command shows them
   macros.py            # Macros: custom :: tags declared in YAML
-  process.py           # The protected zones, the tag decisions, line breaks
+  process.py           # The protected zones, the tag decisions
   patterns.py          # Centralized regex patterns and utilities
   tag_parser.py        # extract_bracket_elements(): the parser of a :: tag element
   export_html.py       # Tag, TAGS: the built-in tags build their nodes

@@ -591,3 +591,20 @@ class TestSecondReview:
             attributes[1]
         with pytest.raises(TypeError):
             attributes['z'] = 3
+
+
+class TestLineBreaksOnTheNodes:
+    """The line breaks read the nodes: an element by its name, a raw zone as written."""
+
+    def test_an_element_built_as_pre_keeps_its_lines(self):
+        pre = lhtml.Tag(lambda element: lhtml.Element(name='pre'), container=True)
+        assert lhtml.run('a\np:: x\ny ::\nb', line_breaks=True, tags={'p': pre}) == 'a\n<pre> x\ny </pre>\nb'
+
+    def test_a_block_element_by_its_name(self):
+        section = lhtml.Tag(lambda element: lhtml.Element(name='section'), container=True)
+        assert lhtml.run('a\ns:: x ::\nb', line_breaks=True, tags={'s': section}) == 'a\n<section> x </section>\nb'
+        aside = lhtml.Tag(lambda element: lhtml.Element(name='q'), container=True)
+        assert lhtml.run('a\ns:: x ::\nb', line_breaks=True, tags={'s': aside}) == 'a<br>\n<q> x </q><br>\nb'
+
+    def test_a_zone_is_one_piece(self):
+        assert lhtml.run('a\n<div>\nx\n</div>\nb', line_breaks=True) == 'a\n<div>\nx\n</div>\nb'

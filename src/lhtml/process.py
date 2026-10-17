@@ -1,7 +1,7 @@
 """What the parser of the tree (tree.py) reads with: the zones LHTML never
 transforms, replaced by placeholders (ProtectionStores), the refusals of the
-syntax removed in 3.0, the rules that decide whether a `::` is a tag, and
-the line breaks option.
+syntax removed in 3.0, and the rules that decide whether a `::` is a tag
+(the line breaks option is in render.py: it reads the nodes).
 
 The kinds of stored content are listed in ProtectionStores; they become the
 opaque leaves of the tree (code, inline code, mathematics, raw HTML).
@@ -18,8 +18,6 @@ from .patterns import (
     PROTECTED, PROTECTED_BLOCKS, protected_blocks,
     HEADING,
     INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
-    BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
-    JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
     PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR,
     regex_transform, make_placeholder,
 )
@@ -314,105 +312,3 @@ def _adjust_bare_tag(text, m, element):
     if following and not (following.isalnum() or following.isspace() or following in '[({'):
         element.update({'text': '', '[]': '', '()': '', '{}': '', 'index_end': m.end()})
     return True
-
-
-# ---------------------------------------------------------------------------
-# Line breaks option
-# ---------------------------------------------------------------------------
-
-def _is_block_placeholder(kind, idx, stores):
-    """True if a protected zone is a block: code block, HTML comment,
-    <script>/<style>, display math or block-level HTML tag."""
-    if kind == 'C':
-        return True
-    if kind != 'R':
-        return False
-    entry = stores.R[idx]
-    if BLOCK_RAW.match(entry) or JINJA_LINE.fullmatch(entry):
-        return True
-    m = LEADING_TAG.match(entry)
-    return bool(m) and m.group(1).lower() in BLOCK_TAGS
-
-
-def _edge_is_block(piece, kind, stores, first):
-    """Whether a piece of a line, at its start (`first`) or its end, is a
-    block: a node of the tree that opens or closes one (its own markup:
-    <h1>, <ul>, <li>, <div> of a div::), a code block, a block zone of raw
-    HTML (<div>, a comment, <script>, display math, a Jinja statement)."""
-    if kind == 'text':
-        return False
-    if kind == 'leaf':
-        m = (LEADING_PLACEHOLDER if first else TRAILING_PLACEHOLDER).search(piece)
-        return bool(m) and _is_block_placeholder(m.group(1), int(m.group(2)), stores)
-    m = (LEADING_TAG if first else TRAILING_TAG).search(piece)
-    return bool(m) and m.group(1).lower() in BLOCK_TAGS
-
-
-def _preformatted_depth_change(line, stores):
-    """Count actual preformatted tags, never tag-like text inside raw zones."""
-    tags = []
-    for placeholder in PLACEHOLDER.finditer(line):
-        if placeholder.group(1) == 'R':
-            entry = stores.R[int(placeholder.group(2))]
-            # An actual tag starts at the beginning of its stored zone.
-            # Do not scan inside comments, scripts, attributes or Jinja.
-            tags.append(PREFORMATTED_TAG.match(entry))
-    # Tags rendered by the :: tags (and direct calls without stores) are
-    # not placeholders. Tokenize them so quoted attributes stay opaque.
-    for zone in PROTECTED.finditer(line):
-        if zone.group('tag') is not None:
-            tags.append(PREFORMATTED_TAG.match(zone.group('tag')))
-    return sum(-1 if tag.group(1) else 1 for tag in tags if tag is not None)
-
-
-def line_breaks(tokens, stores):
-    """The HTML of the tokens of a document tree, the line breaks of its
-    source made visible with <br>.
-
-    `tokens`: (html, kind) in order, kind 'text' (a Text node), 'leaf' (the
-    placeholder of a code block, raw HTML, mathematics, inline code) or
-    'markup' (what a node writes around its children). A line is structure
-    when its first or last piece is a block (_edge_is_block), when it is a
-    Jinja statement, or inside <pre> and <textarea>, whose line breaks are
-    visible already. In each run of other lines, blank lines at the start
-    and end of the run are ignored, and every line but the last one gets a
-    <br>, blank lines included - if its line break is one of the source (in
-    a Text): the line breaks a tag writes in its own HTML (video::) get none.
-    """
-    lines, ends = [[]], []
-    for html, kind in tokens:
-        for k, piece in enumerate(html.split('\n')):
-            if k:
-                ends.append(kind)
-                lines.append([])
-            if piece:
-                lines[-1].append((piece, kind))
-    texts = [''.join(piece for piece, _ in line) for line in lines]
-    structure, depth = [], 0
-    for line, text in zip(lines, texts):
-        change = _preformatted_depth_change(text, stores)
-        edges = [(piece, kind) for piece, kind in line if piece.strip()]
-        block = bool(edges) and (_edge_is_block(*edges[0], stores, True)
-                                 or _edge_is_block(*edges[-1], stores, False))
-        structure.append(depth > 0 or change != 0 or block or bool(JINJA_LINE.fullmatch(text)))
-        depth = max(0, depth + change)
-    blank = [not text.strip() for text in texts]
-
-    start = 0
-    while start < len(lines):
-        if structure[start]:
-            start += 1
-            continue
-        end = start
-        while end < len(lines) and not structure[end]:
-            end += 1
-        first, last = start, end - 1    # the run, without its blank lines at the ends
-        while first <= last and blank[first]:
-            first += 1
-        while last >= first and blank[last]:
-            last -= 1
-        for k in range(first, last):
-            if ends[k] == 'text':
-                texts[k] += '<br>'
-        start = end
-    return '\n'.join(texts)
