@@ -200,7 +200,8 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   attribute written on two lines (breaking it), into a link label on two
   lines, and into the fallback text of a `video::`. An element is its
   opening, its children, its closing: the line breaks of its children get
-  their `<br>`. The rules read the nodes (render.py): a block is a heading,
+  their `<br>`, except in a link (an `a` element of the tree), whose label
+  is one label. The rules read the nodes (render.py): a block is a heading,
   a list, an item, a block element by its name, a code block, a raw zone
   that starts with a block tag; `<pre>` and `<textarea>` are an element of
   that name or a raw tag; no placeholder and no search in the HTML written.

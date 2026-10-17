@@ -428,7 +428,7 @@ Line 2     =>     Line 2<br>
 Other paragraph   Other paragraph
 ```
 
-Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, scripts, comments and math is never modified, nor are the line breaks a tag writes in its own HTML: a style written on two lines (`span::[color:red;\nfont-size:90%]`), a link label on two lines, the lines of a `video::`.
+Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, scripts, comments and math is never modified, nor are the line breaks a tag writes in its own HTML: a style written on two lines (`span::[color:red;\nfont-size:90%]`), a link label on two lines (`link::`; raw HTML `<a>` is text), the lines of a `video::`.
 
 
 ### Comments

@@ -147,6 +147,8 @@ def main(argv=None):
     parser.add_argument('-q', '--quiet', action='store_true', help='No summary')
     parser.add_argument('-v', '--verbose', action='store_true', help='Name each file written')
     parser.add_argument('-V', '--version', action='version', version=f'lhtml {__version__}')
+    if sys.stderr is None:              # closed: argparse would write its usage to stdout
+        sys.stderr = open(os.devnull, 'w')
     args = parser.parse_args(argv)
 
     if args.output == '':

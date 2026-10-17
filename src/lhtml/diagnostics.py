@@ -20,6 +20,7 @@ NO_COLOR, FORCE_COLOR and TERM=dumb.
 
 from __future__ import annotations
 
+import codecs
 import os
 import re
 import unicodedata
@@ -62,7 +63,7 @@ def shown_path(path):
             relative = os.path.relpath(path)
         except ValueError:              # another drive (Windows): no relative path
             return path
-        if not relative.startswith(os.pardir):
+        if relative != os.pardir and not relative.startswith(os.pardir + os.sep):     # not ..x.l.html
             return relative
     return path
 
@@ -114,7 +115,11 @@ class Reporter:
         terminal = _isatty(stream)
         self.rich = terminal if rich is None else rich
         self.color = _color(terminal) if color is None else color
-        encoding = (getattr(stream, 'encoding', None) or '').lower().replace('-', '')
+        encoding = getattr(stream, 'encoding', None) or ''
+        try:
+            encoding = codecs.lookup(encoding).name if encoding else ''     # iso8859-1, koi8-r
+        except LookupError:
+            encoding = 'ascii'          # an encoding Python does not know: what any can write
         self.unicode = encoding.startswith('utf')
         self.encoding = encoding        # '': a stream of str (no encoding to respect)
         self.counts = {'error': 0, 'warning': 0}

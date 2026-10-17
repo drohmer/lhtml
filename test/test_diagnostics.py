@@ -75,3 +75,25 @@ def test_the_exit_code_does_not_depend_on_the_stream(tmp_path, monkeypatch):
         sys.stderr.flush()
         assert 'missing.html' in raw.getvalue().decode(encoding)
     assert codes == [1, 1]
+
+
+@pytest.mark.parametrize('encoding', ['latin-1', 'iso8859-15', 'cp1252'])
+def test_an_encoding_that_has_the_accent_shows_it(encoding):
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding=encoding)
+    Reporter(stream, rich=True, color=False).report(Diagnostic('pagé.l.html', 'warning', 'x', 1, 1), 'é\n')
+    stream.flush()
+    assert raw.getvalue().decode(encoding).startswith('pagé.l.html:1:1: warning: x\n  1 | é')
+
+
+def test_a_file_whose_name_starts_with_two_dots_is_here():
+    assert shown_path(os.path.abspath('..foo.l.html')) == '..foo.l.html'
+    assert shown_path(os.path.abspath(os.path.join(os.pardir, 'x'))).startswith(os.sep)
+
+
+def test_without_stderr_the_usage_is_not_on_stdout(monkeypatch, capsys):
+    monkeypatch.setattr('sys.stderr', None)
+    monkeypatch.setattr('sys.argv', ['lhtml'])
+    with pytest.raises(SystemExit) as stop:
+        cli.main()
+    assert stop.value.code == 2 and capsys.readouterr().out == ''
