@@ -178,6 +178,8 @@ This is <em>italic</em> text.
 This is <code class="code-inline">inline code</code> text.
 ```
 
+A bold and an italic nest, they do not cross: in `**b __c** d__` the italic is left as text, with a warning.
+
 Inline code is literal: `<` and `>` are escaped (so `` `std::vector<float>` `` displays correctly), and nothing in it is interpreted - not `**`, `__`, `code::`, nor any tag (`` `link::x` `` stays text; write `<code class="code-inline">link::url[name]</code>` for a link in code). Existing entities such as `&lt;` are kept.
 
 
@@ -196,6 +198,8 @@ Tag names start with a letter and may contain letters, digits, `_` and `-` (usef
 A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons: a run of three or more (`:::`, `::::`) is text. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
 
 A tag that is opened but never closed, or a `::` without matching opening tag, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
+
+Elements nest inside headings, list items, bold and italic: one opened there and not closed there is closed at its end, with a warning, and a `::` closes the last open element only when both are in the same heading, item, bold or italic (or both outside). In `div:: a **x :: y** b ::` the `::` inside the bold closes nothing (a warning, it stays as text) and the last one closes the div. A `link::` whose label would cross the end of a heading, an item or a bold (`**x link::u[b** c]`) is left as text, with a warning.
 
 A warning or an error has the `line` and `column` where it is in the text given to `lhtml.run` (`None` when not known). The command line prints each problem as `file:line:column: level: message`.
 
@@ -536,7 +540,9 @@ Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in
 ### Custom Tags
 
 Give new `::` tags to `lhtml.run`, added to the built-in ones (`lhtml.TAGS`,
-a dict name -> `lhtml.Tag`):
+a read-only mapping name -> `lhtml.Tag`) and to the macros; a tag given
+wins over both, `div` included (the anonymous `::(.c) ... ::` is a div, so
+it follows):
 
 ```python
 import lhtml
@@ -554,13 +560,20 @@ alert::[background:yellow; padding:10px;] Warning message ::
 ```
 
 A tag declares whether it holds what follows until its `::` (`container`: a
-bool, or a function of the element, as `div::text::` closes at once), so
-that the parser knows it before anything is rendered. `render` receives the
-parsed element (`'[]'`, `'()'`, `'{}'`, `'text'`: the word glued after the
-brackets; `element['closed']` is False when no `::` closed it), the HTML of
-what it holds (`''` for a tag that holds nothing) and the context of the run
-(`context.meta`, `context.media`), and returns its HTML, closing tag
-included. A name that is not a tag stays as text (`std::vector`).
+bool, or a function of the element), so that the parser knows it before
+anything is rendered; written `name::text::`, it holds nothing either way
+(`element['text']` keeps the final `::`). `render` receives the parsed
+element (`'[]'`, `'()'`, `'{}'`, `'text'`: the word glued after the
+brackets, `'line'`, `'column'`; `element['closed']` is False when no `::`
+closed it), the HTML of what it holds (`''` for a tag that holds nothing)
+and the context of the run (`context.meta`, `context.media`), and returns
+its HTML, closing tag included, as a `str`. An exception raised by `render`
+or `container` becomes an `LHTMLError` naming the tag and its place (the
+exception as its `__cause__`).
+
+A tag name starts with a letter, then letters, digits, `_` or `-`; `nl`,
+`code` and `include` are LHTML syntax, not tags. A name that is not a tag
+stays as text (`std::vector`).
 
 ### The document tree
 
@@ -573,10 +586,24 @@ for node in document.walk():               # and code, inline code, math, raw HT
 html = lhtml.render(document)
 ```
 
-Every node has its place in the text (`span`, `line`, `column`), and
-`document.problems` holds the warnings. An element opened in a heading, a
-list item, a bold or an italic span is closed at the end of it, with a
-warning; its `::` elsewhere closes nothing.
+The nodes are `Document`, `Heading` (`level`, `attributes`), `List`,
+`Item` (a deeper list is a `List` inside an `Item` of its own), `Strong`,
+`Emphasis`, `Element` (`name`, '' for an anonymous `::`; `groups`; `value`;
+`closed`), `Text` (`value`) and the leaves `Code` (`language`, `body`),
+`InlineCode`, `Math` and `Raw` (`text`; `raw_kind`: html, comment, script,
+style, jinja). The label of a `link::` is in its `groups['[]']`, as HTML.
+
+Every node has its place: `span`, the offsets of its source in the text
+given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,
+`column` of its start (1-based). The children of a node lie within its span
+and in order. `document.problems` holds the warnings, in source order.
+
+The nodes nest, nothing crosses (see the `::` elements above). An element's
+`closed` says how it ends: `'tag'` (its `::`), `'inline'` (`div::text::`),
+`'void'` (it holds nothing), `'container'` (at the end of the heading,
+item, bold or italic it is opened in) or `'never'` (no closing tag). The
+tree is walked and rendered without recursion: a document may nest deeper
+than Python's recursion limit.
 
 ### Custom Code Lexers
 
@@ -623,16 +650,16 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 
 ```
 src/lhtml/
-  __init__.py          # Public API: run(), macro functions, errors
+  __init__.py          # Public API: run, parse, render, Tag, TAGS, LEXERS, macro functions, errors
   __main__.py          # python -m lhtml
   cli.py               # Command-line interface
-  pipeline.py          # run(): the passes, from LHTML text to HTML
+  pipeline.py          # run(): parse, then render
+  tree.py              # The document tree: parse() and render()
   macros.py            # Macros: custom :: tags declared in YAML
-  process.py           # Core transformation functions
+  process.py           # The protected zones, the tag decisions, line breaks
   patterns.py          # Centralized regex patterns and utilities
   tag_parser.py        # extract_bracket_elements(): the parser of a :: tag element
-  export_html.py       # HTML generation for tag elements
-  listing.py           # List processing
+  export_html.py       # Tag, TAGS and the HTML of the built-in tags
   code.py              # Code syntax highlighting (Pygments)
   wrap_html.py         # HTML document wrapping
   errors.py            # Structured error types

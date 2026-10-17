@@ -49,7 +49,8 @@ page depends on.
 - `LHTMLTagStackError`, the positions of `LHTMLError` (`source_pos`,
   `source_line`) and `pos_to_line`: the messages quote the source instead.
 
-The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
+The API is `run`, `parse`, `render`, `Tag`, `TAGS`, `LEXERS`, the macro
+functions and the errors.
 
 ### Added
 - `media`, a key of the meta of `lhtml.run()`: a callable,
@@ -58,31 +59,40 @@ The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
   the meta given by the caller only, not from the front matter.
 - `line` and `column` on `LHTMLWarning` and `LHTMLError`: where the problem
   is in the text given to `run` (1-based, `None` when not known, as for a
-  macros file). A tag element carries its `line` and `column` to its handler.
-
+  macros file). A tag element carries its `line` and `column` to the
+  `render` of its tag.
 - `lhtml.parse(text)` gives the document tree (headings, lists, bold,
   italic, `::` elements, and code, inline code, mathematics, raw HTML as
-  leaves), every node with its place; `lhtml.render(document)` its HTML.
-  `lhtml.run` is both: the text passes are gone.
+  leaves), every node with its place (`span` in the text given, `line`,
+  `column`); `lhtml.render(document)` its HTML. `lhtml.run` is both: the
+  text passes are gone. The tree is walked and rendered without recursion,
+  and a text of unclosed brackets is read in linear time (it was
+  quadratic).
 
 ### Changed
 - A tag is an `lhtml.Tag(render, container)`: `render(element, children,
   context)` returns its HTML, closing tag included, and `container` says
   whether it holds what follows. The handlers `(element, tag_to_close,
-  context) -> (html, is_real_tag)` are gone; `lhtml.TAGS` and
-  `registry_with_macros` give Tags.
-- An element opened in a heading, a list item, a bold or an italic span and
-  not closed there is closed at its end, with a warning (its `::` elsewhere
-  closes nothing); the HTML was malformed (`<li><span>...</li>...</span>`).
+  context) -> (html, is_real_tag)` are gone; `lhtml.TAGS` (now read-only)
+  and `registry_with_macros` give Tags. A tag given to `run` wins over the
+  built-in tags and the macros, the anonymous `::` div included; its name
+  is checked, and an exception of its `render` becomes an `LHTMLError` with
+  its place. `render` receives the `ProcessingContext` of the run as its
+  third argument (`context.meta`, `context.media`).
+- The markup nests: an element opened in a heading, a list item, a bold or
+  an italic span and not closed there is closed at its end, with a warning;
+  a `::` closes the last open element only in the same container (one
+  inside a later bold or item closes nothing, with a warning at the `::`);
+  an italic that would cross a bold, and a link label that would cross the
+  end of a heading, an item or a bold, are left as text, with a warning.
+  The HTML was malformed (`<li><span>...</li>...</span>`,
+  `<strong><em>...</strong>...</em>`).
 - The CLI prints a problem as one line, `file:line:column: level: message`;
   `--wrapAuto` is `--wrap` (`-w` unchanged).
 - An unknown language of a `code::` block is reported where the block starts.
 - `videoplay::` adds `playsinline` to `autoplay loop muted`: on an iPhone,
   the video plays in the page instead of opening full screen.
 - The CLI writes `\n` line endings on Windows too.
-- A tag handler receives the `ProcessingContext` of the run as its third
-  argument (it received the current directory); `process_tag` takes it as
-  `run_context`.
 
 ## [2.5.1] - 2026-10-04
 
