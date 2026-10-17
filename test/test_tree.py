@@ -426,3 +426,21 @@ class TestReviewSurprises:
                 w.simplefilter('always')
                 call()
             assert caught[0].filename == __file__, caught[0].filename
+
+    def test_a_url_ends_before_marks_that_close_an_emphasis(self):
+        macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True}}
+        assert lhtml.run('**img::a.png**') == '<strong><img src="a.png" alt="a.png"></strong>'
+        assert lhtml.run('x __img::a.png__ y') == 'x <em><img src="a.png" alt="a.png"></em> y'
+        assert lhtml.run('**demo::a.html**', {'macros': macros}) == '<strong><iframe src="a.html"></iframe></strong>'
+        # marks that close nothing are the URL's
+        assert 'href="https://d.org/x.html#object.__init__"' in lhtml.run('link::https://d.org/x.html#object.__init__')
+        assert 'src="a**b.png"' in lhtml.run('img::a**b.png')
+
+    def test_an_element_left_open_in_an_item_ends_before_its_nested_list(self):
+        html, said = quiet(lhtml.run, '* a span:: x\n** b\n')
+        assert html == '<ul>\n<li>\na <span> x\n</span><ul>\n<li>\nb\n</li>\n</ul>\n</li>\n</ul>\n'
+        assert len(said) == 1 and 'closed at the end of the list item' in said[0]
+        assert quiet(lhtml.run, 'div::\n* a\n** b\n::\n')[0].endswith('</ul>\n</div>\n')   # an element around the list holds it
+        document, _ = quiet(lhtml.parse, '* a span:: x\n** b\n')
+        span = next(n for n in document.walk() if n.kind == 'Element')
+        assert span.closed == 'container' and span.span[1] <= len('* a span:: x\n')

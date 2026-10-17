@@ -109,12 +109,18 @@ functions and the errors.
   `page.html` on macOS or Windows) are caught when the second is written:
   it is refused, the first kept. An input given twice, under any name, is
   converted once.
+- A URL ends before a final `**` or `__` that closes a bold or an italic
+  opened before its tag on its line: `**img::a.png**` is an image in bold
+  (LHTML 2 put the `**` in its URL); `link::...#object.__init__` keeps its
+  `__`. The same for `link::`, `video::` and the macros with `url:`.
 - A nested list is inside the item before it, as HTML expects
   (`<li>a<ul>...</ul></li>`); LHTML 2 put it in an item of its own
   (`<li>a</li><li><ul>...</ul></li>`), which a page without a theme showed
   as a second bullet. It keeps an item of its own only when there is none
   to hold it (a list starting at `**`, a jump of two levels). The themes of
-  the corpus draw no bullet: their renders are unchanged.
+  the corpus draw no bullet: their renders are unchanged. An element left
+  open in the text of an item (its `::` missing) ends where the nested list
+  begins, not around it, with a warning.
 - `line-breaks` is decided on the document tree: a line break of the source
   gets a `<br>` when its line and the next are not structure, a line being
   structure when the node at its start or its end is a block (a heading, a

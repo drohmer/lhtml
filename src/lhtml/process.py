@@ -124,6 +124,16 @@ def render_inline_code(content):
     return f'<code class="code-inline">{content}</code>'
 
 
+def _url_and_closing_marks(url, before):
+    """A URL ends before a final `**` or `__` that closes a bold or an
+    italic opened before its tag on its line (`**img::a.png**`); otherwise
+    they are part of it (`link::...#object.__init__`)."""
+    for mark in ('**', '__'):
+        if url.endswith(mark) and len(url) > 2 and before.count(mark) % 2 == 1:
+            return url[:-2], mark
+    return url, ''
+
+
 def process_protect(text, stores, blocks=False, url_tags=None):
     """Replace zones that LHTML must not transform with placeholders.
 
@@ -148,7 +158,8 @@ def process_protect(text, stores, blocks=False, url_tags=None):
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')), m.group(0))
         if m.group('url') is not None:
-            return m.group('urltag') + stores.add('U', m.group('url'))
+            url, after = _url_and_closing_marks(m.group('url'), text[text.rfind('\n', 0, m.start()) + 1:m.start()])
+            return m.group('urltag') + stores.add('U', url) + after
         return stores.add('R', m.group(0))
     pattern = (protected_blocks(tuple(url_tags)) if url_tags is not None else PROTECTED_BLOCKS) \
         if blocks else PROTECTED

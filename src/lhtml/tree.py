@@ -489,6 +489,10 @@ class _Parser:
                 seen.add(o)
                 what, node = self.events[-o - 1]
                 if what == 'open':
+                    if isinstance(node, List) and isinstance(stack[-1], Item):
+                        # the text of an item is its line: an element left open
+                        # there ends where its nested list begins
+                        closes.append((i, stack[-1]))
                     stack.append(node)
                 elif what == 'close':
                     stack.remove(node)  # the last one: the containers nest (inline refuses a crossing)
@@ -609,6 +613,13 @@ class _Parser:
             flush()
             what, node = self.events[event]
             if what == 'open':
+                if isinstance(node, List):      # the elements open in the text of its item end here
+                    k = len(stack) - 1
+                    while isinstance(stack[k], Element):
+                        k -= 1
+                    if isinstance(stack[k], Item):
+                        while len(stack) > k + 1:
+                            stack.pop().closed = 'container'
                 stack[-1].children.append(node)
                 stack.append(node)
             elif what == 'leaf':
