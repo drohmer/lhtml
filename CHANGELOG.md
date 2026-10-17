@@ -60,6 +60,12 @@ The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
   is in the text given to `run` (1-based, `None` when not known, as for a
   macros file). A tag element carries its `line` and `column` to its handler.
 
+- `lhtml.tree` (prototype): `parse(text)` gives the document tree (headings,
+  lists, bold, italic, `::` elements, and opaque code, mathematics, raw HTML),
+  every node with its place; `render(document)` its HTML; tags are declared as
+  `Tag(render, container)`. `LHTML_TREE=1` runs `lhtml.run` through it. It is
+  not yet the engine of `run`.
+
 ### Changed
 - The CLI prints a problem as one line, `file:line:column: level: message`;
   `--wrapAuto` is `--wrap` (`-w` unchanged).

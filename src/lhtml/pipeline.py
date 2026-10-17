@@ -39,6 +39,9 @@ def run(text, meta=None, tags=None):
     The problems found are LHTMLWarning warnings and LHTMLError errors, with
     the `line` and `column` in `text` where they are (None if not known).
     """
+    if os.environ.get('LHTML_TREE') == '1':        # N5: the prototype of the tree, compared to this
+        from .tree import run as run_tree
+        return run_tree(text, meta, tags)
     meta = dict(meta or {})
     media = meta.get('media')
     if media is not None and not callable(media):
