@@ -105,7 +105,10 @@ functions and the errors.
   `src`, `href` too; by its name, in any case, not by a word of a value);
   the CLI refuses, before writing anything, two inputs that would be
   written to the same file (`a/page.l.html` and `b/page.l.html` with `-o
-  out/`; names compared without case, as macOS and Windows do).
+  out/`); two names that the file system makes one file (`Page.html` and
+  `page.html` on macOS or Windows) are caught when the second is written:
+  it is refused, the first kept. An input given twice, under any name, is
+  converted once.
 - A nested list is inside the item before it, as HTML expects
   (`<li>a<ul>...</ul></li>`); LHTML 2 put it in an item of its own
   (`<li>a</li><li><ul>...</ul></li>`), which a page without a theme showed

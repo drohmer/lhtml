@@ -115,23 +115,26 @@ def main():
         parser.error(f'-o must be a directory when several input files are given '
                      f'(got {args.output!r}; add a trailing / to create it)')
 
+    def identity(path):
+        info = os.stat(path)
+        return info.st_dev, info.st_ino
+
     if not single_to_stdout:            # every output before any is written
-        # compared without case: two names differing by case are one file on
-        # macOS and Windows; an input missing, or given twice, is not a collision
+        # an input missing, or given twice (under any name), is not a collision
         written, inputs, seen = {}, {os.path.realpath(f) for f in args.input}, set()
         for f_in in args.input:
-            if not os.path.isfile(f_in) or os.path.realpath(f_in) in seen:
+            if not os.path.isfile(f_in) or identity(f_in) in seen:
                 continue
-            seen.add(os.path.realpath(f_in))
+            seen.add(identity(f_in))
             out_path = os.path.realpath(_output_path_for(f_in, args.output))
             if out_path in inputs:      # an input it would overwrite: refused for that file below
                 continue
-            out_path = out_path.casefold()
             if out_path in written:
                 print(f'lhtml: error: {written[out_path]} and {f_in} would both be written to '
                       f'{_output_path_for(f_in, args.output)}: nothing written', file=sys.stderr)
                 sys.exit(1)
             written[out_path] = f_in
+    outputs = {}                        # the file each output is, and the input it holds
 
     errors = 0
     for f_in in args.input:
@@ -159,8 +162,14 @@ def main():
             out_dir = os.path.dirname(out_path)
             if out_dir:
                 os.makedirs(out_dir, exist_ok=True)
+            if os.path.exists(out_path) and identity(out_path) in outputs \
+                    and outputs[identity(out_path)][0] != identity(f_in):
+                # two names one file (Page.html and page.html on macOS or Windows)
+                raise ValueError(f'{out_path} is the output of {outputs[identity(out_path)][1]} '
+                                 f'already (the same file under another name): not overwritten')
             with open(out_path, 'w', encoding='utf-8', newline='') as f_out:
                 f_out.write(html)
+            outputs[identity(out_path)] = (identity(f_in), f_in)
         except (LHTMLError, OSError, UnicodeError, ValueError) as e:
             print(diagnostic(f_in, 'error', e), file=sys.stderr)
             errors += 1

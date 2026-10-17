@@ -39,30 +39,29 @@ def _matches(text):
 _QUOTED_VALUE = re.compile(r'=\s*(["\'])')
 
 
-def _attributes_end(text, start, end):
-    """The closing brace of the attribute group {...} opened at `start`,
-    whose bracket match is `end`: a value quoted after its `=` and closed on
-    its line holds its braces ({title="a } b"}), as in HTML; an apostrophe
-    elsewhere is text."""
-    if '"' not in text[start:end] and "'" not in text[start:end]:
-        return end
-    depth, i = 1, start + 1
+@functools.lru_cache(maxsize=8)
+def _attribute_matches(text):
+    """The closing brace of each opening one, as _matches, but a value
+    quoted after its `=` and closed on its line holds its braces
+    ({title="a } b"}, {title="a { b"}), as in HTML; an apostrophe elsewhere
+    is text. One pass per text: an element reads its {...} group here."""
+    matches, stack, i = {}, [], 0
     while i < len(text):
-        m = _QUOTED_VALUE.match(text, i)
-        if m:
-            closing = text.find(m.group(1), m.end())
-            if closing != -1 and '\n' not in text[m.end():closing]:
-                i = closing + 1
-                continue
         ch = text[i]
+        if ch == '=' and stack:
+            m = _QUOTED_VALUE.match(text, i)
+            if m:
+                closing = text.find(m.group(1), m.end())
+                newline = text.find('\n', m.end())
+                if closing != -1 and (newline == -1 or closing < newline):
+                    i = closing + 1
+                    continue
         if ch == '{':
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-            if not depth:
-                return i
+            stack.append(i)
+        elif ch == '}' and stack:
+            matches[stack.pop()] = i
         i += 1
-    return None
+    return matches
 
 
 def extract_bracket_elements(text, index_start):
@@ -105,9 +104,7 @@ def extract_bracket_elements(text, index_start):
             break
         if ch in PAIRS:
             close = PAIRS[ch]
-            j = _matches(text).get(i)
-            if ch == '{' and j is not None:
-                j = _attributes_end(text, i, j)
+            j = (_attribute_matches if ch == '{' else _matches)(text).get(i)
             if j is None:
                 raise LHTMLParseError(f'Unclosed bracket {ch!r} (expected {close!r})')
             j += 1

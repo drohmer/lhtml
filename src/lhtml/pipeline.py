@@ -12,7 +12,7 @@ import warnings
 from collections.abc import Mapping
 
 from .errors import LHTMLWarning
-from .tree import parse, render
+from .tree import _render, parse, render
 
 
 # The options run reads; a tag of the caller may read others in context.meta
@@ -57,4 +57,4 @@ def run(text, meta=None, tags=None):
         macros = [m if not isinstance(m, str) or os.path.isabs(m) else os.path.join(directory, m)
                   for m in (macros if isinstance(macros, (list, tuple)) else [macros])]
     document = parse(text, tags=tags, macros=macros)
-    return render(document, meta)
+    return _render(document, meta)

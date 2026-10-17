@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable
 
-from .patterns import JINJA_RE
+from .patterns import JINJA_RE, PLACEHOLDER
 
 
 # ---------------------------------------------------------------------------
@@ -75,13 +75,17 @@ def export_html_element_inline(text):
 # Tag element renderers
 # ---------------------------------------------------------------------------
 
-_ATTRIBUTE = re.compile(r'\s*([^\s"\'=<>/]+)(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?')
+# A name, then its value: quoted, or unquoted up to the next space (`a=b=c`
+# is one attribute). No leading \s*: finditer skips what is not a name.
+_ATTRIBUTE = re.compile(r'([^\s"\'=<>/{}%]+)(?:[ \t]*=[ \t]*(?:"[^"]*"|\'[^\']*\'|[^\s"\'`]+))?')
 
 
 def attribute_names(text):
     """The names of the attributes of an attribute group (`title="a" alt`),
-    lower case: those written, not words in their values."""
-    return {m.group(1).lower() for m in _ATTRIBUTE.finditer(text or '')}
+    lower case: those written, not words in their values (Jinja masked:
+    `{% if x %}alt="y"{% endif %}` writes alt)."""
+    text = PLACEHOLDER.sub(' ', JINJA_RE.sub(' ', text or ''))     # Jinja as written, or hidden
+    return {m.group(1).lower() for m in _ATTRIBUTE.finditer(text)}
 
 
 def _written(elements, name):

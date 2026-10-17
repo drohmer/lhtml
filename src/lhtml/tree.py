@@ -855,6 +855,11 @@ def render(document, meta=None, media=None):
     """The HTML of a document tree, with the options of `run` (line-breaks,
     wrap-auto, title, css, js) and the media resolver (`media`, or
     meta['media'])."""
+    return _render(document, meta, media)
+
+
+def _render(document, meta=None, media=None):
+    """render, called by render or by run: their caller is two frames up."""
     meta = dict(meta or {})
     from .pipeline import _check_keys
     _check_keys(meta, stacklevel=4)

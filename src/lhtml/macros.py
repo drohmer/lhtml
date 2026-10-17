@@ -128,8 +128,11 @@ def macro_tag(name, spec):
                 all_classes.append(f'{classes[0]}-{value}')
             text = '::' if closed else ''
         written = attribute_names(element['{}'])     # replace those of the macro
-        defaults = ' '.join(m.group(0).strip() for m in _ATTRIBUTE.finditer(attrs)
-                            if m.group(1).lower() not in written)
+        defaults = attrs
+        for m in reversed(list(_ATTRIBUTE.finditer(attrs))):     # removed as written, the rest kept
+            if m.group(1).lower() in written:
+                defaults = defaults[:m.start()] + defaults[m.end():]
+        defaults = ' '.join(defaults.split()) if defaults != attrs else attrs
         inline = ' '.join(a for a in (defaults, element['{}']) if a)
         if url:
             closed = text.rstrip().endswith('::')

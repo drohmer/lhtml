@@ -479,8 +479,10 @@ Output:
 | `default` | Variant used when none is given (one of the variants) |
 | `doc` | Description, ignored by LHTML (for documentation tools; `lhtml.describe_macro(name, spec)` gives what a definition renders) |
 
-The classes and attributes written in the source are added to the defaults,
-and its style is the style of the element. The `tag` of a macro is an HTML
+The classes written in the source are added to those of the macro; an
+attribute written in the source replaces the macro's attribute of the same
+name (`box::{title="x"}`), and adds to the others; its style is the style
+of the element. The `tag` of a macro is an HTML
 element, rendered as it is - never through an LHTML tag (`tag: video` gives
 `<video>`, not `video::`; `tag: img` with `url: src` gives `<img src>`), nor
 through another macro. A macro is closed by `::`. Macros are

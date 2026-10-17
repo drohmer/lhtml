@@ -396,3 +396,33 @@ class TestReviewSurprises:
     def test_render_names_an_option_spelled_otherwise(self):
         _, said = quiet(lhtml.render, lhtml.parse('a\nb'), {'line_breaks': True})
         assert said == ["option 'line_breaks' is not read: did you mean 'line-breaks'?"]
+
+    def test_attribute_groups_stay_linear(self):
+        import time
+        for text in ('x::{a="}"\n' * 4000, 'img::a.png{' + ' ' * 40000 + '}', 'p::{a="{"} ' * 4000):
+            start = time.perf_counter()
+            quiet(lhtml.run, text)
+            assert time.perf_counter() - start < 2, text[:20]
+
+    def test_a_brace_in_a_quoted_value_is_text(self):
+        assert lhtml.run('span::{title="a { b"}x ::') == '<span title="a { b">x </span>'
+        assert lhtml.run("span::{title='{'}x ::") == "<span title='{'>x </span>"
+
+    def test_an_unquoted_value_is_one_attribute(self):
+        assert lhtml.run('img::a.png{title=a=alt}') == '<img title=a=alt src="a.png" alt="a.png">'
+        assert 'src="a.png"' in lhtml.run('img::a.png{data-q=x=src}')
+        assert lhtml.run('img::a.png{ {% if x %}alt="y"{% endif %} }').count('alt=') == 1
+
+    def test_the_attributes_of_a_macro_stay_as_written(self):
+        macros = {'d': {'tag': 'div', 'attrs': 'data-u=http://x?a=b a=b=c data-x="1"'}}
+        assert '<div data-u=http://x?a=b a=b=c data-x="1">' in lhtml.run('d:: x ::', {'macros': macros})
+        assert '<div data-u=http://x?a=b a=b=c data-x="2">' in lhtml.run('d::{data-x="2"} x ::', {'macros': macros}) \
+            or 'data-x="2"' in lhtml.run('d::{data-x="2"} x ::', {'macros': macros})
+
+    def test_the_option_warning_names_the_line_that_calls(self):
+        import warnings as w
+        for call in (lambda: lhtml.run('a', {'line_breaks': 1}), lambda: lhtml.render(lhtml.parse('a'), {'line_breaks': 1})):
+            with w.catch_warnings(record=True) as caught:
+                w.simplefilter('always')
+                call()
+            assert caught[0].filename == __file__, caught[0].filename

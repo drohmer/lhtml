@@ -630,7 +630,20 @@ class TestCli:
             (tmp_path / d / name).write_text(d.upper())
         code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/Page.l.html'),
                                      str(tmp_path / 'b/page.l.html'), '-o', str(tmp_path / 'out') + '/')
-        assert code == 1 and 'would both be written to' in err
+        folds = (tmp_path / 'out/PAGE.html').exists()       # a file system without case
+        assert code == (1 if folds else 0)
+        if folds:                                           # the second refused, the first kept
+            assert 'the same file under another name' in err
+            assert (tmp_path / 'out/Page.html').read_text().strip() == 'A'
+
+    def test_one_input_named_in_two_cases_is_one(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'a').mkdir()
+        (tmp_path / 'a/Page.l.html').write_text('= A\n')
+        if not (tmp_path / 'a/page.l.html').exists():
+            pytest.skip('a file system with case')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/Page.l.html'),
+                                     str(tmp_path / 'a/page.l.html'), '-o', str(tmp_path / 'out') + '/')
+        assert code == 0, err
 
     def test_a_missing_or_repeated_input_is_no_collision(self, tmp_path, monkeypatch, capsys):
         (tmp_path / 'a').mkdir()
