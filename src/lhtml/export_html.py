@@ -1,4 +1,4 @@
-"""The HTML of the tag elements, and the built-in tags (TAGS).
+"""The HTML of the tag elements, and the tags: Tag, the built-in TAGS.
 
 Each export_html_* function converts a parsed element dict into an HTML
 string. The element dict has keys: '[]' (style), '()' (class/id), '{}'
@@ -7,6 +7,8 @@ string. The element dict has keys: '[]' (style), '()' (class/id), '{}'
 
 import html
 import re
+from dataclasses import dataclass
+from typing import Callable
 
 from .patterns import JINJA_RE
 
@@ -72,22 +74,6 @@ def export_html_element_inline(text):
 # Tag element renderers
 # ---------------------------------------------------------------------------
 
-def export_html_generic(elements, tag, tag_to_close):
-    """Render a generic div/span element."""
-    html = f'<{tag}{_build_attrs(elements)}>'
-
-    text = elements['text']
-    if text:
-        if text.endswith('::'):
-            text = text[:-2]
-            html += text + f'</{tag}>'
-            return html
-        html += text
-
-    tag_to_close.append(tag)
-    return html
-
-
 def export_html_link(elements):
     """Render a link:: element as <a href="...">text</a>."""
     attrs = export_html_element_class_and_id(elements['()'])
@@ -135,20 +121,50 @@ def export_html_video(elements, default_inline='', media=None):
 
 
 # ---------------------------------------------------------------------------
-# The built-in tags
+# The tags
 # ---------------------------------------------------------------------------
 
-# A tag handler receives (element, tag_to_close, context) - the parsed
-# element, the stack of the HTML tags left open (push one to wrap what
-# follows, until the next ::), the ProcessingContext of the run - and
-# returns (html, is_real_tag); is_real_tag False leaves the source as it is.
+@dataclass
+class Tag:
+    """A `name::` tag. `container`: whether it holds what follows until its
+    `::` (a bool, or a function of the element: div::text:: closes at once).
+    `render(element, children, context)`: its HTML, closing tag included;
+    `children` is the HTML of what it holds ('' for a tag that holds
+    nothing), and element['closed'] is False when nothing closed it.
+    `context` is the ProcessingContext of the run (context.meta,
+    context.media)."""
+    render: Callable
+    container: bool | Callable = False
+    html: str = 'div'               # the HTML tag it opens, for the warnings
+
+    def holds(self, element):
+        return self.container(element) if callable(self.container) else bool(self.container)
+
+
+def element_html(tag, element, children):
+    """<tag attributes>text, then what it holds and </tag> (or <tag>text</tag>
+    for div::text::)."""
+    text = element['text']
+    if text.endswith('::'):
+        return f'<{tag}{_build_attrs(element)}>{text[:-2]}</{tag}>'
+    return (f'<{tag}{_build_attrs(element)}>{text}' + children
+            + (f'</{tag}>' if element.get('closed', True) else ''))
+
+
+def generic(tag):
+    """div::, span::: holds what follows, unless written div::text::"""
+    return Tag(lambda element, children, context: element_html(tag, element, children),
+               container=lambda element: not element['text'].endswith('::'), html=tag)
+
+
 TAGS = {
-    'div': lambda element, tag_to_close, context: (export_html_generic(element, 'div', tag_to_close), True),
-    'span': lambda element, tag_to_close, context: (export_html_generic(element, 'span', tag_to_close), True),
-    'link': lambda element, tag_to_close, context: (export_html_link(element), True),
-    'img': lambda element, tag_to_close, context: (export_html_img(element), True),
-    'video': lambda element, tag_to_close, context: (
-        export_html_video(element, '', context.media), True),
-    'videoplay': lambda element, tag_to_close, context: (
-        export_html_video(element, 'autoplay loop muted playsinline', context.media), True),
+    'div': generic('div'),
+    'span': generic('span'),
+    'link': Tag(lambda element, children, context: export_html_link(element)),
+    'img': Tag(lambda element, children, context: export_html_img(element)),
+    'video': Tag(lambda element, children, context: export_html_video(element, '', context.media)),
+    'videoplay': Tag(lambda element, children, context: export_html_video(
+        element, 'autoplay loop muted playsinline', context.media)),
 }
+
+SPACER = Tag(lambda element, children, context: '<div style="height:1em;"></div>')     # ::nl

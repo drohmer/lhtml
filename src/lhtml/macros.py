@@ -35,10 +35,10 @@ from __future__ import annotations
 
 import os
 import re
-import warnings
 
-from .errors import LHTMLMacroError, LHTMLWarning
-from .export_html import TAGS, _attr, _build_attrs, export_html_generic
+from .errors import LHTMLMacroError
+from .export_html import TAGS, Tag, _attr, _build_attrs, element_html
+from .process import _warn
 
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
@@ -98,10 +98,9 @@ def _check(name, spec):
     return spec
 
 
-def make_handler(name, spec):
-    """Tag handler (see export_html.TAGS) for one macro definition: the element
-    of its tag, with the defaults of the macro (classes, attributes) added to
-    those of the source."""
+def macro_tag(name, spec):
+    """The Tag of one macro definition: the element of its tag, with the
+    defaults of the macro (classes, attributes) added to those of the source."""
     spec = _check(name, spec)
     tag = spec.get('tag') or 'div'
     void = tag.lower() in VOID_TAGS
@@ -112,7 +111,7 @@ def make_handler(name, spec):
     variant = spec.get('variant')
     default = spec.get('default')
 
-    def handler(element, tag_to_close, context):
+    def merged(element, warn):
         text = element['text']
         all_classes = list(classes)
         if variant:
@@ -122,11 +121,10 @@ def make_handler(name, spec):
                 value = value[:-2].strip()
             value = value or (str(default) if default is not None else '')
             if value:
-                if value not in [str(v) for v in variant]:
-                    warnings.warn(LHTMLWarning(f'{name}::{value}: unknown variant (expected one of '
-                                               f'{", ".join(str(v) for v in variant)}) '
-                                               f'near {element.get("context", "")!r}',
-                                               element.get('line'), element.get('column')), stacklevel=4)
+                if warn and value not in [str(v) for v in variant]:
+                    _warn(f'{name}::{value}: unknown variant (expected one of '
+                          f'{", ".join(str(v) for v in variant)}) near {element.get("context", "")!r}',
+                          element, stacklevel=5)
                 all_classes.append(f'{classes[0]}-{value}')
             text = '::' if closed else ''
         inline = ' '.join(a for a in (attrs, element['{}']) if a)
@@ -135,17 +133,23 @@ def make_handler(name, spec):
             value = text.rstrip()[:-2] if closed else text
             inline = ' '.join(a for a in (f'{url}="{_attr(value.strip())}"', inline) if a)
             text = '::' if closed else ''
-        merged = {**element,
+        result = {**element,
                   '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
-                  '{}': inline,
-                  'text': text}
-        if void:
-            return f'<{tag}{_build_attrs(merged)}>' + ('' if text == '::' else text), True
-        if empty and not merged['text'].endswith('::'):
-            merged['text'] += '::'   # closed at once
-        return export_html_generic(merged, tag, tag_to_close), True
+                  '{}': inline, 'text': text}
+        if not void and empty and not result['text'].endswith('::'):
+            result['text'] += '::'                 # closed at once
+        return result
 
-    return handler
+    def holds(element):                # the parser asks once: the variant is warned then
+        return not void and not merged(element, warn=True)['text'].endswith('::')
+
+    def render(element, children, context):
+        m = merged(element, warn=False)
+        if void:
+            return f'<{tag}{_build_attrs(m)}>' + ('' if m['text'] == '::' else m['text'])
+        return element_html(tag, m, children)
+
+    return Tag(render, container=holds, html=tag)
 
 
 def describe_macro(name, spec):
@@ -207,9 +211,9 @@ def _load_macros(source):
 
 
 def registry_with_macros(macros, base=None):
-    """The tag handlers of `base` (the built-in TAGS by default) plus those of
-    the macros (see load_macros): a new dict, `base` is not changed."""
-    handlers = dict(TAGS if base is None else base)
+    """The tags of `base` (the built-in TAGS by default) plus those of the
+    macros (see load_macros): a new dict, `base` is not changed."""
+    tags = dict(TAGS if base is None else base)
     for name, spec in load_macros(macros).items():
-        handlers[name] = make_handler(name, spec)
-    return handlers
+        tags[name] = macro_tag(name, spec)
+    return tags

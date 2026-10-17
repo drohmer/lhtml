@@ -215,7 +215,7 @@ class TestVerbatim:
 
 class TestPluginSystem:
     def test_custom_tag_handler(self):
-        tags = {'alert': lambda el, ts, context: (f'<div class="alert">{el.get("text", "")}</div>', True)}
+        tags = {'alert': lhtml.Tag(lambda el, children, context: f'<div class="alert">{el.get("text", "")}</div>')}
         r = lhtml.run('\nalert::Warning\n', tags=tags)
         assert '<div class="alert">Warning</div>' in r
         assert 'alert' not in lhtml.TAGS
@@ -426,7 +426,7 @@ class TestTagBoundaries:
 
 class TestTagNames:
     def test_plugin_name_with_digit_dash_underscore(self):
-        tags = {name: (lambda el, ts, cd, name=name: (f'<{name}/>', True))
+        tags = {name: lhtml.Tag(lambda el, children, context, name=name: f'<{name}/>')
                 for name in ('h2', 'my-tag', 'my_tag')}
         assert lhtml.run('h2::x my-tag::y my_tag::z\n', tags=tags) == '<h2/> <my-tag/> <my_tag/>\n'
 
@@ -846,12 +846,12 @@ class TestBareTagEdgeCases:
 
 class TestPluginReadmeExample:
     def test_alert_example(self):
-        def handle_alert(element, tag_to_close, context):
+        def render_alert(element, children, context):
             style = element.get('[]', '')
-            tag_to_close.append('div')
-            return f'<div class="alert" style="{style}">', True
+            return f'<div class="alert" style="{style}">{element["text"]}{children}</div>'
+        alert = lhtml.Tag(render_alert, container=True)
         r = lhtml.run('alert::[background:yellow; padding:10px;] Warning message ::\n',
-                      tags={'alert': handle_alert})
+                      tags={'alert': alert})
         assert r == '<div class="alert" style="background:yellow; padding:10px;"> Warning message </div>\n'
 
 

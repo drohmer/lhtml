@@ -60,13 +60,20 @@ The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
   is in the text given to `run` (1-based, `None` when not known, as for a
   macros file). A tag element carries its `line` and `column` to its handler.
 
-- `lhtml.tree` (prototype): `parse(text)` gives the document tree (headings,
-  lists, bold, italic, `::` elements, and opaque code, mathematics, raw HTML),
-  every node with its place; `render(document)` its HTML; tags are declared as
-  `Tag(render, container)`. `LHTML_TREE=1` runs `lhtml.run` through it. It is
-  not yet the engine of `run`.
+- `lhtml.parse(text)` gives the document tree (headings, lists, bold,
+  italic, `::` elements, and code, inline code, mathematics, raw HTML as
+  leaves), every node with its place; `lhtml.render(document)` its HTML.
+  `lhtml.run` is both: the text passes are gone.
 
 ### Changed
+- A tag is an `lhtml.Tag(render, container)`: `render(element, children,
+  context)` returns its HTML, closing tag included, and `container` says
+  whether it holds what follows. The handlers `(element, tag_to_close,
+  context) -> (html, is_real_tag)` are gone; `lhtml.TAGS` and
+  `registry_with_macros` give Tags.
+- An element opened in a heading, a list item, a bold or an italic span and
+  not closed there is closed at its end, with a warning (its `::` elsewhere
+  closes nothing); the HTML was malformed (`<li><span>...</li>...</span>`).
 - The CLI prints a problem as one line, `file:line:column: level: message`;
   `--wrapAuto` is `--wrap` (`-w` unchanged).
 - An unknown language of a `code::` block is reported where the block starts.

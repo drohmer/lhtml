@@ -1,27 +1,22 @@
-"""Core LHTML processing functions.
+"""What the parser of the tree (tree.py) reads with: the zones LHTML never
+transforms, replaced by placeholders (ProtectionStores), the refusals of the
+syntax removed in 3.0, the rules that decide whether a `::` is a tag, and
+the line breaks option.
 
-Each function transforms LHTML markup into HTML for one language
-feature (headings, bold, lists, tags, etc.). The pipeline execution
-order is managed by pipeline.py.
-
-Content that must not be transformed is replaced early by placeholders
-(see patterns.PLACEHOLDER) and restored at the end. The kinds of stored
-content are listed in ProtectionStores.
+The kinds of stored content are listed in ProtectionStores; they become the
+opaque leaves of the tree (code, inline code, mathematics, raw HTML).
 """
 
 import re
 import warnings
 from dataclasses import dataclass, field
 
-from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
-from .export_html import (
-    export_html_element_class_and_id, export_html_generic,
-)
+from .tag_parser import extract_bracket_elements
 from .code import export_html_code, known_language, unknown_language_message
 from .errors import LHTMLParseError, LHTMLWarning
 from .patterns import (
     PROTECTED, PROTECTED_BLOCKS,
-    HEADING, BOLD, ITALIC,
+    HEADING,
     INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
     JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
@@ -65,22 +60,6 @@ class ProtectionStores:
     def locate(self, text, offset):
         """(line, column) of `offset` of the prepared `text` in the source."""
         return position(self.original(text[:offset]))
-
-    def tag_positions(self, text):
-        """(line, column) in the source of each `::` (TAG_MARKER) of the
-        prepared `text`, in order. The passes before process_tag add lines
-        (a heading, a list) but no `::`: the k-th `::` it reads is this k-th."""
-        positions, line, column, previous = [], 1, 1, 0
-        for m in TAG_MARKER.finditer(text):
-            segment = self.original(text[previous:m.start()])
-            if '\n' in segment:
-                line += segment.count('\n')
-                column = len(segment) - segment.rfind('\n')
-            else:
-                column += len(segment)
-            positions.append((line, column))
-            previous = m.start()
-        return positions
 
     def restore(self, text, kind, render_fn=None):
         return restore_from_index(text, kind, getattr(self, kind), render_fn)
@@ -255,86 +234,12 @@ def process_prepare(text, stores):
 
 
 # ---------------------------------------------------------------------------
-# Inline formatting
-# ---------------------------------------------------------------------------
-
-def process_bold(text):
-    """Convert **text** to <strong>text</strong>."""
-    return regex_transform(text, BOLD, lambda m: f'<strong>{m.group(1)}</strong>')
-
-
-def process_italic(text):
-    """Convert __text__ to <em>text</em>."""
-    return regex_transform(text, ITALIC, lambda m: f'<em>{m.group(1)}</em>')
-
-
-# ---------------------------------------------------------------------------
-# Headings
-# ---------------------------------------------------------------------------
-
-def process_title(text, stores):
-    """Convert = Title or =(.class) Title to <h1>Title</h1>, etc.
-
-    The (.class #id) group protected by process_protect_attributes is
-    resolved, and the generated attributes stay protected from inline
-    formatting until process_unprotect.
-    """
-    def _heading(m):
-        level = str(len(m.group(1)))
-        class_id = m.group(2) or ''
-        class_id = stores.restore(class_id, 'A').strip()
-        title = m.group(3)
-        if class_id:
-            attrs = export_html_element_class_and_id(class_id)
-            if attrs:
-                attrs = stores.add('A', attrs)
-            return f'<h{level}{attrs}>{title}</h{level}>\n'
-        return f'<h{level}>{title}</h{level}>\n'
-    return regex_transform(text, HEADING, _heading)
-
-
-# ---------------------------------------------------------------------------
 # Tag elements (the :: system)
 # ---------------------------------------------------------------------------
-
-def _warn_unmatched_closing(element):
-    """Warn about a closing :: without opening tag; the source is kept."""
-    _warn(f"Closing tag :: has no matching opening tag (near {element.get('context', '')!r})",
-          element, stacklevel=5)
-    return '', False
-
 
 def check_is_closing_tag(element):
     """A bare :: (empty tag, span of exactly 2) is a closing tag."""
     return element['tag'] == '' and element['index_end'] - element['index_start'] == 2
-
-
-def _dispatch_tag(element, tag_to_close, context, tags):
-    """Dispatch a parsed tag element to the appropriate handler.
-
-    Named tags go to their handler in `tags`. Unnamed tags (::) are closing
-    tags, spacers or anonymous divs.
-    """
-    tag = element['tag']
-    if element['[]'] == '-' and tag != 'link':     # link::url[-] is the text '-'
-        _refuse_explicit_closing(element)
-
-    if tag != '':
-        handler = tags.get(tag)
-        if handler is not None:
-            return handler(element, tag_to_close, context)
-        # Unrecognized tag — pass through
-        return '', False
-
-    if check_is_closing_tag(element):
-        if not tag_to_close:
-            return _warn_unmatched_closing(element)
-        return '</' + tag_to_close.pop() + '>', True
-    if element['text'] == 'nl':
-        return '<div style="height:1em;"></div>', True
-    if element['[]'] or element['()'] or element['{}'] or element['text']:
-        return export_html_generic(element, 'div', tag_to_close), True
-    return '', False
 
 
 def _refuse_explicit_closing(element):
@@ -397,79 +302,6 @@ def _adjust_bare_tag(text, m, element):
     if following and not (following.isalnum() or following.isspace() or following in '[({'):
         element.update({'text': '', '[]': '', '()': '', '{}': '', 'index_end': m.end()})
     return True
-
-
-def process_tag(text, run_context, tags, resolve=None, positions=None):
-    """Process all :: tag elements in text.
-
-    Args:
-        run_context: the ProcessingContext of the run, passed to the handlers.
-        tags: the handlers of the named tags {name: handler}.
-        resolve: function applied to the parsed fields before dispatch
-            (used to restore protected URLs).
-        positions: (line, column) in the source of each `::` of the text
-            (ProtectionStores.tag_positions): an element gets its 'line' and
-            'column', which its warnings and errors carry.
-    """
-    parts = []
-    prev = 0
-    last_tag_end = -1
-    tag_to_close = []
-    open_elements = []
-    markers = list(TAG_MARKER.finditer(text))
-    if positions is None or len(positions) != len(markers):
-        positions = [(None, None)] * len(markers)
-
-    for m, (line, column) in zip(markers, positions):
-        if m.start() < prev:
-            continue  # skip overlapping matches
-
-        try:
-            element = extract_bracket_elements(text, m.end())
-        except LHTMLParseError as e:
-            found = _TAG_NAME_BEFORE.search(text, max(0, m.start() - _MAX_TAG_NAME), m.start())
-            name = len(found.group()) if found else 0
-            _warn(f'{e} near {_context(text, m.start() - name, m.end() + 30)!r}',
-                  (line, column - name if column else None))
-            continue
-        tag = element['tag']
-        tag_start = m.start() - len(tag)
-        if tag_start < prev:
-            # The name found backwards belongs to the previous tag (::nl::[...])
-            tag, tag_start = '', m.start()
-            element.update({'tag': '', 'index_start': tag_start})
-        if not _is_tag_boundary(text, tag_start, tag, last_tag_end):
-            continue
-        if not tag and not _adjust_bare_tag(text, m, element):
-            continue
-        element['line'] = line
-        element['column'] = column - len(tag) if column else None
-        context = text[tag_start:element['index_end']]
-        if resolve is not None:
-            context = resolve(context)
-        element['context'] = _context(context, 0, len(context))
-        if resolve is not None:
-            for key in ('text', '[]', '()', '{}'):
-                element[key] = resolve(element[key])
-
-        depth = len(tag_to_close)
-        html_out, is_real_tag = _dispatch_tag(element, tag_to_close, run_context, tags)
-        del open_elements[len(tag_to_close):]
-        open_elements.extend([element] * (len(tag_to_close) - depth))
-
-        if is_real_tag:
-            parts.append(text[prev:tag_start])
-            parts.append(html_out)
-            last_tag_end = element['index_end']
-        else:
-            parts.append(text[prev:element['index_end']])
-        prev = element['index_end']
-
-    for tag, element in zip(tag_to_close, open_elements):
-        _warn(f"Tag <{tag}> is never closed (near {element['context']!r})", element)
-
-    parts.append(text[prev:])
-    return ''.join(parts)
 
 
 # ---------------------------------------------------------------------------

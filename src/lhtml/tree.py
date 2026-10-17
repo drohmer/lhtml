@@ -1,27 +1,31 @@
-"""The document tree of LHTML (prototype of step N5): parse, then render.
+"""The document tree of LHTML: parse, then render (lhtml.run is both).
 
     document = parse(text, tags=None, macros=None)
     html     = render(document, meta=None)
 
-The tree nests what the passes of `run` wrote as flat HTML: headings,
-lists, bold and italic, the `::` elements, and the zones LHTML never reads
-(code, inline code, mathematics, raw HTML, Jinja) as opaque leaves. Every
-node has its `span`, the offsets of its source in the text given to parse,
-and `line`, `column` exact by construction.
+The tree holds headings, lists, bold and italic, the `::` elements, and the
+zones LHTML never reads (code, inline code, mathematics, raw HTML, Jinja) as
+opaque leaves. Every node has its `span`, the offsets of its source in the
+text given to parse, and `line`, `column` exact by construction.
 
-How it parses: the stages are those of `run` (protection, headings, lists,
-bold, italic, elements), over the same intermediate text, so that what is a
-heading, an item or an element is decided exactly as `run` decides it. But
-each character of that text keeps its origin - a character of the source,
-or the markup a node generated - and the elements are recorded as events
-instead of being written as HTML. The tree is built from those events, and
-`render` writes the HTML from the tree alone.
+How it parses. The zones are found first (process.process_prepare), then
+the stages read the text in order: headings, list lines, bold, italic, and
+the `::` elements last. Each stage writes the markup of its nodes into the
+text the next one reads ('<h1>', '<li>', '<strong>'), because the next one
+decides on it: a list line is a line that starts with `* ` once headings
+are written, a tag name is not glued to the character before it, and that
+character may be the `>` of a `<strong>`. This keeps the decisions of the
+text passes LHTML 2 and 3.0 had (the tree replaced them on 2026-10-17 with
+the same HTML on the tests, a corpus of five projects and 80 000 fuzzed
+documents). But each character keeps its origin - the source, or the markup
+a node wrote - and the elements are recorded as events; the tree is built
+from the events, and `render` writes the HTML from the tree alone.
 
-What the tree changes: an element opened in a heading, a list item, a bold
-or an italic span, and not closed there (its `::` elsewhere, or none), is
-closed at the end of that container, with a warning; its `::`, if any,
-closes nothing (a warning, and the `::` stays as text). `run` writes the
-same text as malformed HTML (<li><span>...</li>...</span>).
+An element opened in a heading, a list item, a bold or an italic span, and
+not closed there (its `::` elsewhere, or none), is closed at the end of that
+container, with a warning; its `::`, if any, closes nothing (a warning, and
+the `::` stays as text). The text passes wrote malformed HTML there
+(<li><span>...</li>...</span>).
 """
 
 from __future__ import annotations
@@ -33,11 +37,8 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .errors import LHTMLParseError, LHTMLWarning
-from .export_html import (
-    export_html_element_class_and_id, export_html_generic, export_html_img,
-    export_html_link, export_html_video, _build_attrs,
-)
-from .macros import VOID_TAGS, _check, _attr, load_macros
+from .export_html import SPACER, TAGS, export_html_element_class_and_id
+from .macros import registry_with_macros
 from .patterns import (
     BOLD, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
@@ -152,114 +153,14 @@ class Raw(Node):
 
 
 # ---------------------------------------------------------------------------
-# The tags
+# What a tag receives
 # ---------------------------------------------------------------------------
 
 @dataclass
-class Tag:
-    """A `name::` tag. `container`: whether it holds what follows until its
-    `::` (a bool, or a function of the element: div::text:: closes at once).
-    `render(element, children, context)`: its HTML, closing tag included;
-    `children` is the HTML of what it holds ('' for a void or inline one),
-    and element['closed'] is False when nothing closed it."""
-    render: Callable
-    container: bool | Callable = False
-    html: str = 'div'               # the HTML tag it opens, for the warnings
-
-    def holds(self, element):
-        return self.container(element) if callable(self.container) else bool(self.container)
-
-
-def _close(html, tag, element):
-    return html + (f'</{tag}>' if element.get('closed', True) else '')
-
-
-def generic(tag):
-    """div::, span::: holds what follows, unless written div::text::"""
-    def render(element, children, context):
-        text = element['text']
-        if text.endswith('::'):
-            return f'<{tag}{_build_attrs(element)}>{text[:-2]}</{tag}>'
-        return _close(f'<{tag}{_build_attrs(element)}>{text}' + children, tag, element)
-    return Tag(render, container=lambda element: not element['text'].endswith('::'), html=tag)
-
-
-TAGS = {
-    'div': generic('div'),
-    'span': generic('span'),
-    'link': Tag(lambda element, children, context: export_html_link(element)),
-    'img': Tag(lambda element, children, context: export_html_img(element)),
-    'video': Tag(lambda element, children, context: export_html_video(element, '', context.media)),
-    'videoplay': Tag(lambda element, children, context: export_html_video(
-        element, 'autoplay loop muted playsinline', context.media)),
-}
-
-_SPACER = Tag(lambda element, children, context: '<div style="height:1em;"></div>')
-
-
-def macro_tag(name, spec):
-    """The Tag of a macro definition (lhtml.macros): the element of its tag,
-    with the defaults of the macro added to those of the source."""
-    spec = _check(name, spec)
-    tag = spec.get('tag') or 'div'
-    void = tag.lower() in VOID_TAGS
-    classes = (spec.get('class') or '').split()
-    attrs = (spec.get('attrs') or '').strip()
-    empty = bool(spec.get('empty', False))
-    url = spec.get('url')
-    variant = spec.get('variant')
-    default = spec.get('default')
-
-    def merged(element, warn):
-        text = element['text']
-        all_classes = list(classes)
-        if variant:
-            value = text.strip()
-            closed = value.endswith('::')
-            if closed:
-                value = value[:-2].strip()
-            value = value or (str(default) if default is not None else '')
-            if value:
-                if warn and value not in [str(v) for v in variant]:
-                    _warn(f'{name}::{value}: unknown variant (expected one of '
-                          f'{", ".join(str(v) for v in variant)}) near {element.get("context", "")!r}',
-                          element, stacklevel=5)
-                all_classes.append(f'{classes[0]}-{value}')
-            text = '::' if closed else ''
-        inline = ' '.join(a for a in (attrs, element['{}']) if a)
-        if url:
-            closed = text.rstrip().endswith('::')
-            value = text.rstrip()[:-2] if closed else text
-            inline = ' '.join(a for a in (f'{url}="{_attr(value.strip())}"', inline) if a)
-            text = '::' if closed else ''
-        result = {**element,
-                  '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
-                  '{}': inline, 'text': text}
-        if not void and empty and not result['text'].endswith('::'):
-            result['text'] += '::'
-        return result
-
-    def holds(element):
-        return not void and not merged(element, warn=True)['text'].endswith('::')
-
-    def render(element, children, context):
-        m = merged(element, warn=False)
-        if void:
-            return f'<{tag}{_build_attrs(m)}>' + ('' if m['text'] == '::' else m['text'])
-        text = m['text']
-        if text.endswith('::'):
-            return f'<{tag}{_build_attrs(m)}>{text[:-2]}</{tag}>'
-        return _close(f'<{tag}{_build_attrs(m)}>{text}' + children, tag, element)
-
-    return Tag(render, container=holds, html=tag)
-
-
-def tags_with_macros(macros, base=None):
-    """The tags and the Tags of the macros (a mapping, a YAML file, or a list)."""
-    tags = dict(TAGS if base is None else base)
-    for name, spec in load_macros(macros).items():
-        tags[name] = macro_tag(name, spec)
-    return tags
+class ProcessingContext:
+    """What a tag receives as the third argument of its render."""
+    meta: dict
+    media: Callable | None = None   # media(src) -> [(url, mime)], given by the caller
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +272,7 @@ class _Parser:
         return text.transform(HEADING, pieces)
 
     def lists(self, text):
-        """`* item` lines, as process_listing reads them: a run of them is a
+        """`* item` lines: a run of them is a
         list, a deeper level a list inside an item of its own."""
         chars, origins = [], []
 
@@ -443,7 +344,7 @@ class _Parser:
         return text.transform(pattern, pieces)
 
     def elements(self, text):
-        """The `::` elements, decided as process_tag decides them, recorded
+        """The `::` elements, decided on the text the stages wrote, recorded
         as events: an element's source becomes one event, and its `::` another."""
         chars, origins = [], []
         prev, last_tag_end = 0, -1
@@ -509,9 +410,8 @@ class _Parser:
 
     @staticmethod
     def _flat(text):
-        """The text as the passes of `run` wrote it: the markup of the
-        nodes is HTML there ('<h1>', '<strong>'), and the decisions of the
-        tag pass read it."""
+        """The text the stages wrote: the markup of the nodes is HTML there
+        ('<h1>', '<strong>'), and the decisions on the tags read it."""
         return text.chars
 
     def _place_of(self, text, position):
@@ -525,7 +425,7 @@ class _Parser:
         return node.tag.html
 
     def _decide(self, element, stack):
-        """(event, node) of an element, as _dispatch_tag decides it; None
+        """(event, node) of an element; None
         when it is not a tag (its source stays)."""
         tag = element['tag']
         if element['[]'] == '-' and tag != 'link':
@@ -543,7 +443,7 @@ class _Parser:
                 return None
             return 'close', stack.pop()
         if element['text'] == 'nl':
-            return 'leaf', self._element(element, _SPACER, '', 'void')
+            return 'leaf', self._element(element, SPACER, '', 'void')
         if element['[]'] or element['()'] or element['{}'] or element['text']:
             return self._open(element, TAGS['div'], '', stack)
         return None
@@ -601,7 +501,7 @@ class _Parser:
                 stack[-1].children.append(node)
                 stack.append(node)
         flush()
-        while len(stack) > 1:           # elements never closed: as run leaves them
+        while len(stack) > 1:           # elements never closed: no closing tag
             node = stack.pop()
             if isinstance(node, Element):
                 node.closed = 'container' if getattr(node, 'pending', False) else 'never'
@@ -718,9 +618,7 @@ def parse(text, tags=None, macros=None, context=None):
     built-in TAGS; `macros`: definitions of macros (lhtml.macros). Reads no
     file but the macro files named. The warnings are emitted, and kept in
     document.problems."""
-    registry = dict(TAGS)
-    if macros:
-        registry = tags_with_macros(macros, registry)
+    registry = registry_with_macros(macros) if macros else dict(TAGS)
     registry.update(tags or {})
     caught = []
     try:
@@ -765,7 +663,6 @@ def _render_node(node, context):
 def render(document, meta=None, media=None):
     """The HTML of a document tree, with the options of `run` (line-breaks,
     wrap-auto, title, css, js) and the media resolver."""
-    from .pipeline import ProcessingContext
     meta = dict(meta or {})
     context = ProcessingContext(meta, media if media is not None else meta.get('media'))
     stores = document.stores
@@ -778,21 +675,3 @@ def render(document, meta=None, media=None):
     if meta.get('wrap-auto') is True:
         text = wrap_auto(text, meta)
     return text
-
-
-def run(text, meta=None, tags=None):
-    """`lhtml.run` through the tree: parse, then render."""
-    import os
-    meta = dict(meta or {})
-    macros = meta.get('macros')
-    if macros:
-        directory = str(meta.get('current_directory') or '')
-        macros = [m if not isinstance(m, str) or os.path.isabs(m) else os.path.join(directory, m)
-                  for m in (macros if isinstance(macros, (list, tuple)) else [macros])]
-    media = meta.get('media')
-    if media is not None and not callable(media):
-        raise TypeError(f'meta "media" must be callable, got {type(media).__name__}')
-    from .pipeline import ProcessingContext
-    context = ProcessingContext(meta, media)
-    document = parse(text, tags=tags, macros=macros, context=context)
-    return render(document, meta, media)

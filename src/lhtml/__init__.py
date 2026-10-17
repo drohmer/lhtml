@@ -7,6 +7,8 @@ Usage:
     import lhtml
     html = lhtml.run(text)
     html = lhtml.run(text, {'wrap-auto': True, 'title': 'My Page'})
+    document = lhtml.parse(text)          # the document tree (tree.py)
+    html = lhtml.render(document)
 
 run(text, meta, tags) is documented in pipeline.py.
 """
@@ -19,9 +21,10 @@ from .errors import (
 )
 
 from .code import LEXERS
-from .export_html import TAGS
+from .export_html import TAGS, Tag
 from .macros import describe_macro, load_macros, registry_with_macros
 from .pipeline import run
+from .tree import parse, render
 
 
 def main():
@@ -31,7 +34,7 @@ def main():
 
 
 __all__ = [
-    '__version__', 'run', 'main', 'TAGS', 'LEXERS',
+    '__version__', 'run', 'parse', 'render', 'main', 'TAGS', 'Tag', 'LEXERS',
     'describe_macro', 'load_macros', 'registry_with_macros',
     # Errors
     'LHTMLError', 'LHTMLParseError',

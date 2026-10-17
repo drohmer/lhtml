@@ -98,7 +98,7 @@ html = lhtml.run(text, {
 # Macros (custom :: tags, see Macros below)
 html = lhtml.run('box:: x ::\n', {'macros': {'box': {'class': 'box'}}})
 macros = lhtml.load_macros('macros.yaml')            # definitions from files or dicts
-tags = lhtml.registry_with_macros(macros)            # their handlers, validated (LHTMLMacroError)
+tags = lhtml.registry_with_macros(macros)            # their Tags, validated (LHTMLMacroError)
 info = lhtml.describe_macro('box', macros['box'])    # what a definition renders, for docs
 ```
 
@@ -533,21 +533,19 @@ Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in
 
 ## Plugin System
 
-### Custom Tag Handlers
+### Custom Tags
 
-Give handlers for new `::` tag types to `lhtml.run`, added to the built-in
-ones (`lhtml.TAGS`, a dict name -> handler):
+Give new `::` tags to `lhtml.run`, added to the built-in ones (`lhtml.TAGS`,
+a dict name -> `lhtml.Tag`):
 
 ```python
 import lhtml
 
-def handle_alert(element, tag_to_close, context):
-    """Open <div class="alert">; the following :: closes it."""
+def render_alert(element, children, context):
     style = element.get('[]', '')
-    tag_to_close.append('div')
-    return f'<div class="alert" style="{style}">', True
+    return f'<div class="alert" style="{style}">{element["text"]}{children}</div>'
 
-html = lhtml.run(text, tags={'alert': handle_alert})
+html = lhtml.run(text, tags={'alert': lhtml.Tag(render_alert, container=True)})
 ```
 
 Then use in LHTML:
@@ -555,12 +553,30 @@ Then use in LHTML:
 alert::[background:yellow; padding:10px;] Warning message ::
 ```
 
-A handler receives the parsed element (`'[]'`, `'()'`, `'{}'`, `'text'`: the
-word glued after the brackets), the stack of open tags and the context of the
-run (`context.meta`, `context.media`), and returns `(html, is_real_tag)`. To wrap the
-content that follows, push the HTML tag name on `tag_to_close`: the next `::`
-closes it. Returning `is_real_tag=False` leaves the source
-text unchanged.
+A tag declares whether it holds what follows until its `::` (`container`: a
+bool, or a function of the element, as `div::text::` closes at once), so
+that the parser knows it before anything is rendered. `render` receives the
+parsed element (`'[]'`, `'()'`, `'{}'`, `'text'`: the word glued after the
+brackets; `element['closed']` is False when no `::` closed it), the HTML of
+what it holds (`''` for a tag that holds nothing) and the context of the run
+(`context.meta`, `context.media`), and returns its HTML, closing tag
+included. A name that is not a tag stays as text (`std::vector`).
+
+### The document tree
+
+`lhtml.run` is `lhtml.parse` then `lhtml.render`:
+
+```python
+document = lhtml.parse(text, macros=...)   # headings, lists, bold, italic, :: elements,
+for node in document.walk():               # and code, inline code, math, raw HTML as leaves
+    print(node.kind, node.line, node.column, node.span)
+html = lhtml.render(document)
+```
+
+Every node has its place in the text (`span`, `line`, `column`), and
+`document.problems` holds the warnings. An element opened in a heading, a
+list item, a bold or an italic span is closed at the end of it, with a
+warning; its `::` elsewhere closes nothing.
 
 ### Custom Code Lexers
 
