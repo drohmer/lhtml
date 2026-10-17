@@ -15,8 +15,8 @@ opening, its closing), and each event becomes one character of the text the
 next stages read (EVENT_CHAR), a boundary: a list line is a line that
 starts with `* ` once the headings are read, the word of an element ends at
 the end of a bold, a tag may follow it. These are the decisions of the text
-passes LHTML 2 and 3.0 had, which wrote '<h1>', '<strong>' into the text
-instead (the tree replaced them on 2026-10-17 with the same HTML on the
+passes of LHTML 2 and of the 3.0 development versions, which wrote '<h1>',
+'<strong>' into the text instead (the tree replaced them on 2026-10-17 with the same HTML on the
 tests, a corpus of five projects and 80 000 fuzzed documents). Each
 character keeps its origin, the source or an event; the tree is built from
 the events. A tag builds the nodes of its element (export_html.Tag), the
@@ -42,6 +42,7 @@ import re
 import warnings
 from collections.abc import Mapping
 
+from . import attributes
 from .errors import LHTMLError, LHTMLParseError
 from .export_html import SPACER, TAGS, Tag, class_and_id, node_list
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
@@ -100,6 +101,7 @@ class _Parser:
         self.stores = ProtectionStores()
         self.events = []            # (what, node): 'open', 'close', 'leaf' (a list of nodes)
         self.parsed = {}            # an element -> (its element dict, the container it is opened in)
+        self.built = set()          # the nodes the tags built: text after them is not theirs
         self.lines = [0] + [m.end() for m in re.finditer('\n', self.source)]
 
     # -- positions --------------------------------------------------------
@@ -128,8 +130,7 @@ class _Parser:
         kept = [o for o in origins if o >= 0]
         if not kept:
             return None
-        return self.offsets[min(kept)], self.offsets[max(kept) + 1] if max(kept) + 1 < len(self.offsets) \
-            else self.offsets[-1]
+        return min(self.offsets[o] for o in kept), max(self.offsets[o + 1] for o in kept)
 
     def event(self, what, node):
         self.events.append((what, node))
@@ -273,22 +274,22 @@ class _Parser:
         for m in TAG_MARKER.finditer(flat):
             if m.start() < prev:
                 continue
+            found = _TAG_NAME_BEFORE.search(flat, max(0, m.start() - _MAX_TAG_NAME), m.start())
+            tag = found.group() if found else ''
+            tag_start = m.start() - len(tag)
+            if tag_start < prev:
+                tag, tag_start = '', m.start()
+            # a :: glued to a word is no tag: decided before its element is read (a::a::a...: linear)
+            if not _is_tag_boundary(flat, tag_start, tag, last_tag_end):
+                continue
             line, column = self._place_of(text, m.start())
             try:
                 element = extract_bracket_elements(flat, m.end())
             except LHTMLParseError as e:
-                found = _TAG_NAME_BEFORE.search(flat, max(0, m.start() - _MAX_TAG_NAME), m.start())
-                name = len(found.group()) if found else 0
-                _warn(f'{e} near {self._quote(text, m.start() - name, m.end() + 30)!r}',
-                      (line, column - name if column else None))
+                _warn(f'{e} near {self._quote(text, tag_start, m.end() + 30)!r}',
+                      (line, column - len(tag) if column else None))
                 continue
-            tag = element['tag']
-            tag_start = m.start() - len(tag)
-            if tag_start < prev:
-                tag, tag_start = '', m.start()
-                element.update({'tag': '', 'index_start': tag_start})
-            if not _is_tag_boundary(flat, tag_start, tag, last_tag_end):
-                continue
+            element.update({'tag': tag, 'index_start': tag_start})
             if not tag and not _adjust_bare_tag(flat, m, element):
                 continue
             element['line'] = line
@@ -309,6 +310,9 @@ class _Parser:
                                              for k, a, b in element['groups'] if k == kind)
             for key in ('text', '[]', '()', '{}'):
                 element[key] = original(element[key])
+            if tag in self.tags and attributes.unclosed(element['{}']):
+                _warn(f"{tag}:: a value of its {{...}} has no closing quote: it is written so "
+                      f"(near {element['context']!r})", element)
             element['inline'] = element['text'].endswith('::')
             if element['inline']:
                 element['text'] = element['text'][:-2]
@@ -337,6 +341,7 @@ class _Parser:
             else:                       # the nodes its tag built, where it is
                 for built in (node if kind == 'leaf' else [node]):
                     for n in built.walk():
+                        self.built.add(n)
                         if n.line is None:
                             n.span = span or n.span
                             n.line, n.column = element['line'], element['column']
@@ -362,8 +367,13 @@ class _Parser:
         space): its text, bold, italic, zones."""
         root = Node()
         for k, (start, end) in enumerate(ranges):
-            if k:
-                root.children.append(Text(value=' '))
+            if k:                       # the groups joined by a space, where the first one closes
+                joint = self.source_of(text.origins[ranges[k - 1][1]:ranges[k - 1][1] + 1])
+                space = Text(value=' ')
+                if joint:
+                    space.span = (joint[0], joint[0])
+                    space.line, space.column = self.place(joint[0])
+                root.children.append(space)
             stack, buffer, origins, done = [root], [], [], set()
             for ch, origin in zip(text.chars[start:end], text.origins[start:end]):
                 if origin >= 0:
@@ -456,21 +466,22 @@ class _Parser:
             return self._close_tag(element, container)
         if element['text'] == 'nl':
             return self._open(element, SPACER, '', container)
-        if element['[]'] or element['()'] or element['{}'] or element['text']:
+        if element['[]'] or element['()'] or element['{}'] or element['text'] or element['groups']:
             return self._open(element, self.tags['div'], '', container)    # an anonymous div
         return None
 
     def _open(self, element, tag, name, container):
         """The nodes the tag builds: ('open', its element) when it holds
         what follows, else ('leaf', [nodes])."""
+        given = {k: v for k, v in element.items() if k not in _INTERNAL}
         try:
-            holds = tag.holds(element)
+            holds = tag.holds(given)
         except LHTMLError:
             raise
         except Exception as e:
             raise _tag_error(f'{name}::', 'container', e, element) from e
         try:
-            built = node_list(tag.build(element))
+            built = node_list(tag.build(given))
         except LHTMLError:
             raise
         except Exception as e:
@@ -505,7 +516,7 @@ class _Parser:
             _warn(f'this :: closes nothing: it is inside a {_KINDS.get(type(container), "container")} '
                   f"that {_label(top)} is not in (near {self.parsed[top][0]['context']!r})", element)
         else:
-            _warn(f"Closing tag :: has no matching opening tag (near {element.get('context', '')!r})",
+            _warn(f"this :: closes nothing: no element is open (near {element.get('context', '')!r})",
                   element)
         return None
 
@@ -574,7 +585,7 @@ class _Parser:
         """The text with what its placeholders of text (a URL, a group of
         what is not an element) hide, put back: the zones in them are zones
         (a code block in the {...} of a::b is a code block). Their characters
-        are placed where the placeholder is."""
+        are placed in the source, each where it is written."""
         if not any(m.group(1) in 'AU' for m in PLACEHOLDER.finditer(raw)):
             return raw, origins
         parts, places, position = [], [], 0
@@ -584,13 +595,29 @@ class _Parser:
             parts.append(raw[position:m.start()])
             places.extend(origins[position:m.start()])
             entry = getattr(self.stores, m.group(1))[int(m.group(2))]
-            entry, entry_places = self._expanded(entry, [origins[m.start()]] * len(entry))
+            entry, entry_places = self._expanded(entry, self._placed(entry, self.offsets[origins[m.start()]]))
             parts.append(entry)
             places.extend(entry_places)
             position = m.end()
         parts.append(raw[position:])
         places.extend(origins[position:])
         return ''.join(parts), places
+
+    def _placed(self, text, start):
+        """Origins for a text hidden by a placeholder whose source starts at
+        `start`: new ones, added after the offsets of the prepared text (each
+        character followed by the offset after it, as there)."""
+        first, s, i = len(self.offsets), start, 0
+        while i < len(text):
+            m = PLACEHOLDER.match(text, i)
+            if m:
+                self.offsets.extend([s] * len(m.group(0)))
+                s, i = s + len(self.stores.original(m.group(0))), m.end()
+            else:
+                self.offsets.append(s)
+                s, i = s + 1, i + 1
+        self.offsets.append(s)          # where the text ends
+        return list(range(first, first + len(text)))
 
     def _text_nodes(self, raw, origins, parent):
         """Text, and the opaque zones its placeholders hold (a URL or a
@@ -607,7 +634,7 @@ class _Parser:
         for node in nodes:
             last = parent.children[-1] if parent.children else None
             if isinstance(node, Text) and isinstance(last, Text) and last.span[1] == node.span[0] \
-                    and last.line is not None:
+                    and last.line is not None and last not in self.built:
                 last.value += node.value
                 last.span = (last.span[0], node.span[1])
             else:
@@ -651,6 +678,9 @@ class _Parser:
 _KINDS = {Heading: 'heading', List: 'list', Item: 'list item', Strong: 'bold', Emphasis: 'italic'}
 
 
+_INTERNAL = ('groups', 'index_start', 'index_end', 'stray')     # not given to a tag
+
+
 def _label(node):
     return f'{node.tag}::'
 
@@ -668,7 +698,7 @@ def _registry(tags, macros):
     registry = registry_with_macros(macros) if macros else dict(TAGS)
     for name, tag in (tags or {}).items():
         if not isinstance(tag, Tag):
-            raise TypeError(f'tag {name!r}: expected an lhtml.Tag(render, container), '
+            raise TypeError(f'tag {name!r}: expected an lhtml.Tag(build, container, url), '
                             f'got {type(tag).__name__}')
         if not isinstance(name, str) or not NAME_RE.match(name):
             raise ValueError(f'invalid tag name {name!r} (a letter, then letters, digits, _ or -)')

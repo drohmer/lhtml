@@ -38,10 +38,17 @@ class Attribute:
     value: str | None   # as written, without its quotes (None: no value)
 
 
+_PART = '\x01'                     # a Jinja expression, part of a name or a value
+
+
 def _masked(text):
-    """The text with its Jinja and placeholders as spaces, at their place."""
-    blank = lambda m: ' ' * len(m.group(0))
-    return PLACEHOLDER.sub(blank, JINJA_RE.sub(blank, text))
+    """The text with its Jinja at its place: an expression as a part of a
+    name or a value (data-{{ k }}="v", title={{ x }}), a statement or a
+    comment as spaces (between attributes: {% if x %}alt="y"{% endif %});
+    the placeholders as spaces."""
+    def mask(m):
+        return (_PART if m.group(0).startswith('{{') else ' ') * len(m.group(0))
+    return PLACEHOLDER.sub(lambda m: ' ' * len(m.group(0)), JINJA_RE.sub(mask, text))
 
 
 def read(text):
@@ -49,13 +56,27 @@ def read(text):
     text = text or ''
     attributes = []
     for m in _ATTRIBUTE.finditer(_masked(text)):
+        if m.group(2) is None and not m.group(1).strip(_PART):
+            continue                    # {{ attributes }}: a fragment, not a name
         value = None
         if m.group(2) is not None:
             value = text[m.start(2):m.end(2)]
             if value[:1] in '"\'' and len(value) >= 2:
                 value = value[1:-1]
-        attributes.append(Attribute(m.group(1).lower(), m.start(), m.end(), value))
+        attributes.append(Attribute(text[m.start(1):m.end(1)].lower(), m.start(), m.end(), value))
     return attributes
+
+
+def unclosed(text):
+    """Whether a value quoted after its = has no closing quote (title="a)."""
+    masked = _masked(text or '')
+    position = 0
+    while (m := re.compile(r'=[ \t]*(["\'])').search(masked, position)):
+        end = masked.find(m.group(1), m.end())
+        if end == -1:
+            return True
+        position = end + 1
+    return False
 
 
 def names(text):
@@ -132,14 +153,12 @@ class Attributes(MutableMapping):
             position = attributes._fragments(text, position, a.start)
             attributes._items.append([a.name, a.value, text[a.start:a.end], attributes._space(text, position, a.start)])
             position = a.end
-        position = attributes._fragments(text, position, len(text))
-        if position < len(text):        # the spaces at its end
-            attributes._items.append([None, None, '', text[position:]])
+        attributes._fragments(text, position, len(text))
         return attributes
 
     def _space(self, text, start, end):
-        space = text[start:end]
-        return (' ' + space) if not self._items else space
+        """The spaces before an item as written; one before the first."""
+        return text[start:end] if self._items else None
 
     def _fragments(self, text, start, end):
         """What is not an attribute: its pieces (a Jinja zone is one piece)."""
@@ -149,12 +168,16 @@ class Attributes(MutableMapping):
         return start
 
     def __getitem__(self, name):
+        if not isinstance(name, str):
+            raise KeyError(name)
         for item in self._items:
             if item[0] == name.lower():
                 return item[1]
         raise KeyError(name)
 
     def __setitem__(self, name, value):
+        if not isinstance(name, str) or not (value is None or isinstance(value, str)):
+            raise TypeError(f'an attribute is a str name and a str value or None, got {name!r}: {value!r}')
         key = name.lower()
         found = [item for item in self._items if item[0] == key]
         if found:
@@ -164,9 +187,9 @@ class Attributes(MutableMapping):
             self._items.append([key, value, None, None])
 
     def __delitem__(self, name):
-        key = name.lower()
-        if key not in self:
+        if name not in self:
             raise KeyError(name)
+        key = name.lower()
         self._items = [item for item in self._items if item[0] != key]
 
     def __contains__(self, name):

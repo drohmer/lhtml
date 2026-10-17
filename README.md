@@ -102,12 +102,17 @@ place underlined, and the level is colored (never only colored: it is
 written; `NO_COLOR` turns colors off, `FORCE_COLOR` on):
 
 ```
-page.l.html:3:1: warning: div:: is never closed (near 'div::(.note)')
+page.l.html:3:1: warning: div:: is never closed
   3 │ div::(.note)
     │ ^^^^^^^^^^^^
+
+2 converted · 1 warning
 ```
 
-With `-w`, the result is wrapped in a minimal HTML document (`lhtml.wrap`; title `Webpage`, no CSS or JS from the command line):
+Without a terminal (a log, an editor), the same problem is one line, its
+quote included: `page.l.html:3:1: warning: div:: is never closed (near 'div::(.note)')`.
+
+With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`, no CSS or JS from the command line). From Python, `lhtml.wrap(html, title='My Page', css=['style.css'], js=['app.js'])` gives:
 
 ```html
 <!DOCTYPE html>
@@ -241,7 +246,7 @@ Tag names start with a letter and may contain letters, digits, `_` and `-` (usef
 
 A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons: a run of three or more (`:::`, `::::`) is text. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
 
-A tag that is opened but never closed, or a `::` without matching opening tag, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
+A tag that is opened but never closed, or a `::` that closes nothing, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
 
 Elements nest inside headings, list items, bold and italic: one opened there and not closed there is closed at its end, with a warning, and a `::` closes the last open element only when both are in the same heading, item, bold or italic (or both outside). In `div:: a **x :: y** b ::` the `::` inside the bold closes nothing (a warning, it stays as text) and the last one closes the div. A `link::` whose label would cross the end of a heading, an item or a bold (`**x link::u[b** c]`) is left as text, with a warning.
 
@@ -382,7 +387,7 @@ Output (Pygments HTML inside `<div class="code">`):
 </pre></div>
 ```
 
-Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](#custom-code-lexers)).
+Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](docs/advanced.md#custom-code-lexers)).
 
 The colors come from a Pygments stylesheet, which you must include in your page. Generate one for the `.code` class (any [Pygments style](https://pygments.org/styles/) can replace `default`):
 
@@ -491,8 +496,10 @@ Output:
 | `default` | Variant used when none is given (one of the variants) |
 | `doc` | Description, ignored by LHTML (for documentation tools; `lhtml.describe_macro(name, spec)` gives what a definition renders) |
 
-The classes written in the source are added to those of the macro, and
-its style to the macro's. Any other attribute is given once, by the last of:
+The classes written in the source come after those of the macro (its
+`class`, then the classes of its `attrs`), and its style after a style of
+the macro's `attrs`: the page wins the cascade. An id written `(#id)` or
+`{id=...}` replaces the macro's. Any other attribute is given once, by the last of:
 the tag (`src`, `alt` of `img::`, `href` of `link::`), the `attrs` of the
 macro, its `url` (`demo::page.html`), the source (`box::{title="x"}`). The
 other attributes are kept as written, spaces in their values included; a

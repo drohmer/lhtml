@@ -57,7 +57,7 @@ HTML_TAG = re.compile(r'</?[A-Za-z][\w:-]*(?:\s+' + _HTML_ATTRIBUTE + r')*\s*/?>
 # and a new opening delimiter ends the search (an unclosed {{ does not scan
 # the rest of the document).
 _JINJA_STRING = r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')"
-_JINJA_EXPRESSION = r'\{\{(?:' + _JINJA_STRING + r'|(?!\}\}|\{\{)[^"\'])*?\}\}'
+_JINJA_EXPRESSION = r'\{\{(?![%#])(?:' + _JINJA_STRING + r'|(?!\}\}|\{\{)[^"\'])*?\}\}'
 JINJA = (r'\{#.*?#\}'
          r'|' + _JINJA_EXPRESSION +
          r'|\{%(?:' + _JINJA_STRING + r'|(?!%\}|\{%)[^"\'])*?%\}')

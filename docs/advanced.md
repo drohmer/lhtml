@@ -25,8 +25,10 @@ as any other:
 ```python
 import lhtml
 
+from lhtml.export_html import element_attributes
+
 def alert(element):
-    attributes = lhtml.Attributes({'class': 'alert', 'style': element['[]']})
+    attributes = element_attributes({**element, '()': '.alert ' + element['()']})   # (.c) [style] {attrs}
     return lhtml.Element(name='div', attributes=attributes, children=[lhtml.Text(value=element['text'])])
 
 html = lhtml.run(text, tags={'alert': lhtml.Tag(alert, container=True)})
@@ -75,7 +77,9 @@ image.attributes['src'] = 'after.png'
 html = lhtml.render(document)
 ```
 
-The nodes (`lhtml.nodes`) are `Document` (`problems`, `source`), `Heading`
+Every node is an `lhtml.Node`: its `kind` (the name of its class), its
+`children`, its place, and `walk()`, the node and its descendants in
+document order. The nodes (`lhtml.nodes`) are `Document` (`problems`, `source`), `Heading`
 (`level`, `attributes`), `List`, `Item` (a deeper list is a `List` inside
 the `Item` before it), `Strong`, `Emphasis`, `Element` (`name`, the HTML
 element; `attributes`; `void`: no closing tag; its children), `Video` (an
@@ -84,18 +88,21 @@ element; `attributes`; `void`: no closing tag; its children), `Video` (an
 (`language`, `body`), `InlineCode` (`text`), `Math` (`text`, `display`) and
 `Raw` (`text`; `raw_kind`: html, comment, script, style, jinja). The label
 of a link is its children (`link::u[a **b**]`: a `Text` and a `Strong`);
-the word after a tag is its content (`span::word more ::`: one `Text`).
+the word after a tag is its first child (`span::word more ::`: a `Text`
+for `word`, then the text that follows).
 
 `attributes` is an `lhtml.Attributes`, a mapping name -> value in order: a
 value as in HTML source (a `"` in a value set is written `&quot;`), None
 for an attribute without value (`autoplay`); a name is read in any case;
 a Jinja fragment written among them (`{% if x %}alt="y"{% endif %}`)
-stays in its place. Read from the source, an attribute is written back as
-written until it is set. The classes of an element and its style add up
-(`(.a){class="b"}`: `class="a b"`); any other attribute is given once, by
-the last of the tag, the macro, its `url`, the page.
+stays in its place, and an expression is part of a name or a value
+(`data-{{ k }}="v"`, `title={{ x }}`). Read from the source, an attribute
+is written back as written until it is set. The classes of an element and
+its style add up, the macro's first (`(.a){class="b"}`: `class="a b"`);
+any other attribute is given once, by the last of the tag, the macro, its
+`url`, the page (an id written `{id=...}` replaces the one of `(#id)`).
 
-Two fields are information on the source, never read by `render`:
+Three fields are information on the source, never read by `render`:
 `Element.tag` (the LHTML tag written, `''` for a bare `::`) and
 `Element.written` (its groups and word as written: `'()'`, `'[]'`, `'{}'`,
 `'text'`; a group across other nodes as written, `**` included), and
@@ -104,7 +111,7 @@ Two fields are information on the source, never read by `render`:
 nothing), `'container'` (at the end of the heading, item, bold or italic it
 is opened in) or `'never'` (not closed: no closing tag is written).
 
-Every node has its place: `span`, the offsets of its source in the text
+Every node but the document has its place: `span`, the offsets of its source in the text
 given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,
 `column` of its start (1-based); a node a tag built has the place of its
 element, a node made by the caller none. `document.problems` holds the

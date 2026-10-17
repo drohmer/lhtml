@@ -551,7 +551,7 @@ class TestUnclosedTags:
     def test_extra_closing_warns_with_context(self):
         r, w = _run_with_warnings('hello\n::\n')
         assert r == 'hello\n::\n'
-        assert any('no matching opening tag' in x for x in w)
+        assert any('closes nothing: no element is open' in x for x in w)
 
     @pytest.mark.parametrize('source, expected', [
         ('a :: b', 'a :: b'),
@@ -560,7 +560,7 @@ class TestUnclosedTags:
     def test_unmatched_closing_is_kept_as_text(self, source, expected):
         r, w = _run_with_warnings(source)
         assert r == expected
-        assert any('no matching opening tag' in x for x in w)
+        assert any('closes nothing: no element is open' in x for x in w)
 
 
 class TestAttributeEscaping:
@@ -882,13 +882,18 @@ class TestBareTagEdgeCases:
 
 class TestPluginReadmeExample:
     def test_alert_example(self):
+        from lhtml.export_html import element_attributes
+
         def alert_element(element):
-            attributes = lhtml.Attributes({'class': 'alert', 'style': element['[]']})
+            attributes = element_attributes({**element, '()': '.alert ' + element['()']})
             return lhtml.Element(name='div', attributes=attributes, children=[lhtml.Text(value=element['text'])])
         alert = lhtml.Tag(alert_element, container=True)
         r = lhtml.run('alert::[background:yellow; padding:10px;] Warning message ::\n',
                       tags={'alert': alert})
         assert r == '<div class="alert" style="background:yellow; padding:10px;"> Warning message </div>\n'
+        seen = []
+        lhtml.run('spy::(.c)[s]{a=1}w', tags={'spy': lhtml.Tag(lambda element: seen.append(element) or [])})
+        assert sorted(seen[0]) == ['()', '[]', 'column', 'context', 'inline', 'label', 'line', 'tag', 'text', '{}']
 
 
 # ---------------------------------------------------------------------------
@@ -976,7 +981,7 @@ class TestCliRobustness:
         code, _, err = self._run_cli(monkeypatch, capsys, str(a), str(b),
                                      '-o', str(tmp_path / 'out') + '/')
         assert code == 0
-        assert err.count(':2:1: warning: Closing tag :: has no matching opening tag') == 2
+        assert err.count(':2:1: warning: this :: closes nothing: no element is open') == 2
         assert f'{a}:2:1: warning:' in err and f'{b}:2:1: warning:' in err
 
 
@@ -1395,7 +1400,7 @@ class TestMacrosRound2:
         assert lhtml.load_macros(str(tmp_path / 'm.yaml')) == {'note': {'class': 'note'}}
 
     def test_null_removes_macro(self):
-        with pytest.warns(lhtml.LHTMLWarning, match='no matching opening tag'):
+        with pytest.warns(lhtml.LHTMLWarning, match='closes nothing: no element is open'):
             out = lhtml.run('box:: x ::\n', macros=lhtml.load_macros([MACROS, {'box': None}]))
         assert out.strip() == 'box:: x ::'
 
@@ -1544,7 +1549,7 @@ class TestCommandOutput:
         f.write_text('x\n::\n')
         code, out, err = self._run_cli(monkeypatch, capsys, str(f))
         assert code == 0 and out == 'x\n::\n'
-        assert err == f'{f}:2:1: warning: Closing tag :: has no matching opening tag (near \'::\')\n'
+        assert err == f'{f}:2:1: warning: this :: closes nothing: no element is open (near \'::\')\n'
 
     def test_writing_files_ends_with_a_summary(self, tmp_path, monkeypatch, capsys):
         a, b = tmp_path / 'a.l.html', tmp_path / 'b.l.html'
@@ -1590,6 +1595,37 @@ class TestCommandOutput:
         assert code == 1 and (diagnostic.line, diagnostic.column) == (2, 1) and source == 'x\ninclude::header.html\n'
 
 
+    def test_a_macros_file_is_an_input(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'm.yaml').write_text('x: {tag: span}\n')
+        (tmp_path / 'a.l.html').write_text('= A\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, '-m', str(tmp_path / 'm.yaml'), str(tmp_path / 'a.l.html'),
+                                     '-o', str(tmp_path / 'm.yaml'))
+        assert code == 1 and 'nothing written' in err and (tmp_path / 'm.yaml').read_text() == 'x: {tag: span}\n'
+
+    def test_a_macros_file_problem_is_one_line_with_its_place(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'ok.yaml').write_text('x: {class: x}\n')
+        (tmp_path / 'bad.yaml').write_text('a: [\n')
+        (tmp_path / 'nu.yaml').write_bytes(b'\xff\xfe\n')
+        (tmp_path / 'a.l.html').write_text('A\n')
+        code, _, err = self._run_cli(monkeypatch, capsys, '-m', str(tmp_path / 'ok.yaml'), '-m',
+                                     str(tmp_path / 'bad.yaml'), str(tmp_path / 'a.l.html'))
+        assert code == 1 and err.startswith(f'{tmp_path / "bad.yaml"}:2:1: error: invalid YAML') and err.count('\n') == 1
+        code, _, err = self._run_cli(monkeypatch, capsys, '-m', str(tmp_path / 'nu.yaml'), str(tmp_path / 'a.l.html'))
+        assert code == 1 and err == f'{tmp_path / "nu.yaml"}: error: the macros file is not UTF-8\n'
+
+    def test_an_empty_output_name_is_a_wrong_use(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'a.l.html').write_text('A\n')
+        assert self._run_cli(monkeypatch, capsys, str(tmp_path / 'a.l.html'), '-o', '')[0] == 2
+
+    def test_no_stdout_or_stderr_is_no_traceback(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'a.l.html').write_text('x ::\n')
+        monkeypatch.setattr('sys.stdout', None)
+        code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a.l.html'))
+        assert code == 1 and 'cannot write the standard output' in err
+        from lhtml.diagnostics import Diagnostic, Reporter
+        Reporter(None).report(Diagnostic('p', 'warning', 'm'))      # a closed stderr: nothing written
+
+
 class TestDiagnostics:
     @staticmethod
     def shown(source, line, column, **options):
@@ -1604,7 +1640,38 @@ class TestDiagnostics:
         assert self.shown('a\n  div::(.note) x\n', 2, 3) == (
             'p.l.html:2:3: warning: m\n'
             '  2 | ' + '  div::(.note) x\n'
-            '    | ' + '  ^^^^^^^^^^^^\n')
+            '    | ' + '  ^^^^^^^^^^^^\n'
+            '\n')
+
+    def test_with_its_excerpt_a_message_quotes_nothing(self):
+        import io
+        from lhtml.diagnostics import Diagnostic, Reporter
+        stream = io.StringIO()
+        Reporter(stream, rich=True, color=False).report(
+            Diagnostic('p', 'warning', "div:: is never closed (near 'div::(.n)')", 1, 1), 'div::(.n)\n')
+        assert stream.getvalue().splitlines()[0] == 'p:1:1: warning: div:: is never closed'
+        stream = io.StringIO()                  # a log: the whole message
+        Reporter(stream, rich=False).report(Diagnostic('p', 'warning', "x (near 'y')", 1, 1), 'y\n')
+        assert stream.getvalue() == "p:1:1: warning: x (near 'y')\n"
+
+    def test_a_quote_on_another_line_stays(self):
+        import io
+        from lhtml.diagnostics import Diagnostic, Reporter
+        stream = io.StringIO()
+        Reporter(stream, rich=True, color=False).report(
+            Diagnostic('p', 'warning', "this :: closes nothing (near 'span::(.a)')", 2, 4), 'span::(.a)\na ::\n')
+        assert stream.getvalue().splitlines()[0].endswith("(near 'span::(.a)')")
+
+    def test_a_stream_that_cannot_write_a_character_gets_its_escape_underlined(self):
+        import io
+        from lhtml.diagnostics import Diagnostic, Reporter
+
+        class Ascii(io.StringIO):
+            encoding = 'ascii'
+        stream = Ascii()
+        Reporter(stream, rich=True, color=False).report(Diagnostic('p', 'warning', 'm', 1, 1), 'div::(.\xe9)\n')
+        lines = stream.getvalue().splitlines()
+        assert lines[1].endswith('div::(.\\xe9)') and lines[2].endswith('^' * len('div::(.\\xe9)'))
 
     def test_the_underline_follows_tabs_and_wide_characters(self):
         lines = self.shown('\t日本 div:: x\n', 1, 5).splitlines()

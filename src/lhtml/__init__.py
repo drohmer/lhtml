@@ -8,8 +8,9 @@ Usage:
     html = lhtml.run(text)
     html = lhtml.run(text, macros=lhtml.load_macros('macros.yaml'), line_breaks=True)
     page = lhtml.wrap(html, title='My Page', css=['style.css'])
-    document = lhtml.parse(text)          # the document tree (tree.py)
-    html = lhtml.render(document)
+    document = lhtml.parse(text)          # the document tree: lhtml.Element, lhtml.Text... (nodes.py)
+    html = lhtml.render(document)         # its HTML, from the fields of the nodes
+    tags = {'alert': lhtml.Tag(build)}    # a tag of the caller builds its nodes (docs/advanced.md)
 
 run is documented in pipeline.py.
 """

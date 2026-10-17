@@ -28,21 +28,36 @@ from .patterns import JINJA_RE
 # The attributes of an element
 # ---------------------------------------------------------------------------
 
-def _class_and_id(text):
-    """The classes and ids of '.class1 .class2 #id' (or '.class1.class2#id')."""
-    zones = []                          # a Jinja zone is one piece: .{{ c }}
+def _words(text, pattern=r'\S+'):
+    """The matches of `pattern` in the text, a Jinja zone one piece of a
+    word (.{{ c }}, a {{ b }})."""
+    zones = []
 
     def hide(m):
         zones.append(m.group(0))
         return f'\x00{len(zones) - 1}\x00'
     show = lambda part: re.sub('\x00(\\d+)\x00', lambda m: zones[int(m.group(1))], part)
+    return [show(word) for word in re.findall(pattern, JINJA_RE.sub(hide, text or ''))]
+
+
+def _class_and_id(text):
+    """The classes and ids of '.class1 .class2 #id' (or '.class1.class2#id')."""
     classes, ids = [], []
-    for token in JINJA_RE.sub(hide, text or '').split():
+    for token in _words(text):
         if not token.startswith(('.', '#')):
             continue
-        for part in re.findall(r'[.#][^.#]+', token):
-            (classes if part[0] == '.' else ids).append(show(part[1:]))
+        for part in _words(token, r'[.#][^.#]+'):
+            (classes if part[0] == '.' else ids).append(part[1:])
     return classes, ids
+
+
+def join_styles(*styles):
+    """Styles one after the other, a `;` between them."""
+    joined = ''
+    for style in styles:
+        if style:
+            joined = f'{joined};{style}' if joined and not joined.rstrip().endswith(';') else joined + style
+    return joined
 
 
 def class_and_id(text):
@@ -54,19 +69,21 @@ def _parts(class_id, style, written):
     """(class and id, style, the attributes written left), as Attributes:
     the classes and styles written {...} join those of (...) and [...] when
     both are given, or when {...} writes one twice (the defaults of a
-    macro, then the page); otherwise they stay where they are written."""
+    macro, then the page); otherwise they stay where they are written. An
+    id written {...} replaces the one of (#id)."""
     classes, ids = _class_and_id(class_id)
     rest = Attributes.read(written)
     values = [v for v in rest.values_of('class') if v]
     if values and (classes or len(rest.values_of('class')) > 1):
         for value in values:
-            classes += [value] if JINJA_RE.search(value) else value.split()
+            classes += _words(value)
         del rest['class']
     values = [v for v in rest.values_of('style') if v]
     if values and (style or len(rest.values_of('style')) > 1):
-        for value in values:
-            style = f'{style};{value}' if style and not style.rstrip().endswith(';') else style + value
+        style = join_styles(style, *values)
         del rest['style']
+    if 'id' in rest:
+        ids = []
     head = Attributes()
     if classes:
         head['class'] = ' '.join(dict.fromkeys(classes))

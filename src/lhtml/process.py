@@ -11,7 +11,7 @@ import re
 import warnings
 from dataclasses import dataclass, field
 
-from .tag_parser import extract_bracket_elements
+from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
 from .code import known_language, unknown_language_message
 from .errors import LHTMLParseError, LHTMLWarning
 from .patterns import (
@@ -154,7 +154,11 @@ def process_protect(text, stores, blocks=False, url_tags=None):
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')), m.group(0))
         if m.group('url') is not None:
-            url, after = _url_and_closing_marks(m.group('url'), text[text.rfind('\n', 0, m.start()) + 1:m.start()])
+            url = m.group('url')
+            if url.endswith(('**', '__')):      # the line before it, read only then (linear time)
+                url, after = _url_and_closing_marks(url, text[text.rfind('\n', 0, m.start()) + 1:m.start()])
+            else:
+                after = ''
             return m.group('urltag') + stores.add('U', url) + after
         return stores.add('R', m.group(0))
     pattern = (protected_blocks(tuple(url_tags)) if url_tags is not None else PROTECTED_BLOCKS) \
@@ -174,13 +178,14 @@ def process_protect_attributes(text, stores):
     for m in TAG_MARKER.finditer(text):
         if m.start() < prev:
             continue
+        found = _TAG_NAME_BEFORE.search(text, max(0, m.start() - _MAX_TAG_NAME), m.start())
+        tag = found.group() if found else ''
+        # a :: glued to a word is no tag: decided before its element is read (a::a::a...: linear)
+        if tag in ('include', 'code') or not _is_tag_boundary(text, m.start() - len(tag), tag):
+            continue
         try:
             element = extract_bracket_elements(text, m.end())
         except LHTMLParseError:
-            continue
-        tag = element['tag']
-        if tag in ('include', 'code') or not _is_tag_boundary(
-                text, m.start() - len(tag), tag):
             continue
         for kind, start, end in element['groups']:
             if tag == 'link' and kind == '[]':      # the label of a link is text

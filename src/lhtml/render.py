@@ -11,6 +11,13 @@ from .patterns import PLACEHOLDER
 from .process import ProtectionStores, escape_inline_code, line_breaks as _with_line_breaks, render_inline_code
 
 _ZONES = (Code, InlineCode, Math, Raw)
+_ESCAPE = '\x00Z0\x00'            # a \x00 of the text, apart from the placeholders of the zones
+
+
+class _Holder:
+    """A node as the only child of nothing (_tokens of one element)."""
+    def __init__(self, node):
+        self.children = [node]
 
 
 def _video(node, media):
@@ -65,10 +72,12 @@ def _around(node):
     return '', ''                       # the document, a node of the caller
 
 
-def _tokens(root, media, zone):
+def _tokens(root, media, zone, pieces=True):
     """(html, kind) in order: kind 'text' (a Text), 'leaf' (`zone(node)`: a
     code block, raw HTML, mathematics, inline code) or 'markup' (what a node
-    writes around its children, or an element written without them). No
+    writes around its children, or an element written without them; one
+    that holds nothing of what follows, a link and its label, is one piece
+    with `pieces`). No
     recursion: a document may nest deeper than Python's recursion limit."""
     out, stack = [], [(iter([root]), None)]
     while stack:
@@ -84,6 +93,9 @@ def _tokens(root, media, zone):
             out.append((zone(node), 'leaf'))
         elif (html := _leaf(node, media)) is not None:
             out.append((html, 'markup'))
+        elif pieces and isinstance(node, Element) and node.closed in ('void', 'inline') and node.children:
+            # its children are its own (a link label): one piece, its line breaks left as they are
+            out.append((''.join(h for h, _ in _tokens(_Holder(node), media, _zone, pieces=False)), 'markup'))
         else:
             opening, closing = _around(node)
             if opening:
@@ -110,5 +122,8 @@ def render(document, *, line_breaks=False, media=None):
                                  getattr(node, 'text', ''))
         written[placeholder] = _zone(node)
         return placeholder
-    text = _with_line_breaks(_tokens(document, media, zone), stores)
-    return PLACEHOLDER.sub(lambda m: written.get(m.group(0), m.group(0)), text)
+    tokens = [(html if kind == 'leaf' else html.replace('\x00', _ESCAPE), kind)
+              for html, kind in _tokens(document, media, zone)]
+    text = _with_line_breaks(tokens, stores)
+    return PLACEHOLDER.sub(lambda m: '\x00' if m.group(0) == _ESCAPE else written.get(m.group(0), m.group(0)),
+                           text)

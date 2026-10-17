@@ -84,10 +84,11 @@ def plan(inputs, output_arg):
     return jobs
 
 
-def check(jobs):
-    """The diagnostics that stop everything before a file is written."""
+def check(jobs, read=()):
+    """The diagnostics that stop everything before a file is written;
+    `read`: the other files the run reads (its macro files)."""
     problems, targets = [], {}
-    inputs = {_identity(f) for f, _ in jobs if os.path.isfile(f)}
+    inputs = {_identity(f) for f in [f for f, _ in jobs] + list(read) if os.path.isfile(f)}
     for f_in, out in jobs:
         if not os.path.exists(f_in):
             problems.append(Diagnostic(f_in, 'error', 'file not found'))
@@ -105,7 +106,7 @@ def check(jobs):
             continue
         blocking = _blocking_file(out)
         if blocking:
-            problems.append(Diagnostic(f_in, 'error', f'cannot write {out}: {blocking} is a file'))
+            problems.append(Diagnostic(f_in, 'error', f'cannot write {out}: {shown_path(blocking)} is a file'))
             continue
         # one file for both: names that differ by case only (macOS, Windows),
         # or two existing names of one file (a hard link)
@@ -131,16 +132,6 @@ def convert(source, macros, line_breaks, wrapped):
     return _ensure_trailing_newline(html), found
 
 
-def _summary(reporter, converted, failed):
-    parts = [f'{converted} converted']
-    if failed:
-        parts.append(f'{failed} failed')
-    warned = reporter.counts.get('warning', 0)
-    if warned:
-        parts.append(f'{warned} warning{"s" if warned > 1 else ""}')
-    return reporter.symbol(' · ', ', ').join(parts)
-
-
 def main(argv=None):
     """CLI entry point."""
     parser = argparse.ArgumentParser(prog='lhtml', description='Lightweight HTML')
@@ -158,6 +149,8 @@ def main(argv=None):
     parser.add_argument('-V', '--version', action='version', version=f'lhtml {__version__}')
     args = parser.parse_args(argv)
 
+    if args.output == '':
+        parser.error('-o: an empty name')
     if (len(args.input) > 1 and args.output is not None
             and not os.path.isdir(args.output) and not args.output.endswith(('/', os.sep))):
         parser.error(f'-o must be a directory when several input files are given '
@@ -170,17 +163,18 @@ def main(argv=None):
             macros = load_macros(args.macros)
             registry_with_macros(macros)    # checked before any file
         except LHTMLError as e:
-            place = args.macros[0] if len(args.macros) == 1 else 'lhtml'
-            reporter.report(Diagnostic.of(shown_path(place), 'error', e))
+            place = getattr(e, 'path', None) or (args.macros[0] if len(args.macros) == 1 else 'lhtml')
+            message = str(e).removesuffix(f' [{place}]')
+            reporter.report(Diagnostic(shown_path(place), 'error', message, e.line, e.column))
             sys.exit(1)
 
     jobs = plan(args.input, args.output)
-    problems = check(jobs)
+    problems = check(jobs, args.macros or ())
     if problems:
         for problem in problems:
             reporter.report(Diagnostic(shown_path(problem.path), problem.level, problem.message))
         if any(out is not None for _, out in jobs):
-            reporter.write('lhtml: nothing written')
+            reporter.write(reporter.paint('lhtml: nothing written', 'error'))
         sys.exit(1)
 
     converted = failed = 0
@@ -197,8 +191,16 @@ def main(argv=None):
         for warning in found:
             reporter.report(Diagnostic.of(shown, 'warning', warning), source)
         if out is None:
-            sys.stdout.buffer.write(html.encode('utf-8'))
-            sys.stdout.flush()
+            try:
+                sys.stdout.buffer.write(html.encode('utf-8'))
+                sys.stdout.flush()
+            except (AttributeError, OSError) as e:       # no stdout, or a pipe closed (| head)
+                if isinstance(e, BrokenPipeError):
+                    os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())   # no error at exit
+                    sys.exit(1)
+                reporter.report(Diagnostic(shown, 'error', 'cannot write the standard output'))
+                failed += 1
+                continue
             converted += 1
             continue
         try:
@@ -213,10 +215,10 @@ def main(argv=None):
             continue
         converted += 1
         if args.verbose:
-            reporter.write(f'{shown} {reporter.symbol("→", "->")} {shown_path(out)}')
+            reporter.write(reporter.paint(f'{shown} {reporter.symbol("→", "->")} {shown_path(out)}', 'dim'))
 
     if not args.quiet and any(out is not None for _, out in jobs):
-        reporter.write(_summary(reporter, converted, failed))
+        reporter.write(reporter.summary(converted, failed))
     if failed:
         sys.exit(1)
 

@@ -341,7 +341,8 @@ class TestAuthoritativeTree:
     def test_the_word_of_an_element_is_its_content(self):
         document = lhtml.parse('span::bonjour monde ::')
         span = next(n for n in document.walk() if n.kind == 'Element')
-        assert [c.value for c in span.children] == ['bonjour monde ']
+        assert [c.value for c in span.children] == ['bonjour', ' monde ']
+        assert span.children[1].span == (13, 20)
 
     def test_a_macro_builds_an_element(self):
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'class': 'demo', 'empty': True}}
@@ -459,7 +460,7 @@ class TestReviewSurprises:
             '<span style="margin:0;color:red"> x </span>'
         macros = {'box': {'class': 'box', 'attrs': 'class="m" style="top:0"'}}
         assert lhtml.run('box::(.p){class="q" style="left:0"} x ::', macros=macros) == \
-            '<div class="box p m q" style="top:0;left:0"> x </div>'
+            '<div class="box m p q" style="top:0;left:0"> x </div>'
         # alone, a class written {...} stays where it is written
         assert lhtml.run('span::{title="t" class="c"} x ::') == '<span title="t" class="c"> x </span>'
 
@@ -515,3 +516,78 @@ class TestReviewSurprises:
         document, _ = quiet(lhtml.parse, '* a span:: x\n** b\n')
         span = next(n for n in document.walk() if n.kind == 'Element')
         assert span.closed == 'container' and span.span[1] <= len('* a span:: x\n')
+
+
+class TestSecondReview:
+    """The findings of the review of the tree and the attributes."""
+
+    def test_text_hidden_in_a_group_is_placed_where_it_is_written(self):
+        document = lhtml.parse('a::b(.c `k` .d) z')
+        assert [(n.kind, n.span) for n in document.children] == \
+            [('Text', (0, 8)), ('InlineCode', (8, 11)), ('Text', (11, 17))]
+        [label] = next(n for n in lhtml.parse('link::a[img::p.png]').walk() if n.kind == 'Element').children
+        assert label.span == (8, 18)
+
+    def test_the_space_between_two_labels_is_where_the_first_closes(self):
+        link = lhtml.parse('x link::u[a](.c)[b] y').children[1]
+        assert [(n.value, n.span) for n in link.children] == [('a', (10, 11)), (' ', (11, 11)), ('b', (17, 18))]
+
+    def test_a_link_label_keeps_its_line_breaks(self):
+        assert lhtml.run('link::u[a\nb]', line_breaks=True) == '<a href="u">a\nb</a>'
+
+    def test_a_field_holding_a_nul_is_text(self):
+        document = lhtml.parse('a\nb')
+        document.children[0].value = '\x00R0\x00\nq'
+        assert lhtml.render(document, line_breaks=True) == '\x00R0\x00<br>\nq'
+
+    def test_repr_of_a_deep_tree(self):
+        assert repr(quiet(lhtml.parse, 'div:: ' * 3000)[0]).startswith('Document(')
+
+    def test_empty_groups_are_an_element(self):
+        assert lhtml.run('::()::') == '<div></div>'
+
+    def test_a_text_a_tag_builds_is_its_own(self):
+        box = lhtml.Tag(lambda element: lhtml.Element(children=[lhtml.Text(value='head:')]), container=True)
+        element = next(n for n in lhtml.parse('box:: x ::', tags={'box': box}).walk() if n.kind == 'Element')
+        assert [c.value for c in element.children] == ['head:', ' x ']
+
+    def test_many_urls_and_glued_markers_stay_linear(self):
+        import time
+        for text in ('link::u[a] ' * 32000, 'a::' * 16000, '.a::' * 12000):
+            start = time.perf_counter()
+            quiet(lhtml.run, text)
+            assert time.perf_counter() - start < 3, text[:12]
+
+    def test_a_bracket_left_open_in_prose_holds_no_string(self):
+        assert '<a href="u">label</a>' in quiet(lhtml.run, 'The interval [0, 1) is.\n\nNote: "see link::u[label]" end')[0]
+        assert '<a href="u">l</a>' in quiet(lhtml.run, 'A set {x = "a, link::u[l] b" end')[0]
+
+    def test_jinja_in_names_and_values(self):
+        assert lhtml.run('img::a.png{title={{ x }} alt="y"}') == '<img title={{ x }} alt="y" src="a.png">'
+        assert [a.name for a in lhtml.attributes.read('data-{{ a }}="1" data-{{ b }}="2" {{ more }}')] == \
+            ['data-{{ a }}', 'data-{{ b }}']
+        assert lhtml.run('img::a.png{{% if x %}alt="y"{% endif %}}') == '<img {% if x %}alt="y"{% endif %} src="a.png">'
+        assert lhtml.run('img::a.png(.a){class="a {{ b }}"}') == '<img class="a {{ b }}" src="a.png" alt="a.png">'
+
+    def test_one_id(self):
+        assert lhtml.run('span::(#a){id="b"} t ::') == '<span id="b"> t </span>'
+        assert lhtml.run('ida::(#p) t ::', macros={'ida': {'attrs': 'id="m"'}}) == '<div id="p"> t </div>'
+
+    def test_the_class_and_style_of_a_macro_come_first(self):
+        assert lhtml.run('sty::[a:2] t ::', macros={'sty': {'attrs': 'style="a:1"'}}) == '<div style="a:1;a:2"> t </div>'
+        assert lhtml.run('pa::(.p) t ::', macros={'pa': {'class': 'k', 'attrs': 'class="m"'}}) == \
+            '<div class="k m p"> t </div>'
+
+    def test_an_unclosed_quote_is_warned(self):
+        html, said = quiet(lhtml.run, 'div::{title="a\n\nb} t ::')
+        assert said == ['div:: a value of its {...} has no closing quote: it is written so (near \'div::{title="a\')']
+
+    def test_the_attributes_api(self):
+        attributes = lhtml.Attributes.read(' x="1" ')
+        assert attributes.html() == ' x="1"'
+        attributes['y'] = None
+        assert attributes.html() == ' x="1" y'
+        with pytest.raises(KeyError):
+            attributes[1]
+        with pytest.raises(TypeError):
+            attributes['z'] = 3

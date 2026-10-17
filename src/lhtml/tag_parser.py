@@ -32,6 +32,10 @@ class _Quotes:
         self.lines = [m.start() for m in re.finditer('\n', text)]
         self.blanks = [m.start() for m in re.finditer(r'\n[ \t]*\n', text)]
 
+    def same_paragraph(self, start, end):
+        """Whether no blank line lies between two positions."""
+        return bisect.bisect_right(self.blanks, start) == bisect.bisect_right(self.blanks, end)
+
     def closing(self, quote, start, across_lines):
         """The quote that closes the one at `start`, before the end of its
         line (or of its paragraph: `across_lines`); None if there is none."""
@@ -44,7 +48,7 @@ class _Quotes:
         return positions[k] if n == len(limits) or positions[k] < limits[n] else None
 
 
-_VALUE_BEFORE = re.compile(r'=[ \t]*\Z')          # {title="..."}
+_VALUE_BEFORE = re.compile(r'[^\s"\'=<>/{}]=[ \t]*\Z')     # {title="..."}: a name, then its =
 _CSS_STRING_BEFORE = re.compile(r'[:(,][ \t]*\Z')     # [content:"]"], [font-family:'A', 'B']
 
 
@@ -57,8 +61,9 @@ def _matches(text):
     A quoted string holds its brackets, as in HTML and CSS: in a {...}, a
     value quoted after its `=` and closed before the end of its paragraph
     ({title="a } b"}); in a [...], a CSS string after `:`, `(` or `,` and
-    closed on its line ([content:"]"]). An apostrophe elsewhere is text
-    (l'eau)."""
+    closed on its line ([content:"]"]); the bracket opened in the same
+    paragraph (one left open in the prose before holds none). An
+    apostrophe elsewhere is text (l'eau)."""
     matches, stacks = {}, {ch: [] for ch in PAIRS}
     closing = {close: ch for ch, close in PAIRS.items()}
     quotes = None
@@ -70,7 +75,9 @@ def _matches(text):
             before = text[max(0, i - 64):i]
             if (_VALUE_BEFORE if inner == '{' else _CSS_STRING_BEFORE).search(before):
                 quotes = quotes or _Quotes(text)
-                end = quotes.closing(ch, i, across_lines=inner == '{')
+                # a bracket left open in a paragraph before (prose: [0, 1)) holds no string
+                end = quotes.closing(ch, i, across_lines=inner == '{') \
+                    if quotes.same_paragraph(stacks[inner][-1], i) else None
                 if end is not None:
                     i = end + 1
                     continue

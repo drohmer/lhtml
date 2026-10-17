@@ -56,8 +56,8 @@ page depends on.
   reads its files with `lhtml.load_macros(path or [paths])`. A tag written
   in Python keeps its own options in its closure.
 
-The API is `run`, `parse`, `render`, `wrap`, `Tag`, `TAGS`, `LEXERS`, the
-macro functions and the errors.
+The API is `run`, `parse`, `render`, `wrap`, `Tag`, `TAGS`, `Attributes`,
+the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 
 ### Added
 - `media`, an argument of `lhtml.run()`: a callable,
@@ -79,7 +79,7 @@ macro functions and the errors.
 - `line` and `column` on `LHTMLWarning` and `LHTMLError`: where the problem
   is in the text given to `run` (1-based, `None` when not known, as for a
   macros file). A tag element carries its `line` and `column` to the
-  `render` of its tag.
+  `build` of its tag (`element['line']`, `element['column']`).
 - `lhtml.parse(text)` gives the document tree (headings, lists, bold,
   italic, `::` elements, and code, inline code, mathematics, raw HTML as
   leaves), every node with its place (`span` in the text given, `line`,
@@ -122,16 +122,19 @@ macro functions and the errors.
   of `videoplay::` written in the page is not doubled. A CSS string in
   `[...]` holds its brackets (`[content:"]"]`), a value quoted in `{...}`
   may span lines (not a blank one), and a tag whose groups are left as
-  text by a stray closing bracket is warned.
-- A tag is an `lhtml.Tag(render, container)`: `render(element, children,
-  context)` returns its HTML, closing tag included, and `container` says
-  whether it holds what follows. The handlers `(element, tag_to_close,
-  context) -> (html, is_real_tag)` are gone; `lhtml.TAGS` (now read-only)
-  and `registry_with_macros` give Tags. A tag given to `run` wins over the
-  built-in tags and the macros, the anonymous `::` div included; its name
-  is checked, and an exception of its `render` becomes an `LHTMLError` with
-  its place. `render` receives the `ProcessingContext` of the run as its
-  third argument (`context.media`, `context.line_breaks`).
+  text by a stray closing bracket is warned. A bracket left open in a
+  paragraph before (`[0, 1)`) holds no string; a value without its closing
+  quote is warned. A Jinja expression is part of a name or a value
+  (`data-{{ k }}="v"`, `title={{ x }} alt="y"`: two attributes), and `{{%`
+  is `{` then `{%`. An id is given once (`{id=...}` replaces `(#id)`, which
+  replaces the macro's); the classes and the style of a macro's `attrs` come
+  before those of the page.
+- The handlers `(element, tag_to_close, context) -> (html, is_real_tag)`
+  are gone: a tag is an `lhtml.Tag` (see the authoritative tree above);
+  `lhtml.TAGS` (now read-only) and `registry_with_macros` give Tags. A tag
+  given to `run` wins over the built-in tags and the macros, the anonymous
+  `::` div included; its name is checked, and an exception of its `build`
+  or `container` becomes an `LHTMLError` with its place.
 - The markup nests: an element opened in a heading, a list item, a bold or
   an italic span and not closed there is closed at its end, with a warning;
   a `::` closes the last open element only in the same container (one
@@ -148,16 +151,14 @@ macro functions and the errors.
   same surprises): the URL of a macro with `url:` is kept as written, as the
   one of `img::` (`demo::my__demo__.html`; `lhtml.Tag(..., url=True)` for a
   tag of the caller); in an attribute group `{...}`, a value quoted after
-  its `=` and closed on its line holds its brackets (`{title="a } b"}`; an
+  its `=` holds its brackets (`{title="a } b"}`, see the attribute reader above; an
   apostrophe elsewhere is text); an attribute written in `{...}` replaces
   the one the tag or the macro gives (`img::a.png{alt="A"}`: one `alt`;
   `src`, `href` too; by its name, in any case, not by a word of a value);
   the CLI refuses, before writing anything, two inputs that would be
   written to the same file (`a/page.l.html` and `b/page.l.html` with `-o
-  out/`); two names that the file system makes one file (`Page.html` and
-  `page.html` on macOS or Windows) are caught when the second is written:
-  it is refused, the first kept. An input given twice, under any name, is
-  converted once.
+  out/`, or names that differ by case only: one file on macOS or Windows).
+  An input given twice, under any name, is converted once.
 - A URL ends before a final `**` or `__` that closes a bold or an italic
   opened before its tag on its line: `**img::a.png**` is an image in bold
   (LHTML 2 put the `**` in its URL); `link::...#object.__init__` keeps its
@@ -170,16 +171,15 @@ macro functions and the errors.
   the corpus draw no bullet: their renders are unchanged. An element left
   open in the text of an item (its `::` missing) ends where the nested list
   begins, not around it, with a warning.
-- `line-breaks` is decided on the document tree: a line break of the source
+- `line_breaks` (`-b`) is decided on the document tree: a line break of the source
   gets a `<br>` when its line and the next are not structure, a line being
   structure when the node at its start or its end is a block (a heading, a
   list, a block element, a code block, block raw HTML). The line breaks a
   tag writes in its own HTML get none: LHTML 2 wrote one into a style or an
   attribute written on two lines (breaking it), into a link label on two
-  lines, and into the fallback text of a `video::`. A tag is rendered
-  once, with its children, as without the option; when its HTML holds
-  them as given, their line breaks get their `<br>`, otherwise (a tag that
-  transforms or repeats them) its HTML is kept as it wrote it.
+  lines, and into the fallback text of a `video::`. An element is its
+  opening, its children, its closing: the line breaks of its children get
+  their `<br>`.
 - The character U+FDD0 (a Unicode noncharacter, the internal mark of the
   document tree) is replaced by U+FFFD in the input, as NUL already was.
 - The CLI prints a problem as one line, `file:line:column: level: message`;

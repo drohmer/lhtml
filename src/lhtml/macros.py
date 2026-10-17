@@ -39,7 +39,7 @@ import re
 from .errors import LHTMLMacroError
 from . import attributes
 from .attributes import quoted
-from .export_html import TAGS, Tag, element_attributes
+from .export_html import TAGS, Tag, _class_and_id, _words, element_attributes, join_styles
 from .nodes import Element, Text
 from .process import _warn
 
@@ -134,9 +134,16 @@ def macro_tag(name, spec):
             word = ''
         # the macro, then its url, then the page: a later one replaces an attribute
         defaults, url_attribute, written = attributes.layered(attrs, url_attribute, element['{}'])
+        # the classes and the style of the macro's attrs come before those of the page;
+        # an id of the page (#id) replaces the macro's
+        written_by_macro = attributes.Attributes.read(defaults)
+        macro_classes = [w for v in written_by_macro.values_of('class') if v for w in _words(v)]
+        macro_styles = [v for v in written_by_macro.values_of('style') if v]
+        removed = ({'class', 'style'} & set(written_by_macro)) | ({'id'} if _class_and_id(element['()'])[1] else set())
+        defaults = attributes.without(defaults, removed)
         node = Element(name=tag, void=void, attributes=element_attributes({
-            '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
-            '[]': element['[]'], '{}': attributes.join(url_attribute, defaults, written)}))
+            '()': ' '.join(['.' + c for c in all_classes + macro_classes] + ([element['()']] if element['()'] else [])),
+            '[]': join_styles(*macro_styles, element['[]']), '{}': attributes.join(url_attribute, defaults, written)}))
         if void:                        # the word after it is text
             return [node] + ([Text(value=word)] if word else [])
         if word:
@@ -174,6 +181,13 @@ def load_macros(source):
     return {name: spec for name, spec in _load_macros(source).items() if spec is not None}
 
 
+def _file_error(path, message, line=None, column=None):
+    """An LHTMLMacroError of a macros file: `path` is where it is."""
+    error = LHTMLMacroError(f'{message} [{path}]', line, column)
+    error.path = os.fspath(path)
+    return error
+
+
 def _load_macros(source):
     if source is None:
         return {}
@@ -188,9 +202,14 @@ def _load_macros(source):
             with open(source, encoding='utf-8') as f:
                 data = yaml.safe_load(f) or {}
         except OSError as e:
-            raise LHTMLMacroError(f'cannot read macros file [{source}]: {e}') from e
+            raise _file_error(source, f'cannot read the macros file: {e.strerror or e}') from e
+        except UnicodeDecodeError as e:
+            raise _file_error(source, 'the macros file is not UTF-8') from e
         except yaml.YAMLError as e:
-            raise LHTMLMacroError(f'invalid YAML in macros file [{source}]: {e}') from e
+            mark = getattr(e, 'problem_mark', None)
+            problem = ' '.join(str(getattr(e, 'problem', None) or e).split())
+            raise _file_error(source, f'invalid YAML in the macros file: {problem}',
+                              *((mark.line + 1, mark.column + 1) if mark else ())) from e
         source = data
     if not isinstance(source, dict):
         raise LHTMLMacroError(f'macros: expected a mapping, got {type(source).__name__}')
