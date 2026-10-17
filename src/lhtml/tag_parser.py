@@ -31,7 +31,8 @@ def extract_bracket_elements(text, index_start):
     'index_start'      where the name starts
     'index_end'        where the element ends
 
-    A closing bracket without its opening one makes the whole element text.
+    A closing bracket without its opening one makes the whole element text
+    (its groups are still listed, so that their content stays literal).
     An unclosed bracket raises LHTMLParseError."""
     element = {'[]': '', '()': '', '{}': '', 'text': '', 'groups': [],
                'tag': '', 'index_start': index_start, 'index_end': index_start}
@@ -78,11 +79,11 @@ def extract_bracket_elements(text, index_start):
         i += 1
 
     element['index_end'] = i
+    element['groups'] = groups  # protected from formatting even in a stray element
     if stray:                   # not a tag element: all of it is text
         element['text'] = text[index_start:i]
         return element
     element['text'] = ''.join(word)
-    element['groups'] = groups
     for kind, start, end in groups:
         element[kind] += (' ' if element[kind] else '') + text[start:end]
     return element

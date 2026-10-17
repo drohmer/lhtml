@@ -151,7 +151,7 @@ def make_handler(name, spec):
 def describe_macro(name, spec):
     """What a macro definition gives, for documentation tools: its opening
     HTML, the attribute its text sets (url), whether it has no content
-    (empty), its variants (a list, True for any, or None) and default, doc."""
+    (empty), its variants (a list, or None) and default, doc."""
     spec = _check(name, spec)
     tag = spec.get('tag') or 'div'
     html = '<' + tag

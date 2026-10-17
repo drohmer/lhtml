@@ -166,17 +166,17 @@ def process_unprotect(text, stores):
 # Preparation of the text
 # ---------------------------------------------------------------------------
 
-def _refuse_removed(text):
+def _refuse_removed(text, stores):
     """::# comments and verbatim:: blocks were removed in LHTML 3.0: raise
     rather than leave them as text, with the replacement in the message."""
     m = REMOVED_COMMENT.search(text)
     if m is not None:
         raise LHTMLParseError(f'::# comments were removed in LHTML 3.0: use a Jinja comment '
                               f'{{# ... #}} or an HTML comment <!-- ... --> (near {text[m.start():m.start() + 30]!r})')
-    m = REMOVED_VERBATIM.search(text)
-    if m is not None:
-        raise LHTMLParseError('verbatim:: was removed in LHTML 3.0: use code::[] ... code::[-] '
-                              'or a Jinja {% raw %} block')
+    if any(m.group(1) is None or stores.A[int(m.group(1))] == ''
+           for m in REMOVED_VERBATIM.finditer(text)):         # verbatim::[] (not verbatim::[abc])
+        raise LHTMLParseError('verbatim:: was removed in LHTML 3.0: show text as it is with '
+                              'code::[text] ... code::[-], or write raw HTML directly')
 
 
 def _refuse_include(text):
@@ -199,9 +199,9 @@ def process_prepare(text, stores):
     URLs, math, attributes) by placeholders. Raises LHTMLParseError on an
     include:: directive (removed in 3.0)."""
     text = process_protect(text, stores, blocks=True)
-    _refuse_removed(text)
     text = process_protect_attributes(text, stores)
     _refuse_include(text)
+    _refuse_removed(text, stores)   # after the groups are hidden: '::#' in an attribute is text
     return text
 
 

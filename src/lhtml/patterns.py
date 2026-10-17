@@ -16,7 +16,8 @@ INCLUDE          = re.compile(r'(?<![\w-])include::')
 # Removed in 3.0 too, refused by name: ::# comments (a comment started a line
 # or followed whitespace, so link::#anchor is not one) and verbatim:: blocks
 REMOVED_COMMENT  = re.compile(r'(?<!\S)::#')
-REMOVED_VERBATIM = re.compile(r'(?<![\w`:-])verbatim::\[\]')
+# (the empty group of verbatim::[] is a protected attribute by then)
+REMOVED_VERBATIM = re.compile(r'(?<![\w`:-])verbatim::\[(?:\x00A(\d+)\x00)?\]')
 # Exactly two colons: a run of three or more is text, not a tag
 TAG_MARKER       = re.compile(r'(?<!:)::(?!:)')
 SPACER           = re.compile(r'nl(?![\w-])')

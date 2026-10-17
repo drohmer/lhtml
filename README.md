@@ -356,8 +356,9 @@ Output:
 ### Verbatim
 
 `verbatim::[]` was removed in 3.0 and raises `LHTMLParseError`. A code block
-(`code::[text]` ... `code::[-]`) shows text as it is; a Jinja `{% raw %}`
-block keeps it from Jinja.
+(`code::[text]` ... `code::[-]`) shows text as it is; raw HTML is written
+directly. A `::#` or `verbatim::[]` inside an attribute group or inline code
+is text.
 
 
 ### Line breaks

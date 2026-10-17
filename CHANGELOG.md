@@ -24,7 +24,7 @@ page depends on.
   counted). Refused by name with `LHTMLParseError`, the replacement in the
   message: `::name[-]` and `::[-]` (close with `::`; on a named tag, `[-]`
   stays a style, with a warning), `::#` comments (HTML or Jinja comments),
-  `verbatim::[]` (`code::[text]`, Jinja `{% raw %}`). Now text: `$...$`,
+  `verbatim::[]` (`code::[text]`, or raw HTML written directly). Now text: `$...$`,
   `$$...$$` and the one-character `$x$` rule (mathematics is `\(...\)` and
   `\[...\]`), runs of three colons or more (`:::nl`), tags inside inline
   code (`` `link::x` ``), the YAML front matter (options come from the
@@ -60,8 +60,7 @@ The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
 ### Changed
 - `videoplay::` adds `playsinline` to `autoplay loop muted`: on an iPhone,
   the video plays in the page instead of opening full screen.
-- The CLI writes `\n` line endings on Windows too, and reads its grammar as
-  UTF-8.
+- The CLI writes `\n` line endings on Windows too.
 - A tag handler receives the `ProcessingContext` of the run as its third
   argument (it received the current directory); `process_tag` takes it as
   `run_context`.

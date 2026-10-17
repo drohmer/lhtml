@@ -194,6 +194,16 @@ class TestExplicitClosing:
 # ---------------------------------------------------------------------------
 
 class TestVerbatim:
+    @pytest.mark.parametrize('source, expected', [
+        ('div::{title="see ::#top"} x ::\n', '<div title="see ::#top"> x </div>\n'),
+        ('div::{data-x="verbatim::[]"} x ::\n', '<div data-x="verbatim::[]"> x </div>\n'),
+    ])
+    def test_removed_syntax_inside_an_attribute_is_text(self, source, expected):
+        assert lhtml.run(source) == expected
+
+    def test_groups_of_a_stray_element_stay_literal(self):
+        assert lhtml.run('div::[a__b__]x] y ::\n') == '<div>[a__b__]x] y </div>\n'
+
     def test_refused_by_name(self):
         with pytest.raises(lhtml.LHTMLParseError, match='verbatim:: was removed'):
             lhtml.run('\nverbatim::[]\n**not bold**\nverbatim::[-]\n')
