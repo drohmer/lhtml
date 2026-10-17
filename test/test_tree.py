@@ -552,10 +552,18 @@ class TestSecondReview:
 
     def test_many_urls_and_glued_markers_stay_linear(self):
         import time
-        for text in ('link::u[a] ' * 32000, 'a::' * 16000, '.a::' * 12000):
-            start = time.perf_counter()
-            quiet(lhtml.run, text)
-            assert time.perf_counter() - start < 3, text[:12]
+
+        def duration(text):             # the best of two: a machine's own pauses aside
+            times = []
+            for _ in range(2):
+                start = time.perf_counter()
+                quiet(lhtml.run, text)
+                times.append(time.perf_counter() - start)
+            return min(times)
+        # four times the text: about four times the time (quadratic: sixteen), on any machine
+        for piece, count in (('link::u[a] ', 4000), ('a::', 4000), ('.a::', 3000)):
+            small, large = duration(piece * count), duration(piece * count * 4)
+            assert large < 8 * small + 0.02, (piece, small, large)
 
     def test_a_bracket_left_open_in_prose_holds_no_string(self):
         assert '<a href="u">label</a>' in quiet(lhtml.run, 'The interval [0, 1) is.\n\nNote: "see link::u[label]" end')[0]
