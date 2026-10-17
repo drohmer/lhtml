@@ -5,8 +5,8 @@
 After `::` come, in any order, bracket groups - `(...)` classes and id,
 `[...]` style, `{...}` HTML attributes, each nesting its own kind of
 bracket - and a word, the text (a URL, a variant, ...). The element ends at
-whitespace, at `<` (HTML written by a previous pass, such as </strong>), at
-a protected zone, or at text that follows a group that itself followed text
+whitespace, at `<`, at a node of the document tree (EVENT_CHAR: the end of
+a bold, a heading...), at a protected zone, or at text that follows a group that itself followed text
 (`link::url[label]rest`). A protected URL (placeholder of kind U) is text.
 """
 
@@ -14,6 +14,7 @@ import functools
 import re
 
 from .errors import LHTMLParseError
+from .patterns import EVENT_CHAR
 
 PAIRS = {'(': ')', '[': ']', '{': '}'}
 _TAG_NAME_BEFORE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*\Z')
@@ -71,7 +72,7 @@ def extract_bracket_elements(text, index_start):
                 seen_text = True
                 i = end + 1
                 continue
-        if ch.isspace() or ch == '\x00' or ch == '<':
+        if ch.isspace() or ch == '\x00' or ch == '<' or ch == EVENT_CHAR:
             break
         if ch in PAIRS:
             close = PAIRS[ch]

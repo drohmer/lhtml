@@ -10,16 +10,16 @@ text given to parse, and `line`, `column` exact by construction.
 
 How it parses. The zones are found first (process.process_prepare), then
 the stages read the text in order: headings, list lines, bold, italic, and
-the `::` elements last. Each stage writes the markup of its nodes into the
-text the next one reads ('<h1>', '<li>', '<strong>'), because the next one
-decides on it: a list line is a line that starts with `* ` once headings
-are written, a tag name is not glued to the character before it, and that
-character may be the `>` of a `<strong>`. This keeps the decisions of the
-text passes LHTML 2 and 3.0 had (the tree replaced them on 2026-10-17 with
-the same HTML on the tests, a corpus of five projects and 80 000 fuzzed
-documents). But each character keeps its origin - the source, or the markup
-a node wrote - and the elements are recorded as events; the tree is built
-from the events, and `render` writes the HTML from the tree alone.
+the `::` elements last. Each node a stage reads is recorded as events (its
+opening, its closing), and each event becomes one character of the text the
+next stages read (EVENT_CHAR), a boundary: a list line is a line that
+starts with `* ` once the headings are read, the word of an element ends at
+the end of a bold, a tag may follow it. These are the decisions of the text
+passes LHTML 2 and 3.0 had, which wrote '<h1>', '<strong>' into the text
+instead (the tree replaced them on 2026-10-17 with the same HTML on the
+tests, a corpus of five projects and 80 000 fuzzed documents). Each
+character keeps its origin, the source or an event; the tree is built from
+the events, and `render` writes the HTML from the tree alone.
 
 The nodes nest: nothing crosses. An element opened in a heading, a list
 item, a bold or an italic span, and not closed there (its `::` elsewhere,
@@ -44,7 +44,7 @@ from .errors import LHTMLError, LHTMLParseError
 from .export_html import SPACER, TAGS, Tag, export_html_element_class_and_id
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
 from .patterns import (
-    BOLD, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
+    BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
 from .process import (
     ProtectionStores, normalize_input, process_prepare, process_unprotect,
@@ -176,32 +176,29 @@ class ProcessingContext:
 # The text of the stages, each character with its origin
 # ---------------------------------------------------------------------------
 
-EVENT_CHAR = '\ue000'           # an element, once recorded: one character of the text
-
 class _Text:
     """A text and the origin of each of its characters: an offset of the
-    prepared text (>= 0), or -(k + 1) for the k-th event (markup a node
-    wrote: '<h1>', '<li>\\n', an element)."""
+    prepared text (>= 0), or -(k + 1) for the k-th event (EVENT_CHAR: the
+    opening or the closing of a node, a node without content)."""
 
     def __init__(self, chars, origins):
         self.chars, self.origins = chars, origins
 
     def transform(self, pattern, pieces):
         """For each match of `pattern`, the pieces it becomes: (start, end)
-        kept from the text, or (generated text, event)."""
+        kept from the text, or an event."""
         chars, origins, prev = [], [], 0
         for m in pattern.finditer(self.chars):
             chars.append(self.chars[prev:m.start()])
             origins.extend(self.origins[prev:m.start()])
             for piece in pieces(m):
-                if isinstance(piece[0], int):
+                if isinstance(piece, tuple):
                     a, b = piece
                     chars.append(self.chars[a:b])
                     origins.extend(self.origins[a:b])
                 else:
-                    text, event = piece
-                    chars.append(text)
-                    origins.extend([-(event + 1)] * len(text))
+                    chars.append(EVENT_CHAR)
+                    origins.append(-(piece + 1))
             prev = m.end()
         chars.append(self.chars[prev:])
         origins.extend(self.origins[prev:])
@@ -268,8 +265,8 @@ class _Parser:
         text = _Text(prepared, list(range(len(prepared))))
         text = self.headings(text)
         text = self.lists(text)
-        text = self.inline(text, BOLD, Strong, 'strong')
-        text = self.inline(text, ITALIC, Emphasis, 'em')
+        text = self.inline(text, BOLD, Strong)
+        text = self.inline(text, ITALIC, Emphasis)
         text = self.elements(text)
         return self.build(text)
 
@@ -277,15 +274,11 @@ class _Parser:
         def pieces(m):
             level = len(m.group(1))
             class_id = self.stores.restore(m.group(2) or '', 'A').strip()
-            attrs = export_html_element_class_and_id(class_id) if class_id else ''
-            if attrs:
-                attrs = self.stores.add('A', attrs)
             node = Heading(level=level, attributes=class_id)
             span = self.source_of(text.origins[m.start():m.end()]) or (0, 0)
             node.span = span
             node.line, node.column = self.place(span[0])
-            return [(f'<h{level}{attrs}>', self.event('open', node)), (m.start(3), m.end(3)),
-                    (f'</h{level}>\n', self.event('close', node))]
+            return [self.event('open', node), (m.start(3), m.end(3)), self.event('close', node)]
         return text.transform(HEADING, pieces)
 
     def lists(self, text):
@@ -293,9 +286,9 @@ class _Parser:
         list, a deeper level a list inside an item of its own."""
         chars, origins = [], []
 
-        def gen(s, event):
-            chars.append(s)
-            origins.extend([-(event + 1)] * len(s))
+        def gen(event):
+            chars.append(EVENT_CHAR)
+            origins.append(-(event + 1))
 
         lines, start = [], 0
         for m in re.finditer('\n', text.chars):
@@ -315,15 +308,15 @@ class _Parser:
                 level += 1
                 if level > 1:
                     wrapper = Item()
-                    gen('<li>\n', self.event('open', wrapper))
+                    gen(self.event('open', wrapper))
                     stack.append(wrapper)
                 lst = List()
-                gen('<ul>\n', self.event('open', lst))
+                gen(self.event('open', lst))
                 stack.append(lst)
             if level > 0:
                 node = Item()
                 m = item.match(text.chars, a, b)
-                gen('<li>\n', self.event('open', node))
+                gen(self.event('open', node))
                 span = self.source_of(text.origins[a:b])
                 if span:
                     node.span = span
@@ -339,20 +332,20 @@ class _Parser:
                     if span:            # where the line ends
                         brk.span = (span[1], span[1])
                         brk.line, brk.column = self.place(span[1])
-                    gen('\n', self.event('leaf', brk))
-                gen('</li>\n', self.event('close', node))
+                    gen(self.event('leaf', brk))
+                gen(self.event('close', node))
             else:
                 chars.append(text.chars[a:b])
                 origins.extend(text.origins[a:b])
             next_level = levels[k + 1] if k + 1 < len(lines) else 0
             while level > next_level:
                 level -= 1
-                gen('</ul>\n', self.event('close', stack.pop()))
+                gen(self.event('close', stack.pop()))
                 if level >= 1:
-                    gen('</li>\n', self.event('close', stack.pop()))
+                    gen(self.event('close', stack.pop()))
         return _Text(''.join(chars), origins)
 
-    def inline(self, text, pattern, kind, html):
+    def inline(self, text, pattern, kind):
         def pieces(m):
             node = kind()
             span = self.source_of(text.origins[m.start():m.end()])
@@ -366,8 +359,7 @@ class _Parser:
             if span:
                 node.span = span
                 node.line, node.column = self.place(span[0])
-            return [(f'<{html}>', self.event('open', node)), (m.start(1), m.end(1)),
-                    (f'</{html}>', self.event('close', node))]
+            return [self.event('open', node), (m.start(1), m.end(1)), self.event('close', node)]
         return text.transform(pattern, pieces)
 
     def elements(self, text):
@@ -379,7 +371,7 @@ class _Parser:
         and an element is closed at the end of its container."""
         chars, origins = [], []
         prev, last_tag_end = 0, -1
-        flat = text.chars               # what the stages wrote: '<h1>', '<strong>' are read here
+        flat = text.chars               # the text, each node read by a stage one EVENT_CHAR
         containers, closes = self._containers(text)
         self.open, self.closed_early, self.next_close = [], [], 0
         resolve = lambda s: self.stores.restore(self.stores.restore(s, 'A'), 'U')
@@ -392,7 +384,7 @@ class _Parser:
             except LHTMLParseError as e:
                 found = _TAG_NAME_BEFORE.search(flat, max(0, m.start() - _MAX_TAG_NAME), m.start())
                 name = len(found.group()) if found else 0
-                _warn(f'{e} near {_context(flat, m.start() - name, m.end() + 30)!r}',
+                _warn(f'{e} near {self._quote(text, m.start() - name, m.end() + 30)!r}',
                       (line, column - name if column else None))
                 continue
             tag = element['tag']
@@ -406,8 +398,10 @@ class _Parser:
                 continue
             element['line'] = line
             element['column'] = column - len(tag) if column else None
-            context = resolve(flat[tag_start:element['index_end']])
+            context = resolve(self._shown(text, tag_start, element['index_end']))
             element['context'] = _context(context, 0, len(context))
+            if any(EVENT_CHAR in element[key] for key in ('text', '[]', '()', '{}')):
+                self._show_groups(text, m.end(), element)
             for key in ('text', '[]', '()', '{}'):
                 element[key] = resolve(element[key])
             self._end_containers(closes, tag_start)
@@ -442,6 +436,42 @@ class _Parser:
         chars.append(text.chars[prev:])
         origins.extend(text.origins[prev:])
         return _Text(''.join(chars), origins)
+
+    def _shown(self, text, start, end):
+        """The text between two positions with the markup of its nodes,
+        as the text passes wrote it ('<strong>'): what an element holds in
+        its groups (a link label), what a message quotes."""
+        start = max(0, start)
+        if EVENT_CHAR not in text.chars[start:end]:
+            return text.chars[start:end]
+        parts = []
+        for ch, origin in zip(text.chars[start:end], text.origins[start:end]):
+            if ch != EVENT_CHAR or origin >= 0:
+                parts.append(ch)
+                continue
+            what, node = self.events[-origin - 1]
+            if what == 'leaf':
+                parts.append(node.raw)
+            else:
+                parts.append(_MARKUP[type(node)](node)[what == 'close'])
+        return ''.join(parts)
+
+    def _quote(self, text, start, end):
+        """What a message quotes of the text between two positions: its
+        source as written, on one line."""
+        span = self.source_of(text.origins[max(0, start):end])
+        return _context(self.source[span[0]:span[1]], 0, span[1] - span[0]) if span else ''
+
+    def _show_groups(self, text, after, element):
+        """The groups (and the text of a stray element) of an element whose
+        source holds nodes: with their markup (extract_bracket_elements
+        joins the groups of a kind with a space)."""
+        if element['()'] == element['[]'] == element['{}'] == '' and element['groups'] \
+                and EVENT_CHAR in element['text']:    # stray: all of it is its text
+            element['text'] = self._shown(text, after, element['index_end'])
+            return
+        for kind in ('[]', '()', '{}'):
+            element[kind] = ' '.join(self._shown(text, a, b) for k, a, b in element['groups'] if k == kind)
 
     def _containers(self, text):
         """The innermost container open at each position of the text (None:

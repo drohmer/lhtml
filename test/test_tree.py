@@ -243,3 +243,19 @@ class TestTags:
         cont = lhtml.Tag(container=True, render=lambda element, children, context: children)
         [(_, _, said)] = problems('a\ncont:: x\n', tags={'cont': cont})
         assert said.startswith('cont:: is never closed')
+
+
+class TestStages:
+    """The stages read a text where each node already read is one character
+    (EVENT_CHAR), a boundary: no HTML is written between them."""
+
+    def test_a_node_read_ends_the_word_of_an_element_and_a_tag_may_follow_it(self):
+        assert quiet(lhtml.run, '**span::x**')[0] == '<strong><span>x</span></strong>'
+        assert quiet(lhtml.run, '**a**span::[c] b ::')[0] == '<strong>a</strong><span style="c"> b </span>'
+
+    def test_a_label_keeps_the_markup_it_holds(self):
+        assert quiet(lhtml.run, 'link::u[a **b** __c__]')[0] == '<a href="u">a <strong>b</strong> <em>c</em></a>'
+
+    def test_an_unclosed_bracket_quotes_the_source(self):
+        [(line, column, said)] = problems('= a link::u[x\n')
+        assert (line, column) == (1, 5) and said.endswith("near 'link::u[x'")

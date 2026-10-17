@@ -20,6 +20,10 @@ REMOVED_COMMENT  = re.compile(r'(?<!\S)::#')
 REMOVED_VERBATIM = re.compile(r'(?<![\w`:-])verbatim::\[(?:\x00A(\d+)\x00)?\]')
 # Exactly two colons: a run of three or more is text, not a tag
 TAG_MARKER       = re.compile(r'(?<!:)::(?!:)')
+# A node of the document tree, once a stage has read it: one character of
+# the text the next stages read (lhtml/tree.py). It is a boundary, as the
+# end of a line is: it ends the word of an element, and a tag may follow it.
+EVENT_CHAR       = '\ue000'
 SPACER           = re.compile(r'nl(?![\w-])')
 
 # Block directives must not follow a backquote (inline code) or a colon.
