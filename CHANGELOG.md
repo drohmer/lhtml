@@ -93,7 +93,12 @@ functions and the errors.
   list, a block element, a code block, block raw HTML). The line breaks a
   tag writes in its own HTML get none: LHTML 2 wrote one into a style or an
   attribute written on two lines (breaking it), into a link label on two
-  lines, and into the fallback text of a `video::`.
+  lines, and into the fallback text of a `video::`. A tag is rendered
+  once, with its children, as without the option; when its HTML holds
+  them as given, their line breaks get their `<br>`, otherwise (a tag that
+  transforms or repeats them) its HTML is kept as it wrote it.
+- The character U+FDD0 (a Unicode noncharacter, the internal mark of the
+  document tree) is replaced by U+FFFD in the input, as NUL already was.
 - The CLI prints a problem as one line, `file:line:column: level: message`;
   `--wrapAuto` is `--wrap` (`-w` unchanged).
 - An unknown language of a `code::` block is reported where the block starts.

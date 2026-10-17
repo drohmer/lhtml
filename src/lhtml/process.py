@@ -20,7 +20,7 @@ from .patterns import (
     INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
     JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
-    PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR, CHILDREN_CHAR,
+    PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR,
     regex_transform, restore_from_index, make_placeholder,
 )
 
@@ -83,13 +83,13 @@ def _warn(message, place, stacklevel=3):
 
 def normalize_input(text):
     """Normalize a source text: no BOM, LF line endings, no NUL character
-    (which would be mistaken for a placeholder delimiter), no EVENT_CHAR or
-    CHILDREN_CHAR (the marks of the document tree)."""
+    (which would be mistaken for a placeholder delimiter), no EVENT_CHAR
+    (the mark of the document tree): each becomes U+FFFD."""
     if text.startswith('\ufeff'):
         text = text[1:]
     text = text.replace('\r\n', '\n').replace(PLACEHOLDER_CHAR, '\ufffd')
-    if EVENT_CHAR in text or CHILDREN_CHAR in text:
-        text = text.replace(EVENT_CHAR, '\ufffd').replace(CHILDREN_CHAR, '\ufffd')
+    if EVENT_CHAR in text:
+        text = text.replace(EVENT_CHAR, '\ufffd')
     return text
 
 

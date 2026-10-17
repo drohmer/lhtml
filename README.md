@@ -591,7 +591,7 @@ The nodes are `Document`, `Heading` (`level`, `attributes`), `List`,
 `Emphasis`, `Element` (`name`, '' for an anonymous `::`; `groups`; `value`;
 `closed`), `Text` (`value`) and the leaves `Code` (`language`, `body`),
 `InlineCode`, `Math` and `Raw` (`text`; `raw_kind`: html, comment, script,
-style, jinja). The label of a `link::` is in its `groups['[]']`, as HTML.
+style, jinja). The groups and the value of an element, and the attributes of a heading, are as written (Jinja and mathematics included); the label of a `link::` (`groups['[]']`) holds its bold and italic as HTML (`<strong>`), the rest as written.
 
 Every node has its place: `span`, the offsets of its source in the text
 given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,

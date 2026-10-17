@@ -290,7 +290,8 @@ class TestMarksOfTheCaller:
         assert lhtml.run('span::x' + marker + '::') == '<span>x' + marker + '</span>'
 
     def test_a_mark_of_the_tree_in_the_input_is_replaced(self):
-        assert lhtml.run('a﷐b ﷑') == 'a�b �'
+        # U+FDD0, the mark of the tree, is replaced; another noncharacter is text
+        assert lhtml.run('a\ufdd0b \ufdd1') == 'a\ufffdb \ufdd1'
 
 
 class TestWritten:
@@ -301,3 +302,29 @@ class TestWritten:
         assert div.groups == {'[]': 'top:{{ top }}px', '()': '.c', '{}': 'title="\\(x\\)"'}
         assert img.value == '{{ base }}/a.png'
         assert lhtml.render(document).startswith('<div class="c" style="top:{{ top }}px" title="\\(x\\)">')
+
+
+class TestLineBreaksAndTags:
+    """With line-breaks, a tag is rendered once, with its children, as without."""
+    ON = {'line-breaks': True}
+
+    def test_a_tag_that_transforms_its_children_keeps_its_html(self):
+        strip = lhtml.Tag(lambda element, children, context: f'<p>{children.strip()}</p>', container=True)
+        assert lhtml.run('p:: a\nb ::', self.ON, tags={'p': strip}) == '<p>a\nb</p>'
+
+    def test_a_tag_is_rendered_once(self):
+        calls = []
+        twice = lhtml.Tag(lambda element, children, context: calls.append(1) or f'<i>{children}{children}</i>',
+                          container=True)
+        lhtml.run('a\nt:: b\nc ::\nd', self.ON, tags={'t': twice})
+        assert len(calls) == 1
+
+    def test_a_tag_that_writes_its_children_as_given_gets_their_line_breaks(self):
+        box = lhtml.Tag(lambda element, children, context: f'<b>{children}</b>', container=True)
+        assert lhtml.run('x\nbox:: a\nb ::\ny', self.ON, tags={'box': box}) == 'x<br>\n<b> a<br>\nb </b><br>\ny'
+
+    def test_the_attributes_of_a_heading_are_as_written(self):
+        document = lhtml.parse('=(.{{ c }} #i) T\n')
+        [heading] = [n for n in document.walk() if n.kind == 'Heading']
+        assert heading.attributes == '.{{ c }} #i'
+        assert lhtml.render(document) == '<h1 class="{{ c }}" id="i">T</h1>\n\n'

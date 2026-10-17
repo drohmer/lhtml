@@ -44,7 +44,7 @@ from .errors import LHTMLError, LHTMLParseError
 from .export_html import SPACER, TAGS, Tag, export_html_element_class_and_id
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
 from .patterns import (
-    BOLD, CHILDREN_CHAR, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
+    BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
 from .process import (
     ProtectionStores, normalize_input, process_prepare, process_unprotect,
@@ -97,6 +97,7 @@ class Text(Node):
 class Heading(Node):
     level: int = 1
     attributes: str = ''            # (.class #id) as written
+    markup_attributes: str = field(default='', repr=False)     # the same, as render reads them
 
 
 @dataclass(eq=False)
@@ -157,7 +158,6 @@ class Math(Node):
 class Raw(Node):
     text: str = ''
     raw_kind: str = 'html'          # html, comment, script, style, jinja
-    store: str = 'R'
     index: int = 0
 
 
@@ -274,7 +274,8 @@ class _Parser:
         def pieces(m):
             level = len(m.group(1))
             class_id = self.stores.restore(m.group(2) or '', 'A').strip()
-            node = Heading(level=level, attributes=class_id)
+            node = Heading(level=level, attributes=self.stores.original(m.group(2) or '').strip(),
+                           markup_attributes=class_id)
             span = self.source_of(text.origins[m.start():m.end()]) or (0, 0)
             node.span = span
             node.line, node.column = self.place(span[0])
@@ -533,9 +534,11 @@ class _Parser:
         return None
 
     def _written(self, element):
-        """The groups of an element as written (the element keeps the
-        placeholders of the zones they hold - Jinja, mathematics - for its
-        tag, as the text passes gave them)."""
+        """The groups of an element as written: the zones they hold (Jinja,
+        mathematics, inline code) as written, the bold and italic of a link
+        label as HTML (the stages read them before the element). The element
+        keeps the placeholders of the zones for its tag, as the text passes
+        gave them."""
         return {k: self.stores.original(element[k]) for k in ('[]', '()', '{}')}
 
     def _open(self, element, tag, name, container):
@@ -749,7 +752,8 @@ def parse(text, tags=None, macros=None):
 
 _MARKUP = {
     Heading: lambda node: (f'<h{node.level}'
-                           + (export_html_element_class_and_id(node.attributes) if node.attributes else '')
+                           + (export_html_element_class_and_id(node.markup_attributes)
+                              if node.markup_attributes else '')
                            + '>', f'</h{node.level}>\n'),
     List: lambda node: ('<ul>\n', '</ul>\n'),
     Item: lambda node: ('<li>\n', '</li>\n'),
@@ -803,34 +807,42 @@ def _render_tree(root, context):
 
 def _tokens(document, context):
     """The HTML of the nodes as tokens, in order: (html, kind), kind 'text',
-    'leaf' or 'markup' (process.line_breaks). An element writes its opening
-    and its closing around its children when its render puts them in one
-    place; otherwise its HTML is one token."""
-    out, stack = [], [(iter(document.children), None)]
+    'leaf' or 'markup' (process.line_breaks). Each tag is rendered once,
+    with its children, as without line-breaks; where its HTML holds its
+    children once and as given, it is split around them (its opening, the
+    tokens of its children, its closing). A tag that transforms or repeats
+    its children is one token: its HTML as it wrote it."""
+    out = []
+    stack = [(document, iter(document.children), 0)]      # (node, its children, where its tokens start)
     while stack:
-        children, closing = stack[-1]
+        node, children, start = stack[-1]
         child = next(children, None)
-        if child is None:
-            stack.pop()
-            if closing is not None:
-                out.append((closing, 'markup'))
-        elif isinstance(child, Text):
-            out.append((child.raw, 'text'))
-        elif type(child) in _STORE:
-            out.append((f'\x00{_STORE[type(child)]}{child.index}\x00', 'leaf'))
+        if child is not None:
+            if isinstance(child, Text):
+                out.append((child.raw, 'text'))
+            elif type(child) in _STORE:
+                out.append((f'\x00{_STORE[type(child)]}{child.index}\x00', 'leaf'))
+            else:
+                out.append(None)        # its opening, once its children are written
+                stack.append((child, iter(child.children), len(out)))
+            continue
+        stack.pop()
+        if node is document:
+            return out
+        if type(node) in _MARKUP:
+            opening, closing = _MARKUP[type(node)](node)
+            out[start - 1] = (opening, 'markup')
+            out.append((closing, 'markup'))
+            continue
+        children_html = ''.join(html for html, _ in out[start:])
+        html = _node_html(node, children_html, context)
+        at = html.find(children_html) if children_html else -1
+        if at >= 0 and html.count(children_html) == 1:
+            out[start - 1] = (html[:at], 'markup')
+            out.append((html[at + len(children_html):], 'markup'))
         else:
-            parts = None
-            if type(child) in _MARKUP:
-                parts = _MARKUP[type(child)](child)
-            elif child.children:
-                html = _node_html(child, CHILDREN_CHAR, context)
-                parts = html.split(CHILDREN_CHAR) if html.count(CHILDREN_CHAR) == 1 else None
-            if parts is None:
-                out.append((_render_tree(child, context), 'markup'))
-                continue
-            out.append((parts[0], 'markup'))
-            stack.append((iter(child.children), parts[1]))
-    return out
+            del out[start:]
+            out[start - 1] = (html, 'markup')
 
 
 def render(document, meta=None, media=None):
