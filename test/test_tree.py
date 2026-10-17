@@ -431,6 +431,9 @@ class TestReviewSurprises:
         macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True}}
         assert lhtml.run('**img::a.png**') == '<strong><img src="a.png" alt="a.png"></strong>'
         assert lhtml.run('x __img::a.png__ y') == 'x <em><img src="a.png" alt="a.png"></em> y'
+        for text in ('**__img::a.png__**', '__**img::a.png**__'):        # nested, either order
+            html = lhtml.run(text)
+            assert 'src="a.png"' in html and '**' not in html and '__' not in html, html
         assert lhtml.run('**demo::a.html**', {'macros': macros}) == '<strong><iframe src="a.html"></iframe></strong>'
         # marks that close nothing are the URL's
         assert 'href="https://d.org/x.html#object.__init__"' in lhtml.run('link::https://d.org/x.html#object.__init__')

@@ -128,10 +128,15 @@ def _url_and_closing_marks(url, before):
     """A URL ends before a final `**` or `__` that closes a bold or an
     italic opened before its tag on its line (`**img::a.png**`); otherwise
     they are part of it (`link::...#object.__init__`)."""
-    for mark in ('**', '__'):
-        if url.endswith(mark) and len(url) > 2 and before.count(mark) % 2 == 1:
-            return url[:-2], mark
-    return url, ''
+    after = ''
+    while True:                         # __**img::a.png**__: each closing pair in turn
+        for mark in ('**', '__'):
+            if url.endswith(mark) and len(url) > 2 and before.count(mark) % 2 == 1:
+                url, after = url[:-2], mark + after
+                before = before.replace(mark, '', 1)     # this one is closed now
+                break
+        else:
+            return url, after
 
 
 def process_protect(text, stores, blocks=False, url_tags=None):
