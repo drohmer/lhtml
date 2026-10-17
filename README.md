@@ -31,7 +31,7 @@ For development:
 pip install -e ".[dev]"
 ```
 
-Dependencies (`lark`, `pygments`, `pyyaml`) are installed automatically.
+Dependencies (`pygments`, `pyyaml`) are installed automatically.
 
 
 ## Quick Start
@@ -98,7 +98,7 @@ html = lhtml.run(text, {
 # Macros (custom :: tags, see Macros below)
 html = lhtml.run('box:: x ::\n', {'macros': {'box': {'class': 'box'}}})
 macros = lhtml.load_macros('macros.yaml')            # definitions from files or dicts
-registry = lhtml.registry_with_macros(macros)        # validates them (LHTMLMacroError)
+tags = lhtml.registry_with_macros(macros)            # their handlers, validated (LHTMLMacroError)
 info = lhtml.describe_macro('box', macros['box'])    # what a definition renders, for docs
 ```
 
@@ -532,10 +532,11 @@ Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in
 
 ### Custom Tag Handlers
 
-Register handlers for new `::` tag types:
+Give handlers for new `::` tag types to `lhtml.run`, added to the built-in
+ones (`lhtml.TAGS`, a dict name -> handler):
 
 ```python
-from lhtml.pipeline import tag_registry
+import lhtml
 
 def handle_alert(element, tag_to_close, context):
     """Open <div class="alert">; the following :: closes it."""
@@ -543,7 +544,7 @@ def handle_alert(element, tag_to_close, context):
     tag_to_close.append('div')
     return f'<div class="alert" style="{style}">', True
 
-tag_registry.register('alert', handle_alert)
+html = lhtml.run(text, tags={'alert': handle_alert})
 ```
 
 Then use in LHTML:
@@ -552,34 +553,22 @@ alert::[background:yellow; padding:10px;] Warning message ::
 ```
 
 A handler receives the parsed element (`'[]'`, `'()'`, `'{}'`, `'text'`: the
-word glued after the brackets) and returns `(html, is_real_tag)`. To wrap the
+word glued after the brackets), the stack of open tags and the context of the
+run (`context.meta`, `context.media`), and returns `(html, is_real_tag)`. To wrap the
 content that follows, push the HTML tag name on `tag_to_close`: the next `::`
 closes it. Returning `is_real_tag=False` leaves the source
 text unchanged.
 
 ### Custom Code Lexers
 
-Register custom Pygments lexers for syntax highlighting:
+`lhtml.LEXERS` maps a language name to a Pygments lexer class, looked up
+before the lexers of Pygments:
 
 ```python
-from lhtml.pipeline import lexer_registry
+import lhtml
 from pygments.lexers import PythonLexer
 
-lexer_registry.register('mypython', PythonLexer)
-```
-
-### Custom Pipeline
-
-Create an isolated pipeline with its own tag registry:
-
-```python
-from lhtml.pipeline import ProcessingPipeline, TagRegistry
-
-registry = TagRegistry()
-registry.register('note', my_note_handler)
-
-pipeline = ProcessingPipeline(registry=registry)
-html = pipeline.run(text, {'wrap-auto': True})
+lhtml.LEXERS['mypython'] = PythonLexer
 ```
 
 
@@ -618,13 +607,11 @@ src/lhtml/
   __init__.py          # Public API: run(), macro functions, errors
   __main__.py          # python -m lhtml
   cli.py               # Command-line interface
-  pipeline.py          # ProcessingPipeline, TagRegistry, LexerRegistry
+  pipeline.py          # run(): the passes, from LHTML text to HTML
   macros.py            # Macros: custom :: tags declared in YAML
   process.py           # Core transformation functions
   patterns.py          # Centralized regex patterns and utilities
-  tag_parser.py        # Lark-based parser for :: bracket syntax
-  tag_element.lark     # Lark grammar definition
-  element_extract.py   # extract_bracket_elements() (entry point of the tag parser)
+  tag_parser.py        # extract_bracket_elements(): the parser of a :: tag element
   export_html.py       # HTML generation for tag elements
   listing.py           # List processing
   code.py              # Code syntax highlighting (Pygments)

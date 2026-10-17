@@ -1,230 +1,67 @@
-"""Processing pipeline and tag handler registry for LHTML.
+"""The run of LHTML: the passes that turn LHTML text into HTML.
 
-The pipeline orchestrates the multi-pass LHTML-to-HTML transformation.
-Tag handlers are registered in a plugin registry, making it easy to
-add custom element types (e.g., new :: tag names) without modifying
-the core processing code.
+Content that must not be transformed (code, raw HTML, math, inline code,
+URLs, attribute groups) is first replaced by placeholders, the LHTML syntax
+around them is converted pass by pass, and the placeholders are restored.
 """
 
-from __future__ import annotations
-
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
 
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-META_DEFAULTS = {
-    'wrap-auto': False,
-    'title': 'Webpage',
-    'css': [],
-    'js': [],
-    'line-breaks': False,
-}
-
-
-def _default_meta():
-    """Default configuration."""
-    return dict(META_DEFAULTS)
+from .export_html import TAGS
+from .listing import process_listing
+from .macros import registry_with_macros
+from .process import (
+    ProtectionStores, normalize_input, process_prepare, process_unprotect,
+    process_title, process_bold, process_italic, process_tag, process_line_breaks,
+    render_inline_code, render_code_block,
+)
+from .wrap_html import wrap_auto
 
 
 @dataclass
 class ProcessingContext:
-    """Mutable state carried through the pipeline."""
-    text: str
-    meta: dict = field(default_factory=dict)
-    stores: object = None  # process.ProtectionStores
-    current_directory: str = ''
+    """What a tag handler receives as its third argument."""
+    meta: dict
     media: Callable | None = None   # media(src) -> [(url, mime)], given by the caller
 
 
-# ---------------------------------------------------------------------------
-# Tag handler registry (plugin system)
-# ---------------------------------------------------------------------------
+def run(text, meta=None, tags=None):
+    """Convert LHTML text to HTML.
 
-# A tag handler receives (element_dict, tag_to_close, context) and returns
-# (html_string, is_real_tag); `context` is the ProcessingContext of the run.
-TagHandler = Callable[[dict, list, str], tuple[str, bool]]
-
-
-class TagRegistry:
-    """Registry for LHTML :: tag element handlers.
-
-    Built-in tags (div, span, link, img, video, videoplay) are
-    registered at import time. Users can register custom tags:
-
-        from lhtml.pipeline import tag_registry
-        tag_registry.register('custom', my_handler)
+    meta: the options - wrap-auto, title, css, js, line-breaks, macros (a
+        mapping, a YAML file relative to current_directory, or a list of
+        them), media (a callable: media(src) -> [(url, mime type)], the
+        sources of a video). LHTML reads no file but these macro files.
+    tags: custom tag handlers {name: handler}, added to the built-in TAGS.
     """
+    meta = dict(meta or {})
+    media = meta.get('media')
+    if media is not None and not callable(media):
+        raise TypeError(f'meta "media" must be callable, got {type(media).__name__}')
+    handlers = {**TAGS, **(tags or {})}
+    macros = meta.get('macros')
+    if macros:
+        directory = str(meta.get('current_directory') or '')
+        macros = [m if not isinstance(m, str) or os.path.isabs(m) else os.path.join(directory, m)
+                  for m in (macros if isinstance(macros, (list, tuple)) else [macros])]
+        handlers = registry_with_macros(macros, handlers)
+    context = ProcessingContext(meta, media)
+    stores = ProtectionStores()
 
-    def __init__(self):
-        self._handlers: dict[str, TagHandler] = {}
-
-    def register(self, tag_name: str, handler: TagHandler):
-        """Register a handler for a tag name."""
-        self._handlers[tag_name] = handler
-
-    def get(self, tag_name: str) -> TagHandler | None:
-        """Look up the handler for a tag name."""
-        return self._handlers.get(tag_name)
-
-    def has(self, tag_name: str) -> bool:
-        return tag_name in self._handlers
-
-    def registered_tags(self) -> list[str]:
-        return list(self._handlers.keys())
-
-
-# Global registry instance
-tag_registry = TagRegistry()
-
-
-def _register_builtin_tags():
-    """Register the built-in LHTML tag handlers."""
-    from .export_html import (
-        export_html_generic, export_html_link,
-        export_html_img, export_html_video,
-    )
-
-    def _handle_generic(tag_name):
-        def handler(element, tag_to_close, context):
-            return export_html_generic(element, tag_name, tag_to_close), True
-        return handler
-
-    tag_registry.register('div', _handle_generic('div'))
-    tag_registry.register('span', _handle_generic('span'))
-
-    def _handle_link(element, tag_to_close, context):
-        return export_html_link(element), True
-    tag_registry.register('link', _handle_link)
-
-    def _handle_img(element, tag_to_close, context):
-        return export_html_img(element), True
-    tag_registry.register('img', _handle_img)
-
-    def _handle_video(element, tag_to_close, context):
-        return export_html_video(element, '', getattr(context, 'media', None)), True
-    tag_registry.register('video', _handle_video)
-
-    def _handle_videoplay(element, tag_to_close, context):
-        return export_html_video(element, 'autoplay loop muted playsinline', getattr(context, 'media', None)), True
-    tag_registry.register('videoplay', _handle_videoplay)
-
-
-# ---------------------------------------------------------------------------
-# Code lexer registry (plugin system for syntax highlighting)
-# ---------------------------------------------------------------------------
-
-class LexerRegistry:
-    """Registry for custom Pygments lexers by language name."""
-
-    def __init__(self):
-        self._lexers: dict[str, type] = {}
-
-    def register(self, language: str, lexer_class: type):
-        self._lexers[language] = lexer_class
-
-    def get(self, language: str) -> type | None:
-        return self._lexers.get(language)
-
-
-lexer_registry = LexerRegistry()
-
-_register_builtin_tags()
-
-
-# ---------------------------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------------------------
-
-def _macro_sources(value):
-    """Macros given as a file name, a mapping or a list of them -> list."""
-    if not value:
-        return []
-    if isinstance(value, (list, tuple)):
-        return list(value)
-    return [value]
-
-
-class ProcessingPipeline:
-    """Orchestrates the LHTML-to-HTML transformation pipeline.
-
-    Usage:
-        pipeline = ProcessingPipeline()
-        html = pipeline.run(lhtml_text)
-        html = pipeline.run(lhtml_text, meta={'wrap-auto': True})
-    """
-
-    def __init__(self, registry: TagRegistry | None = None):
-        self.tag_registry = registry or tag_registry
-
-    def run(self, text: str, meta_arg: dict | None = None) -> str:
-        from .process import (
-            ProtectionStores, process_prepare,
-            process_unprotect, process_title, process_listing,
-            process_bold, process_italic, process_tag,
-            render_inline_code, render_code_block, process_line_breaks,
-        )
-        from .wrap_html import wrap_auto
-        from .process import normalize_input
-
-        text = normalize_input(text)
-        ctx = ProcessingContext(
-            text=text,
-            meta={**_default_meta(), **(meta_arg or {})},
-            stores=ProtectionStores(),
-        )
-        stores = ctx.stores
-
-        # Phase 1: the options, from the caller only (LHTML reads no front matter)
-        ctx.current_directory = str(ctx.meta.get('current_directory') or '')
-        media = (meta_arg or {}).get('media')
-        if media is not None and not callable(media):
-            raise TypeError(f'meta "media" must be callable, got {type(media).__name__}')
-        ctx.media = media
-
-        # Macros (custom tags) declared in the meta
-        registry = self.tag_registry
-        macros = _macro_sources((meta_arg or {}).get('macros'))
-        if macros:
-            from .macros import registry_with_macros
-            macros = [m if not isinstance(m, str) or os.path.isabs(m)
-                      else os.path.join(ctx.current_directory, m) for m in macros]
-            registry = registry_with_macros(macros, self.tag_registry)
-
-        # Phase 2: code blocks and protected zones (HTML, inline code, URLs,
-        # math) are replaced by placeholders
-        ctx.text = process_prepare(ctx.text, stores)
-
-        # Phase 3: Block-level elements
-        ctx.text = process_title(ctx.text, stores)
-        ctx.text = process_listing(ctx.text)
-
-        # Phase 4: Inline elements
-        ctx.text = process_bold(ctx.text)
-        ctx.text = process_italic(ctx.text)
-
-        # Phase 5: Tag elements (uses tag_registry). Inline code is literal.
-        def resolve_attributes(s):
-            return stores.restore(stores.restore(s, 'A'), 'U')
-
-        ctx.text = process_tag(ctx.text, ctx, registry, resolve=resolve_attributes)
-        ctx.text = stores.restore(ctx.text, 'I', render_inline_code)
-
-        # Optional: source line breaks become <br> (protected zones are
-        # still placeholders, so their content is not affected)
-        if ctx.meta.get('line-breaks') is True:
-            ctx.text = process_line_breaks(ctx.text, stores)
-
-        # Phase 6: Restore protected zones and code blocks (highlighted)
-        ctx.text = process_unprotect(ctx.text, stores)
-        ctx.text = stores.restore(ctx.text, 'C', render_code_block)
-
-        # Phase 7: Optional HTML wrapping
-        if ctx.meta.get('wrap-auto') is True:
-            ctx.text = wrap_auto(ctx.text, ctx.meta)
-
-        return ctx.text
+    text = process_prepare(normalize_input(text), stores)
+    text = process_title(text, stores)
+    text = process_listing(text)
+    text = process_bold(text)
+    text = process_italic(text)
+    text = process_tag(text, context, handlers,
+                       resolve=lambda s: stores.restore(stores.restore(s, 'A'), 'U'))
+    text = stores.restore(text, 'I', render_inline_code)          # inline code is literal
+    if meta.get('line-breaks') is True:     # protected zones are still placeholders
+        text = process_line_breaks(text, stores)
+    text = process_unprotect(text, stores)
+    text = stores.restore(text, 'C', render_code_block)
+    if meta.get('wrap-auto') is True:
+        text = wrap_auto(text, meta)
+    return text

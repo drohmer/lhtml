@@ -1,7 +1,7 @@
 """HTML document wrapping for LHTML.
 
 Wraps LHTML output in a complete HTML5 document structure
-with head, meta, CSS/JS includes from the YAML metadata.
+with head, meta, CSS/JS includes from the options of the run.
 """
 
 from html import escape

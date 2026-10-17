@@ -10,7 +10,6 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
-    "lark>=1.1",
     "pygments>=2.15",
     "pyyaml>=6.0",
 ]
@@ -34,9 +33,6 @@ version = {attr = "lhtml.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-lhtml = ["tag_element.lark"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

@@ -19,11 +19,8 @@ import warnings
 from . import __version__
 from .errors import LHTMLError
 from .macros import load_macros, registry_with_macros
-from .pipeline import ProcessingPipeline
+from .pipeline import run
 from .process import read_source
-
-
-_pipeline = ProcessingPipeline()
 
 
 def _ensure_trailing_newline(text):
@@ -65,7 +62,7 @@ def _process_file(f_in, meta_base):
     txt = _ensure_trailing_newline(read_source(f_in))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
-        html = _ensure_trailing_newline(_pipeline.run(txt, meta))
+        html = _ensure_trailing_newline(run(txt, meta))
     return html, [str(w.message) for w in caught]
 
 

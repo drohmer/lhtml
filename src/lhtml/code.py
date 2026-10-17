@@ -1,7 +1,7 @@
-"""Code block syntax highlighting for LHTML.
+"""Code block syntax highlighting for LHTML, with Pygments.
 
-Uses Pygments for highlighting. Custom lexers can be registered
-via the lexer_registry in pipeline.py.
+LEXERS maps a language name to a Pygments lexer class, taken before the
+lexers of Pygments: add one with lhtml.LEXERS['name'] = LexerClass.
 """
 
 import warnings
@@ -42,8 +42,7 @@ class CppCgpLexer(pygments.lexers.CppLexer):
     }
 
 
-# Default custom lexer mapping
-_BUILTIN_LEXERS = {
+LEXERS = {
     'c++': CppCgpLexer,
 }
 
@@ -52,21 +51,10 @@ _BUILTIN_LEXERS = {
 # Public API
 # ---------------------------------------------------------------------------
 
-def export_html_code(text, language, cssclass='code'):
+def export_html_code(text, language):
     """Highlight a code block and return HTML."""
     language = (language or '').strip()
-
-    # Check plugin registry first, then built-in lexers (case-insensitive)
-    lexer_class = None
-    try:
-        from .pipeline import lexer_registry
-        lexer_class = lexer_registry.get(language) or lexer_registry.get(language.lower())
-    except ImportError:
-        pass
-
-    if lexer_class is None:
-        lexer_class = _BUILTIN_LEXERS.get(language.lower())
-
+    lexer_class = LEXERS.get(language) or LEXERS.get(language.lower())
     lexer_options = dict(stripall=False, stripnl=True, ensurenl=True,
                          tabsize=2, encoding='utf-8')
     if lexer_class is not None:
@@ -82,5 +70,5 @@ def export_html_code(text, language, cssclass='code'):
                           'rendered as plain text', LHTMLWarning, stacklevel=2)
             lexer = TextLexer(**lexer_options)
 
-    formatter = HtmlFormatter(linenos=False, cssclass=cssclass)
+    formatter = HtmlFormatter(linenos=False, cssclass='code')
     return highlight(text, lexer, formatter)

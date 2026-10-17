@@ -100,23 +100,6 @@ def make_placeholder(kind: str, idx: int) -> str:
     return f'{PLACEHOLDER_CHAR}{kind}{idx}{PLACEHOLDER_CHAR}'
 
 
-def store_to_index(text: str, pattern: re.Pattern | str, kind: str, store: list,
-                   transform_fn: Callable[[re.Match], str] | None = None) -> str:
-    """Extract regex matches into a store, replacing them with placeholders.
-
-    Each match (or `transform_fn(match)` if given) is stored in `store`
-    and replaced with a placeholder of kind `kind` (one uppercase letter).
-    Used to protect code/verbatim/raw blocks from further processing.
-    """
-    if isinstance(pattern, str):
-        pattern = re.compile(pattern, re.DOTALL | re.MULTILINE)
-
-    def _store(m):
-        store.append(transform_fn(m) if transform_fn else m.group(0))
-        return make_placeholder(kind, len(store) - 1)
-    return regex_transform(text, pattern, _store)
-
-
 def restore_from_index(text: str, kind: str, store: list,
                        render_fn: Callable[[object], str] | None = None) -> str:
     """Replace the placeholders of kind `kind` by their stored content.

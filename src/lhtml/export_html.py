@@ -1,8 +1,8 @@
-"""HTML generation functions for LHTML tag elements.
+"""The HTML of the tag elements, and the built-in tags (TAGS).
 
-Each export_html_* function converts a parsed element dict into
-an HTML string. The element dict has keys: '[]' (style), '()'
-(class/id), '{}' (inline attrs), 'text', 'tag'.
+Each export_html_* function converts a parsed element dict into an HTML
+string. The element dict has keys: '[]' (style), '()' (class/id), '{}'
+(inline attrs), 'text', 'tag' (see tag_parser.extract_bracket_elements).
 """
 
 import html
@@ -135,10 +135,20 @@ def export_html_video(elements, default_inline='', media=None):
 
 
 # ---------------------------------------------------------------------------
-# Closing tag detection
+# The built-in tags
 # ---------------------------------------------------------------------------
 
-def check_is_closing_tag(elements):
-    """A bare :: (empty tag, span of exactly 2) is a closing tag."""
-    return elements['tag'] == '' and elements['index_end'] - elements['index_start'] == 2
-
+# A tag handler receives (element, tag_to_close, context) - the parsed
+# element, the stack of the HTML tags left open (push one to wrap what
+# follows, until the next ::), the ProcessingContext of the run - and
+# returns (html, is_real_tag); is_real_tag False leaves the source as it is.
+TAGS = {
+    'div': lambda element, tag_to_close, context: (export_html_generic(element, 'div', tag_to_close), True),
+    'span': lambda element, tag_to_close, context: (export_html_generic(element, 'span', tag_to_close), True),
+    'link': lambda element, tag_to_close, context: (export_html_link(element), True),
+    'img': lambda element, tag_to_close, context: (export_html_img(element), True),
+    'video': lambda element, tag_to_close, context: (
+        export_html_video(element, '', context.media), True),
+    'videoplay': lambda element, tag_to_close, context: (
+        export_html_video(element, 'autoplay loop muted playsinline', context.media), True),
+}

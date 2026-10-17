@@ -3,7 +3,6 @@
 Converts * item / ** subitem syntax to nested <ul><li> HTML.
 """
 
-import io
 import re
 
 _LIST_ITEM = re.compile(r'^(\*+) (.*)')
@@ -19,10 +18,9 @@ def _analyse_line(line):
 
 def process_listing(text):
     """Convert * / ** / *** list items to nested <ul><li> HTML."""
-    lines = []
-    buf = io.StringIO(text)
-    for line in buf:
-        lines.append(_analyse_line(line))
+    pieces = text.split('\n')     # on '\n' only, as the pipeline reads lines
+    lines = [_analyse_line(line) for line in
+             [p + '\n' for p in pieces[:-1]] + ([pieces[-1]] if pieces[-1] else [])]
 
     parts = []
     level = 0

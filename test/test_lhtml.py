@@ -17,7 +17,6 @@ import warnings
 import pytest
 
 import lhtml
-from lhtml.pipeline import ProcessingPipeline, TagRegistry, LexerRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -206,25 +205,15 @@ class TestVerbatim:
 
 class TestPluginSystem:
     def test_custom_tag_handler(self):
-        registry = TagRegistry()
-        registry.register('alert', lambda el, ts, cd: (
-            f'<div class="alert">{el.get("text", "")}</div>', True
-        ))
-        pipeline = ProcessingPipeline(registry=registry)
-        r = pipeline.run('\nalert::Warning\n')
+        tags = {'alert': lambda el, ts, context: (f'<div class="alert">{el.get("text", "")}</div>', True)}
+        r = lhtml.run('\nalert::Warning\n', tags=tags)
         assert '<div class="alert">Warning</div>' in r
+        assert 'alert' not in lhtml.TAGS
 
-    def test_custom_lexer_registry(self):
-        reg = LexerRegistry()
-        reg.register('test-lang', object)  # dummy
-        assert reg.get('test-lang') is object
-        assert reg.get('unknown') is None
-
-    def test_tag_registry_list(self):
-        reg = TagRegistry()
-        reg.register('foo', lambda e, t, c: ('', False))
-        reg.register('bar', lambda e, t, c: ('', False))
-        assert set(reg.registered_tags()) == {'foo', 'bar'}
+    def test_custom_lexer(self, monkeypatch):
+        from pygments.lexers import PythonLexer
+        monkeypatch.setitem(lhtml.LEXERS, 'mypython', PythonLexer)
+        assert 'class="kn"' in lhtml.run('code::[mypython]\nimport x\ncode::[-]\n')
 
 
 # ---------------------------------------------------------------------------
@@ -427,11 +416,9 @@ class TestTagBoundaries:
 
 class TestTagNames:
     def test_plugin_name_with_digit_dash_underscore(self):
-        registry = TagRegistry()
-        for name in ('h2', 'my-tag', 'my_tag'):
-            registry.register(name, lambda el, ts, cd, name=name: (f'<{name}/>', True))
-        pipeline = ProcessingPipeline(registry=registry)
-        assert pipeline.run('h2::x my-tag::y my_tag::z\n') == '<h2/> <my-tag/> <my_tag/>\n'
+        tags = {name: (lambda el, ts, cd, name=name: (f'<{name}/>', True))
+                for name in ('h2', 'my-tag', 'my_tag')}
+        assert lhtml.run('h2::x my-tag::y my_tag::z\n', tags=tags) == '<h2/> <my-tag/> <my_tag/>\n'
 
     def test_unknown_name_with_digit_passes_through(self):
         r, _ = _run_with_warnings('h2::[color:red;] Titre\n')
@@ -443,8 +430,7 @@ class TestTagNames:
         assert w == []
 
     def test_builtin_tags_registered(self):
-        assert {'div', 'span', 'link', 'img', 'video', 'videoplay'} <= set(
-            lhtml.tag_registry.registered_tags())
+        assert {'div', 'span', 'link', 'img', 'video', 'videoplay'} <= set(lhtml.TAGS)
 
 
 class TestInlineCode:
@@ -850,21 +836,13 @@ class TestBareTagEdgeCases:
 
 class TestPluginReadmeExample:
     def test_alert_example(self):
-        def handle_alert(element, tag_to_close, current_directory):
+        def handle_alert(element, tag_to_close, context):
             style = element.get('[]', '')
             tag_to_close.append('div')
             return f'<div class="alert" style="{style}">', True
-        registry = TagRegistry()
-        registry.register('alert', handle_alert)
-        r = ProcessingPipeline(registry=registry).run(
-            'alert::[background:yellow; padding:10px;] Warning message ::\n')
+        r = lhtml.run('alert::[background:yellow; padding:10px;] Warning message ::\n',
+                      tags={'alert': handle_alert})
         assert r == '<div class="alert" style="background:yellow; padding:10px;"> Warning message </div>\n'
-
-
-class TestBackwardCompatibleApi:
-    def test_tag_stack_error_old_signature(self):
-        assert 'Position 12' in str(lhtml.LHTMLTagStackError(12))
-        assert 'Position 3' in str(lhtml.LHTMLTagStackError(source_pos=3))
 
 
 # ---------------------------------------------------------------------------
@@ -1295,7 +1273,7 @@ class TestMacros:
 
     def test_global_registry_unchanged(self):
         _run_macros('gap::\n')
-        assert not lhtml.tag_registry.has('gap')
+        assert 'gap' not in lhtml.TAGS
 
     def test_file_relative_to_current_directory(self, tmp_path):
         (tmp_path / 'design.yaml').write_text('macros:\n  note: {class: note}\n', encoding='utf-8')

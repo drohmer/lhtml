@@ -36,8 +36,20 @@ page depends on.
 - From the public API: `analyse_tag`, `read_yaml`, `process_yaml`, the
   `process_*` functions, `extract_bracket_elements`, `wrap_auto`,
   `insert_element_from_index` / `remove_element_to_index`
-  (`insert_in_text.py`), and the dead constants of `patterns.py`. The API is
-  `run`, the macro functions, the registries and the errors.
+  (`insert_in_text.py`), and the dead constants of `patterns.py`.
+- The dependency on `lark`: the tag element is parsed by one hand-written
+  scanner (`tag_parser.extract_bracket_elements`, which also gives the span
+  of each bracket group), checked identical on 17099 tags of real projects.
+  `element_extract.py` and `tag_element.lark` go.
+- `ProcessingPipeline`, `TagRegistry`, `LexerRegistry`, `tag_registry`,
+  `lexer_registry` and `register_macros`: the built-in tags are a dict,
+  `lhtml.TAGS`; custom ones are given to the run, `lhtml.run(text, meta,
+  tags={...})`; the lexers are a dict, `lhtml.LEXERS`;
+  `registry_with_macros` returns a dict.
+- `LHTMLTagStackError`, the positions of `LHTMLError` (`source_pos`,
+  `source_line`) and `pos_to_line`: the messages quote the source instead.
+
+The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
 
 ### Added
 - `media`, a key of the meta of `lhtml.run()`: a callable,

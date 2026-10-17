@@ -13,13 +13,12 @@ import re
 import warnings
 from dataclasses import dataclass, field
 
-from .element_extract import extract_bracket_elements
+from .tag_parser import extract_bracket_elements
 from .export_html import (
-    export_html_element_class_and_id, export_html_generic, check_is_closing_tag,
+    export_html_element_class_and_id, export_html_generic,
 )
-from .listing import process_listing  # noqa: F401 — re-exported
 from .code import export_html_code
-from .errors import LHTMLTagStackError, LHTMLParseError, LHTMLWarning
+from .errors import LHTMLParseError, LHTMLWarning
 from .patterns import (
     PROTECTED, PROTECTED_BLOCKS,
     HEADING, BOLD, ITALIC,
@@ -33,13 +32,17 @@ from .patterns import (
 
 @dataclass
 class ProtectionStores:
-    """Content replaced by placeholders during processing.
+    """Content replaced by placeholders during processing, by kind:
 
-    C: code blocks (header, body)
+    C: code blocks, kept as (header, body) and highlighted at the end
     R: raw zones: HTML tags, comments, <script>/<style>, math
     I: inline code (content with < and > escaped)
     U: URL of link::/img::/video::/videoplay:: tags
     A: LHTML styles, classes/IDs and HTML attributes
+
+    The kinds are kept apart on purpose: they are the opaque fragments of the
+    document tree of a later version (code with its language, raw HTML,
+    math, inline code, a URL or an attribute value), not just text to hide.
     """
     C: list = field(default_factory=list)
     R: list = field(default_factory=list)
@@ -142,28 +145,12 @@ def process_protect_attributes(text, stores):
         if tag in ('include', 'code') or not _is_tag_boundary(
                 text, m.start() - len(tag), tag):
             continue
-        end = element['index_end']
-        pos = m.end()
-        while pos < end:
-            opening = text[pos]
-            if opening not in '([{':
-                pos += 1
+        for kind, start, end in element['groups']:
+            if tag == 'link' and kind == '[]':      # the label of a link is text
                 continue
-            closing = {'(': ')', '[': ']', '{': '}'}[opening]
-            start = pos
-            depth = 1
-            pos += 1
-            while pos < end and depth:
-                if text[pos] == opening:
-                    depth += 1
-                elif text[pos] == closing:
-                    depth -= 1
-                pos += 1
-            if depth or (tag == 'link' and opening == '['):
-                continue
-            parts.append(text[prev:start + 1])
-            parts.append(stores.add('A', text[start + 1:pos - 1]))
-            prev = pos - 1
+            parts.append(text[prev:start])
+            parts.append(stores.add('A', text[start:end]))
+            prev = end
     parts.append(text[prev:])
     return ''.join(parts)
 
@@ -208,7 +195,7 @@ def _refuse_include(text):
 
 
 def process_prepare(text, stores):
-    """Replace verbatim/code blocks and protected zones (HTML, inline code,
+    """Replace code blocks and protected zones (HTML, inline code,
     URLs, math, attributes) by placeholders. Raises LHTMLParseError on an
     include:: directive (removed in 3.0)."""
     text = process_protect(text, stores, blocks=True)
@@ -236,23 +223,21 @@ def process_italic(text):
 # Headings
 # ---------------------------------------------------------------------------
 
-def process_title(text, stores=None):
+def process_title(text, stores):
     """Convert = Title or =(.class) Title to <h1>Title</h1>, etc.
 
-    With stores, the (.class #id) group protected by process_protect_attributes
-    is resolved, and the generated attributes stay protected from inline
+    The (.class #id) group protected by process_protect_attributes is
+    resolved, and the generated attributes stay protected from inline
     formatting until process_unprotect.
     """
     def _heading(m):
         level = str(len(m.group(1)))
         class_id = m.group(2) or ''
-        if stores is not None:
-            class_id = stores.restore(class_id, 'A')
-        class_id = class_id.strip()
+        class_id = stores.restore(class_id, 'A').strip()
         title = m.group(3)
         if class_id:
             attrs = export_html_element_class_and_id(class_id)
-            if stores is not None and attrs:
+            if attrs:
                 attrs = stores.add('A', attrs)
             return f'<h{level}{attrs}>{title}</h{level}>\n'
         return f'<h{level}>{title}</h{level}>\n'
@@ -265,25 +250,28 @@ def process_title(text, stores=None):
 
 def _warn_unmatched_closing(element):
     """Warn about a closing :: without opening tag; the source is kept."""
-    warnings.warn(str(LHTMLTagStackError(element.get('context', ''))),
+    warnings.warn(f"Closing tag :: has no matching opening tag (near {element.get('context', '')!r})",
                   LHTMLWarning, stacklevel=4)
     return '', False
 
 
-def _dispatch_tag(element, tag_to_close, context, registry=None):
+def check_is_closing_tag(element):
+    """A bare :: (empty tag, span of exactly 2) is a closing tag."""
+    return element['tag'] == '' and element['index_end'] - element['index_start'] == 2
+
+
+def _dispatch_tag(element, tag_to_close, context, tags):
     """Dispatch a parsed tag element to the appropriate handler.
 
-    Named tags go to the plugin registry if provided, then to the global
-    registry (built-in tags). Unnamed tags (::) are closing tags, spacers
-    or anonymous divs.
+    Named tags go to their handler in `tags`. Unnamed tags (::) are closing
+    tags, spacers or anonymous divs.
     """
     tag = element['tag']
     if element['[]'] == '-' and tag != 'link':     # link::url[-] is the text '-'
         _refuse_explicit_closing(element)
 
     if tag != '':
-        from .pipeline import tag_registry
-        handler = (registry.get(tag) if registry is not None else None) or tag_registry.get(tag)
+        handler = tags.get(tag)
         if handler is not None:
             return handler(element, tag_to_close, context)
         # Unrecognized tag — pass through
@@ -363,11 +351,12 @@ def _adjust_bare_tag(text, m, element):
     return True
 
 
-def process_tag(text, run_context=None, registry=None, resolve=None):
+def process_tag(text, run_context, tags, resolve=None):
     """Process all :: tag elements in text.
 
     Args:
         run_context: the ProcessingContext of the run, passed to the handlers.
+        tags: the handlers of the named tags {name: handler}.
         resolve: function applied to the parsed fields before dispatch
             (used to restore protected URLs).
     """
@@ -406,7 +395,7 @@ def process_tag(text, run_context=None, registry=None, resolve=None):
                 element[key] = resolve(element[key])
 
         depth = len(tag_to_close)
-        html_out, is_real_tag = _dispatch_tag(element, tag_to_close, run_context, registry)
+        html_out, is_real_tag = _dispatch_tag(element, tag_to_close, run_context, tags)
         del open_contexts[len(tag_to_close):]
         open_contexts.extend([element['context']] * (len(tag_to_close) - depth))
 
@@ -419,7 +408,7 @@ def process_tag(text, run_context=None, registry=None, resolve=None):
         prev = element['index_end']
 
     for tag, context in zip(tag_to_close, open_contexts):
-        warnings.warn(str(LHTMLTagStackError(context, unclosed=tag)), LHTMLWarning, stacklevel=2)
+        warnings.warn(f'Tag <{tag}> is never closed (near {context!r})', LHTMLWarning, stacklevel=2)
 
     parts.append(text[prev:])
     return ''.join(parts)
@@ -430,8 +419,8 @@ def process_tag(text, run_context=None, registry=None, resolve=None):
 # ---------------------------------------------------------------------------
 
 def _is_block_placeholder(kind, idx, stores):
-    """True if a protected zone is a block: code/verbatim block, HTML
-    comment, <script>/<style>, display math or block-level HTML tag."""
+    """True if a protected zone is a block: code block, HTML comment,
+    <script>/<style>, display math or block-level HTML tag."""
     if kind == 'C':
         return True
     if kind != 'R':
@@ -474,7 +463,7 @@ def _preformatted_depth_change(line, stores):
     return sum(-1 if tag.group(1) else 1 for tag in tags if tag is not None)
 
 
-def process_line_breaks(text, stores=None):
+def process_line_breaks(text, stores):
     """Make the line breaks of the source visible with <br>.
 
     Lines that start or end with a block element (heading, list, div,
@@ -485,8 +474,6 @@ def process_line_breaks(text, stores=None):
     affected since it is still hidden in placeholders, nor is the content
     of <pre> and <textarea> elements, whose line breaks are already visible.
     """
-    if stores is None:
-        stores = ProtectionStores()
     lines = text.split('\n')
     structure = []
     depth = 0

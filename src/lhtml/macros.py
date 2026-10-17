@@ -38,8 +38,7 @@ import re
 import warnings
 
 from .errors import LHTMLMacroError, LHTMLWarning
-from .export_html import _attr, _build_attrs, export_html_generic
-from .pipeline import TagRegistry, tag_registry
+from .export_html import TAGS, _attr, _build_attrs, export_html_generic
 
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
@@ -100,7 +99,7 @@ def _check(name, spec):
 
 
 def make_handler(name, spec):
-    """Tag handler (see TagRegistry) for one macro definition: the element
+    """Tag handler (see export_html.TAGS) for one macro definition: the element
     of its tag, with the defaults of the macro (classes, attributes) added to
     those of the source."""
     spec = _check(name, spec)
@@ -207,19 +206,10 @@ def _load_macros(source):
     return dict(source)
 
 
-def register_macros(macros, registry: TagRegistry | None = None):
-    """Register macro definitions (see load_macros) in a tag registry
-    (the global one by default). Returns the registry."""
-    registry = registry if registry is not None else tag_registry
+def registry_with_macros(macros, base=None):
+    """The tag handlers of `base` (the built-in TAGS by default) plus those of
+    the macros (see load_macros): a new dict, `base` is not changed."""
+    handlers = dict(TAGS if base is None else base)
     for name, spec in load_macros(macros).items():
-        registry.register(name, make_handler(name, spec))
-    return registry
-
-
-def registry_with_macros(macros, base: TagRegistry | None = None):
-    """A new registry: the tags of `base` (global registry by default) plus the macros."""
-    base = base if base is not None else tag_registry
-    registry = TagRegistry()
-    for name in base.registered_tags():
-        registry.register(name, base.get(name))
-    return register_macros(macros, registry)
+        handlers[name] = make_handler(name, spec)
+    return handlers
