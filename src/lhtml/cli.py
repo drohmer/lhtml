@@ -107,19 +107,20 @@ def check(jobs):
         if blocking:
             problems.append(Diagnostic(f_in, 'error', f'cannot write {out}: {blocking} is a file'))
             continue
-        # one file for both on a file system that ignores case (macOS, Windows)
-        key = os.path.realpath(out).casefold()
-        if key in targets:
-            problems.append(Diagnostic(f_in, 'error', f'{targets[key]} and {f_in} would both be written '
+        # one file for both: names that differ by case only (macOS, Windows),
+        # or two existing names of one file (a hard link)
+        keys = [os.path.realpath(out).casefold()] + ([_identity(out)] if os.path.exists(out) else [])
+        other = next((targets[key] for key in keys if key in targets), None)
+        if other is not None:
+            problems.append(Diagnostic(f_in, 'error', f'{other} and {f_in} would both be written '
                                                       f'to {out}'))
             continue
-        targets[key] = f_in
+        targets.update((key, f_in) for key in keys)
     return problems
 
 
-def convert(f_in, macros, line_breaks, wrapped):
-    """(the source, its HTML, its warnings in the order of the file)."""
-    source = read_source(f_in)
+def convert(source, macros, line_breaks, wrapped):
+    """(its HTML, its warnings in the order of the file)."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         html = run(_ensure_trailing_newline(source), macros=macros, line_breaks=line_breaks)
@@ -127,7 +128,7 @@ def convert(f_in, macros, line_breaks, wrapped):
         html = wrap(html)
     found = sorted((w.message for w in caught),
                    key=lambda m: (getattr(m, 'line', None) or 0, getattr(m, 'column', None) or 0))
-    return source, _ensure_trailing_newline(html), found
+    return _ensure_trailing_newline(html), found
 
 
 def _summary(reporter, converted, failed):
@@ -185,10 +186,12 @@ def main(argv=None):
     converted = failed = 0
     for f_in, out in jobs:
         shown = shown_path(f_in)
+        source = None
         try:
-            source, html, found = convert(f_in, macros, args.line_breaks, args.wrap)
+            source = read_source(f_in)
+            html, found = convert(source, macros, args.line_breaks, args.wrap)
         except (LHTMLError, OSError, UnicodeError) as e:
-            reporter.report(Diagnostic.of(shown, 'error', e))
+            reporter.report(Diagnostic.of(shown, 'error', e), source)     # its line, when it has one
             failed += 1
             continue
         for warning in found:
