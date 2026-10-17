@@ -58,7 +58,10 @@ class Diagnostic:
 def shown_path(path):
     """A path relative to the current directory when it is inside it."""
     if os.path.isabs(path):
-        relative = os.path.relpath(path)
+        try:
+            relative = os.path.relpath(path)
+        except ValueError:              # another drive (Windows): no relative path
+            return path
         if not relative.startswith(os.pardir):
             return relative
     return path
@@ -164,10 +167,16 @@ class Reporter:
             return text.encode('ascii', 'backslashreplace').decode('ascii')
 
     def write(self, text):
+        """Writes a line, what the stream cannot encode as escapes (\\xe9):
+        a path or a message with an accent is shown on an ASCII stream."""
         if self.stream is None:
             return
+        text = self._show(text) + '\n'
         try:
-            self.stream.write(text + '\n')
+            try:
+                self.stream.write(text)
+            except UnicodeEncodeError:  # an encoding the stream did not declare
+                self.stream.write(text.encode('ascii', 'backslashreplace').decode('ascii'))
             self.stream.flush()
         except (OSError, ValueError):   # a closed stderr: the run goes on
             self.stream = None
