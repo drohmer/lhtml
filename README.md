@@ -34,6 +34,39 @@ pip install -e ".[dev]"
 Dependencies (`pygments`, `pyyaml`) are installed automatically.
 
 
+## In two minutes
+
+```
+= Title                          <h1>Title</h1>
+== Section                       <h2>Section</h2>
+* item                           a list (** for a nested one)
+**bold** and __italic__          <strong>bold</strong> and <em>italic</em>
+`code`                           inline code, never read as LHTML
+link::https://example.org[text]  <a href="https://example.org">text</a>
+img::photo.jpg[width:300px;]     <img style="width:300px;" ...>
+div::(.note)[color:gray;]        a block with a class and a style ...
+Some text                        ... that holds what follows ...
+::                               ... until its ::
+code::[python]                   a highlighted code block, until code::[-]
+x = 1
+code::[-]
+<b>raw HTML</b>                  kept as it is; so are \(math\) and {{ jinja }}
+```
+
+```bash
+lhtml page.l.html                # the HTML on stdout
+lhtml page.l.html -o page.html   # to a file
+```
+
+```python
+import lhtml
+html = lhtml.run(text)
+```
+
+The rest of this page details each construct; [docs/advanced.md](docs/advanced.md)
+is for callers that extend LHTML in Python.
+
+
 ## Quick Start
 
 ### Command Line
@@ -50,7 +83,10 @@ python -m lhtml input.l.html          # Alternative invocation
 lhtml --version                       # Show the version (also lhtml.__version__)
 ```
 
-Without `-o`, `page.l.html` is written to `page.html` next to its source.
+Without `-o`, one input is written to stdout, and several inputs are each
+written next to their source (`page.l.html` to `page.html`). With `-o`, one
+input is written to that file, several into that directory; two inputs that
+would be written to the same file are refused before anything is written.
 
 - Files are read and written as UTF-8 (a BOM is accepted).
 - Errors and warnings are reported on stderr with the file name. The remaining files are still processed, and the exit code is non-zero if any file failed.
@@ -93,14 +129,12 @@ html = lhtml.run(text, {
     'title': 'My Page',
     'css': ['style.css'],
     'js': ['script.js'],
+    'macros': {'box': {'class': 'box'}},      # custom :: tags, see Macros below
 })
-
-# Macros (custom :: tags, see Macros below)
-html = lhtml.run('box:: x ::\n', {'macros': {'box': {'class': 'box'}}})
-macros = lhtml.load_macros('macros.yaml')            # definitions from files or dicts
-tags = lhtml.registry_with_macros(macros)            # their Tags, validated (LHTMLMacroError)
-info = lhtml.describe_macro('box', macros['box'])    # what a definition renders, for docs
 ```
+
+That is the whole API of a page. Custom tags written in Python, the macro
+functions and the document tree are in [docs/advanced.md](docs/advanced.md).
 
 
 ## Syntax Reference
@@ -533,89 +567,6 @@ html = template.render(page={'title': 'Blog'},
 Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in tag groups (`div::[color:{{ color }};]`).
 
 
-## Plugin System
-
-### Custom Tags
-
-Give new `::` tags to `lhtml.run`, added to the built-in ones (`lhtml.TAGS`,
-a read-only mapping name -> `lhtml.Tag`) and to the macros; a tag given
-wins over both, `div` included (the anonymous `::(.c) ... ::` is a div, so
-it follows):
-
-```python
-import lhtml
-
-def render_alert(element, children, context):
-    style = element.get('[]', '')
-    return f'<div class="alert" style="{style}">{element["text"]}{children}</div>'
-
-html = lhtml.run(text, tags={'alert': lhtml.Tag(render_alert, container=True)})
-```
-
-Then use in LHTML:
-```
-alert::[background:yellow; padding:10px;] Warning message ::
-```
-
-A tag declares whether it holds what follows until its `::` (`container`: a
-bool, or a function of the element), so that the parser knows it before
-anything is rendered; written `name::text::`, it holds nothing either way
-(`element['text']` keeps the final `::`). `render` receives the parsed
-element (`'[]'`, `'()'`, `'{}'`, `'text'`: the word glued after the
-brackets, `'line'`, `'column'`; `element['closed']` is False when no `::`
-closed it), the HTML of what it holds (`''` for a tag that holds nothing)
-and the context of the run (`context.meta`, `context.media`), and returns
-its HTML, closing tag included, as a `str`. An exception raised by `render`
-or `container` becomes an `LHTMLError` naming the tag and its place (the
-exception as its `__cause__`).
-
-A tag name starts with a letter, then letters, digits, `_` or `-`; `nl`,
-`code` and `include` are LHTML syntax, not tags. A name that is not a tag
-stays as text (`std::vector`).
-
-### The document tree
-
-`lhtml.run` is `lhtml.parse` then `lhtml.render`:
-
-```python
-document = lhtml.parse(text, macros=...)   # headings, lists, bold, italic, :: elements,
-for node in document.walk():               # and code, inline code, math, raw HTML as leaves
-    print(node.kind, node.line, node.column, node.span)
-html = lhtml.render(document)
-```
-
-The nodes are `Document`, `Heading` (`level`, `attributes`), `List`,
-`Item` (a deeper list is a `List` inside the `Item` before it), `Strong`,
-`Emphasis`, `Element` (`name`, '' for an anonymous `::`; `groups`; `value`;
-`closed`), `Text` (`value`) and the leaves `Code` (`language`, `body`),
-`InlineCode`, `Math` and `Raw` (`text`; `raw_kind`: html, comment, script,
-style, jinja). The groups and the value of an element, and the attributes of a heading, are as written (Jinja and mathematics included); the label of a `link::` (`groups['[]']`) holds its bold and italic as HTML (`<strong>`), the rest as written.
-
-Every node has its place: `span`, the offsets of its source in the text
-given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,
-`column` of its start (1-based). The children of a node lie within its span
-and in order. `document.problems` holds the warnings, in source order.
-
-The nodes nest, nothing crosses (see the `::` elements above). An element's
-`closed` says how it ends: `'tag'` (its `::`), `'inline'` (`div::text::`),
-`'void'` (it holds nothing), `'container'` (at the end of the heading,
-item, bold or italic it is opened in) or `'never'` (no closing tag). The
-tree is walked and rendered without recursion: a document may nest deeper
-than Python's recursion limit.
-
-### Custom Code Lexers
-
-`lhtml.LEXERS` maps a language name to a Pygments lexer class, looked up
-before the lexers of Pygments:
-
-```python
-import lhtml
-from pygments.lexers import PythonLexer
-
-lhtml.LEXERS['mypython'] = PythonLexer
-```
-
-
 ## Configuration Reference
 
 All keys for the `meta` dict passed to `lhtml.run()`:
@@ -633,6 +584,10 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 }
 ```
 
+A key spelled as one of these but otherwise (`line_breaks`, `Wrap-Auto`) is
+not read: a warning names the option. Other keys are the caller's: a tag
+written in Python may read them in `context.meta`.
+
 
 ## Design Principles
 
@@ -642,30 +597,6 @@ All keys for the `meta` dict passed to `lhtml.run()`:
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.
 - **Minimal**: A few symbols (`::`, `=`, `*`, `**`, `__`, `` ` ``) cover most needs. No complex configuration required.
 - **Composable**: LHTML works seamlessly with Jinja2 templates, making it suitable for static site generators.
-
-
-## Project Structure
-
-```
-src/lhtml/
-  __init__.py          # Public API: run, parse, render, Tag, TAGS, LEXERS, macro functions, errors
-  __main__.py          # python -m lhtml
-  cli.py               # Command-line interface
-  pipeline.py          # run(): parse, then render
-  tree.py              # The document tree: parse() and render()
-  macros.py            # Macros: custom :: tags declared in YAML
-  process.py           # The protected zones, the tag decisions, line breaks
-  patterns.py          # Centralized regex patterns and utilities
-  tag_parser.py        # extract_bracket_elements(): the parser of a :: tag element
-  export_html.py       # Tag, TAGS and the HTML of the built-in tags
-  code.py              # Code syntax highlighting (Pygments)
-  wrap_html.py         # HTML document wrapping
-  errors.py            # Structured error types
-test/                  # pytest suite and .l.html / -out.html reference pairs
-examples/              # Example sources (see examples/README.md)
-```
-
-Run the tests with `pytest` (after `pip install -e ".[dev]"`).
 
 
 ## License

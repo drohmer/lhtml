@@ -87,6 +87,14 @@ functions and the errors.
   end of a heading, an item or a bold, are left as text, with a warning.
   The HTML was malformed (`<li><span>...</li>...</span>`,
   `<strong><em>...</strong>...</em>`).
+- An option of `run` spelled otherwise (`line_breaks` for `line-breaks`) is
+  named in a warning instead of being ignored in silence.
+- The README starts with a two-minute sheet and one path, `lhtml.run(text)`;
+  the macro functions, custom tags in Python, the document tree and the
+  layout of the code move to `docs/advanced.md`. The document tree
+  (`parse`, `render`) is experimental in 3.0: to read, not to edit (render
+  reads the internal copies of the nodes). The CLI section says what one
+  input and several inputs do without `-o`.
 - Rules that hold for every tag (from an external review; LHTML 2 had the
   same surprises): the URL of a macro with `url:` is kept as written, as the
   one of `img::` (`demo::my__demo__.html`; `lhtml.Tag(..., url=True)` for a

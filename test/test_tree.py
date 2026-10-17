@@ -361,3 +361,8 @@ class TestReviewSurprises:
         assert lhtml.run('img::photo.jpg') == '<img src="photo.jpg" alt="photo.jpg">'
         assert lhtml.run('link::u[T]{href="v"}') == '<a href="v">T</a>'
         assert lhtml.run('img::a.png{data-alt="x"}') == '<img data-alt="x" src="a.png" alt="a.png">'
+
+    def test_an_option_spelled_otherwise_is_named(self):
+        html, said = quiet(lhtml.run, 'a\nb', {'line_breaks': True, 'my-own': 1})
+        assert html == 'a\nb' and said == ["option 'line_breaks' is not read: did you mean 'line-breaks'?"]
+        assert quiet(lhtml.run, 'a\nb', {'line-breaks': True, 'current_directory': '.'})[1] == []

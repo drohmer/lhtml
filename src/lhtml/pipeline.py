@@ -7,10 +7,31 @@ and the :: elements are its nodes.
 """
 
 import os
+import warnings
 
 from collections.abc import Mapping
 
+from .errors import LHTMLWarning
 from .tree import parse, render
+
+
+# The options run reads; a tag of the caller may read others in context.meta
+OPTIONS = ('wrap-auto', 'line-breaks', 'title', 'css', 'js', 'current_directory', 'media', 'macros')
+
+
+def _spelling(key):
+    return str(key).lower().replace('_', '-')
+
+
+def _check_keys(meta):
+    """A key written as an option is, but spelled otherwise (line_breaks,
+    Wrap-Auto), is not read: a warning names the option. Other keys are the
+    caller's (its tags read them)."""
+    known = {_spelling(option): option for option in OPTIONS}
+    for key in meta:
+        option = known.get(_spelling(key))
+        if option is not None and key != option:
+            warnings.warn(LHTMLWarning(f'option {key!r} is not read: did you mean {option!r}?'), stacklevel=3)
 
 
 def run(text, meta=None, tags=None):
@@ -29,6 +50,7 @@ def run(text, meta=None, tags=None):
     if meta is not None and not isinstance(meta, Mapping):
         raise TypeError(f'meta: expected a mapping of options, got {type(meta).__name__}')
     meta = dict(meta or {})
+    _check_keys(meta)
     macros = meta.get('macros')
     if macros:
         directory = str(meta.get('current_directory') or '')
