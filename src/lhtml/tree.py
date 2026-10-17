@@ -526,11 +526,17 @@ class _Parser:
         if check_is_closing_tag(element):
             return self._close_tag(element, container)
         if element['text'] == 'nl':
-            return 'leaf', Element(groups={k: element[k] for k in ('[]', '()', '{}')}, value='nl',
+            return 'leaf', Element(groups=self._written(element), value='nl',
                                    closed='void', element=element, tag=SPACER, opened_in=container)
         if element['[]'] or element['()'] or element['{}'] or element['text']:
             return self._open(element, self.tags['div'], '', container)    # an anonymous div
         return None
+
+    def _written(self, element):
+        """The groups of an element as written (the element keeps the
+        placeholders of the zones they hold - Jinja, mathematics - for its
+        tag, as the text passes gave them)."""
+        return {k: self.stores.original(element[k]) for k in ('[]', '()', '{}')}
 
     def _open(self, element, tag, name, container):
         try:
@@ -540,8 +546,8 @@ class _Parser:
         except Exception as e:
             raise _tag_error(f'{name}::', 'container', e, element) from e
         closed = 'tag' if holds else 'inline' if element['text'].endswith('::') else 'void'
-        node = Element(name=name, groups={k: element[k] for k in ('[]', '()', '{}')},
-                       value=element['text'], closed=closed, element=element, tag=tag,
+        node = Element(name=name, groups=self._written(element),
+                       value=self.stores.original(element['text']), closed=closed, element=element, tag=tag,
                        opened_in=container)
         if holds:
             self.open.append(node)

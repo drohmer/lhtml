@@ -291,3 +291,13 @@ class TestMarksOfTheCaller:
 
     def test_a_mark_of_the_tree_in_the_input_is_replaced(self):
         assert lhtml.run('a﷐b ﷑') == 'a�b �'
+
+
+class TestWritten:
+
+    def test_the_groups_and_value_of_an_element_are_as_written(self):
+        document = lhtml.parse('div::[top:{{ top }}px](.c){title="\\(x\\)"} a ::\nimg::{{ base }}/a.png\n')
+        div, img = [n for n in document.walk() if n.kind == 'Element']
+        assert div.groups == {'[]': 'top:{{ top }}px', '()': '.c', '{}': 'title="\\(x\\)"'}
+        assert img.value == '{{ base }}/a.png'
+        assert lhtml.render(document).startswith('<div class="c" style="top:{{ top }}px" title="\\(x\\)">')
