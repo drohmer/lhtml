@@ -67,11 +67,12 @@ URL_TAGS         = ('link', 'img', 'video', 'videoplay')
 URL_TOKEN        = (r'(?:' + _JINJA_EXPRESSION +
                     r'|[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+')
 def _protected(url_tags):
+    names = '|'.join(map(re.escape, url_tags)) or '(?!)'        # none: no URL protected
     return (r'(?P<jinja>' + JINJA + r')'
             r'|(?P<comment><!--.*?-->)'
             r'|(?P<raw><(?i:(?P<rawtag>script|style))\b[^>]*>.*?</(?i:(?P=rawtag))\s*>)'
             r'|`(?P<icode>[^`\n]*)`'
-            r'|(?P<urltag>(?<![\w-])(?:' + '|'.join(map(re.escape, url_tags)) + r')::)(?P<url>' + URL_TOKEN + r')'
+            r'|(?P<urltag>(?<![\w-])(?:' + names + r')::)(?P<url>' + URL_TOKEN + r')'
             r'|(?P<math>' + MATH.pattern + r')'
             r'|(?P<tag>' + HTML_TAG.pattern + r')')
 

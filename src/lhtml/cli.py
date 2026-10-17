@@ -116,11 +116,17 @@ def main():
                      f'(got {args.output!r}; add a trailing / to create it)')
 
     if not single_to_stdout:            # every output before any is written
-        written, inputs = {}, {os.path.realpath(f) for f in args.input}
+        # compared without case: two names differing by case are one file on
+        # macOS and Windows; an input missing, or given twice, is not a collision
+        written, inputs, seen = {}, {os.path.realpath(f) for f in args.input}, set()
         for f_in in args.input:
+            if not os.path.isfile(f_in) or os.path.realpath(f_in) in seen:
+                continue
+            seen.add(os.path.realpath(f_in))
             out_path = os.path.realpath(_output_path_for(f_in, args.output))
             if out_path in inputs:      # an input it would overwrite: refused for that file below
                 continue
+            out_path = out_path.casefold()
             if out_path in written:
                 print(f'lhtml: error: {written[out_path]} and {f_in} would both be written to '
                       f'{_output_path_for(f_in, args.output)}: nothing written', file=sys.stderr)

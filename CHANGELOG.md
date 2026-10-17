@@ -87,8 +87,8 @@ functions and the errors.
   end of a heading, an item or a bold, are left as text, with a warning.
   The HTML was malformed (`<li><span>...</li>...</span>`,
   `<strong><em>...</strong>...</em>`).
-- An option of `run` spelled otherwise (`line_breaks` for `line-breaks`) is
-  named in a warning instead of being ignored in silence.
+- An option of `run` or `render` spelled otherwise (`line_breaks` for
+  `line-breaks`) is named in a warning instead of being ignored in silence.
 - The README starts with a two-minute sheet and one path, `lhtml.run(text)`;
   the macro functions, custom tags in Python, the document tree and the
   layout of the code move to `docs/advanced.md`. The document tree
@@ -98,12 +98,14 @@ functions and the errors.
 - Rules that hold for every tag (from an external review; LHTML 2 had the
   same surprises): the URL of a macro with `url:` is kept as written, as the
   one of `img::` (`demo::my__demo__.html`; `lhtml.Tag(..., url=True)` for a
-  tag of the caller); in an attribute group `{...}`, a quoted value closed
-  on its line holds its brackets (`{title="a } b"}`); an attribute written
-  in `{...}` replaces the one the tag gives (`img::a.png{alt="A"}`: one
-  `alt`; `src`, `href` too); the CLI refuses, before writing anything, two
-  inputs that would be written to the same file (`a/page.l.html` and
-  `b/page.l.html` with `-o out/`).
+  tag of the caller); in an attribute group `{...}`, a value quoted after
+  its `=` and closed on its line holds its brackets (`{title="a } b"}`; an
+  apostrophe elsewhere is text); an attribute written in `{...}` replaces
+  the one the tag or the macro gives (`img::a.png{alt="A"}`: one `alt`;
+  `src`, `href` too; by its name, in any case, not by a word of a value);
+  the CLI refuses, before writing anything, two inputs that would be
+  written to the same file (`a/page.l.html` and `b/page.l.html` with `-o
+  out/`; names compared without case, as macOS and Windows do).
 - A nested list is inside the item before it, as HTML expects
   (`<li>a<ul>...</ul></li>`); LHTML 2 put it in an item of its own
   (`<li>a</li><li><ul>...</ul></li>`), which a page without a theme showed

@@ -150,7 +150,8 @@ def process_protect(text, stores, blocks=False, url_tags=None):
         if m.group('url') is not None:
             return m.group('urltag') + stores.add('U', m.group('url'))
         return stores.add('R', m.group(0))
-    pattern = (protected_blocks(tuple(url_tags)) if url_tags else PROTECTED_BLOCKS) if blocks else PROTECTED
+    pattern = (protected_blocks(tuple(url_tags)) if url_tags is not None else PROTECTED_BLOCKS) \
+        if blocks else PROTECTED
     return regex_transform(text, pattern, _protect)
 
 

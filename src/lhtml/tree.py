@@ -856,6 +856,8 @@ def render(document, meta=None, media=None):
     wrap-auto, title, css, js) and the media resolver (`media`, or
     meta['media'])."""
     meta = dict(meta or {})
+    from .pipeline import _check_keys
+    _check_keys(meta, stacklevel=4)
     media = media if media is not None else meta.get('media')
     if media is not None and not callable(media):
         raise TypeError(f'"media" must be callable, got {type(media).__name__}')

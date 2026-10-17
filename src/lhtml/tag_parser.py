@@ -25,25 +25,44 @@ _MAX_TAG_NAME = 64
 def _matches(text):
     """The closing bracket of each opening one, by position, each kind of
     bracket nesting its own kind only (an unclosed one has none): computed
-    once per text, so that unclosed brackets do not each scan to its end.
-    In an attribute group {...}, a quoted value closed on its line is opaque:
-    {title="a } b"} holds the brace."""
+    once per text, so that unclosed brackets do not each scan to its end."""
     matches, stacks = {}, {ch: [] for ch in PAIRS}
     closing = {close: ch for ch, close in PAIRS.items()}
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch in '"\'' and stacks['{']:
-            end = text.find(ch, i + 1)
-            if end != -1 and '\n' not in text[i:end]:
-                i = end + 1
-                continue
+    for i, ch in enumerate(text):
         if ch in PAIRS:
             stacks[ch].append(i)
         elif ch in closing and stacks[closing[ch]]:
             matches[stacks[closing[ch]].pop()] = i
-        i += 1
     return matches
+
+
+_QUOTED_VALUE = re.compile(r'=\s*(["\'])')
+
+
+def _attributes_end(text, start, end):
+    """The closing brace of the attribute group {...} opened at `start`,
+    whose bracket match is `end`: a value quoted after its `=` and closed on
+    its line holds its braces ({title="a } b"}), as in HTML; an apostrophe
+    elsewhere is text."""
+    if '"' not in text[start:end] and "'" not in text[start:end]:
+        return end
+    depth, i = 1, start + 1
+    while i < len(text):
+        m = _QUOTED_VALUE.match(text, i)
+        if m:
+            closing = text.find(m.group(1), m.end())
+            if closing != -1 and '\n' not in text[m.end():closing]:
+                i = closing + 1
+                continue
+        ch = text[i]
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if not depth:
+                return i
+        i += 1
+    return None
 
 
 def extract_bracket_elements(text, index_start):
@@ -87,6 +106,8 @@ def extract_bracket_elements(text, index_start):
         if ch in PAIRS:
             close = PAIRS[ch]
             j = _matches(text).get(i)
+            if ch == '{' and j is not None:
+                j = _attributes_end(text, i, j)
             if j is None:
                 raise LHTMLParseError(f'Unclosed bracket {ch!r} (expected {close!r})')
             j += 1

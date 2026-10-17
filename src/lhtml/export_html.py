@@ -75,10 +75,19 @@ def export_html_element_inline(text):
 # Tag element renderers
 # ---------------------------------------------------------------------------
 
+_ATTRIBUTE = re.compile(r'\s*([^\s"\'=<>/]+)(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?')
+
+
+def attribute_names(text):
+    """The names of the attributes of an attribute group (`title="a" alt`),
+    lower case: those written, not words in their values."""
+    return {m.group(1).lower() for m in _ATTRIBUTE.finditer(text or '')}
+
+
 def _written(elements, name):
     """Whether the attributes {...} of an element write `name`: then they
     replace the one the tag would give (img::a.png{alt="A"}: one alt)."""
-    return re.search(rf'(?<![\w-]){name}\s*=', elements['{}'] or '') is not None
+    return name in attribute_names(elements['{}'])
 
 
 def export_html_link(elements):

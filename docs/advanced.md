@@ -48,6 +48,12 @@ its HTML, closing tag included, as a `str`. An exception raised by `render`
 or `container` becomes an `LHTMLError` naming the tag and its place (the
 exception as its `__cause__`).
 
+A tag whose text is a URL says so, `lhtml.Tag(render, url=True)`: its URL is
+kept as written (`u::a__b.html` is not read as italic), as the ones of the
+built-in `link::`, `img::`, `video::`, `videoplay::` and of a macro with
+`url:`. A tag given in place of one of them without `url=True` reads its
+text as LHTML: write `url=True` when it replaces `img`, for instance.
+
 A tag name starts with a letter, then letters, digits, `_` or `-`; `nl`,
 `code` and `include` are LHTML syntax, not tags. A name that is not a tag
 stays as text (`std::vector`).

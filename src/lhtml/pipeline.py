@@ -23,7 +23,7 @@ def _spelling(key):
     return str(key).lower().replace('_', '-')
 
 
-def _check_keys(meta):
+def _check_keys(meta, stacklevel=3):
     """A key written as an option is, but spelled otherwise (line_breaks,
     Wrap-Auto), is not read: a warning names the option. Other keys are the
     caller's (its tags read them)."""
@@ -31,7 +31,8 @@ def _check_keys(meta):
     for key in meta:
         option = known.get(_spelling(key))
         if option is not None and key != option:
-            warnings.warn(LHTMLWarning(f'option {key!r} is not read: did you mean {option!r}?'), stacklevel=3)
+            warnings.warn(LHTMLWarning(f'option {key!r} is not read: did you mean {option!r}?'),
+                          stacklevel=stacklevel)
 
 
 def run(text, meta=None, tags=None):
@@ -49,8 +50,7 @@ def run(text, meta=None, tags=None):
     """
     if meta is not None and not isinstance(meta, Mapping):
         raise TypeError(f'meta: expected a mapping of options, got {type(meta).__name__}')
-    meta = dict(meta or {})
-    _check_keys(meta)
+    meta = dict(meta or {})          # its keys are checked by render (_check_keys)
     macros = meta.get('macros')
     if macros:
         directory = str(meta.get('current_directory') or '')

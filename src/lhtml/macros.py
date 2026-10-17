@@ -37,7 +37,7 @@ import os
 import re
 
 from .errors import LHTMLMacroError
-from .export_html import TAGS, Tag, _attr, _build_attrs, element_html
+from .export_html import _ATTRIBUTE, TAGS, Tag, _attr, _build_attrs, attribute_names, element_html
 from .process import _warn
 
 
@@ -127,11 +127,15 @@ def macro_tag(name, spec):
                           element, stacklevel=5)
                 all_classes.append(f'{classes[0]}-{value}')
             text = '::' if closed else ''
-        inline = ' '.join(a for a in (attrs, element['{}']) if a)
+        written = attribute_names(element['{}'])     # replace those of the macro
+        defaults = ' '.join(m.group(0).strip() for m in _ATTRIBUTE.finditer(attrs)
+                            if m.group(1).lower() not in written)
+        inline = ' '.join(a for a in (defaults, element['{}']) if a)
         if url:
             closed = text.rstrip().endswith('::')
             value = text.rstrip()[:-2] if closed else text
-            inline = ' '.join(a for a in (f'{url}="{_attr(value.strip())}"', inline) if a)
+            if url.lower() not in written:
+                inline = ' '.join(a for a in (f'{url}="{_attr(value.strip())}"', inline) if a)
             text = '::' if closed else ''
         result = {**element,
                   '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),

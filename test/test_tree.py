@@ -366,3 +366,33 @@ class TestReviewSurprises:
         html, said = quiet(lhtml.run, 'a\nb', {'line_breaks': True, 'my-own': 1})
         assert html == 'a\nb' and said == ["option 'line_breaks' is not read: did you mean 'line-breaks'?"]
         assert quiet(lhtml.run, 'a\nb', {'line-breaks': True, 'current_directory': '.'})[1] == []
+
+    def test_an_attribute_name_in_a_value_replaces_nothing(self):
+        assert lhtml.run('link::page.html{onclick="location.href=\'x\'"}[go]') == \
+            '<a onclick="location.href=\'x\'" href="page.html">go</a>'
+        assert 'src="a.png"' in lhtml.run('img::a.png{onclick="this.src=\'b.png\'"}')
+        assert lhtml.run('img::a.png{title="alt=x"}').count('alt=') == 2       # its own and the default
+        assert lhtml.run('img::a.png{ALT="A"}').lower().count('alt=') == 1
+        assert lhtml.run('img::a.png{alt}') == '<img alt src="a.png">'
+
+    def test_a_macro_attribute_written_replaces_the_macro_one(self):
+        macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True},
+                  'im': {'tag': 'img', 'url': 'src', 'attrs': 'alt="" loading="lazy"'}}
+        assert lhtml.run('demo::a.html{src="b"}', {'macros': macros}).count('src=') == 1
+        html = lhtml.run('im::a.png{alt="A"}', {'macros': macros})
+        assert html.count('alt=') == 1 and 'alt="A"' in html and 'loading="lazy"' in html
+
+    def test_apostrophes_in_text_are_text(self):
+        assert lhtml.run("{ it's link::u[label] and it's ok") == "{ it's <a href=\"u\">label</a> and it's ok"
+        assert '<img class="w"' in lhtml.run("l'ensemble {x | x > 0 et l'image img::a.png(.w) d'un")
+        assert lhtml.run("span::{title=it's}x :: and it's") == "<span title=it's>x </span> and it's"
+
+    def test_the_url_tags_are_those_of_the_run(self):
+        plain = lhtml.Tag(lambda element, children, context: f'<i>{element["text"]}</i>')
+        assert '<em>' in lhtml.run('img::a__b__.png', tags={'img': plain})      # an img of the caller: no URL
+        assert '<em>' in lhtml.run('img::a__b__.png', tags={n: plain for n in ('img', 'link', 'video', 'videoplay')})
+        assert '<em>' not in lhtml.run('img::a__b__.png')
+
+    def test_render_names_an_option_spelled_otherwise(self):
+        _, said = quiet(lhtml.render, lhtml.parse('a\nb'), {'line_breaks': True})
+        assert said == ["option 'line_breaks' is not read: did you mean 'line-breaks'?"]

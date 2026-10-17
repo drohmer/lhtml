@@ -624,6 +624,26 @@ class TestCli:
         assert code == 1 and 'would both be written to' in err
         assert not (out / 'page.html').exists()
 
+    def test_names_differing_by_case_are_one_output(self, tmp_path, monkeypatch, capsys):
+        for d, name in (('a', 'Page.l.html'), ('b', 'page.l.html')):
+            (tmp_path / d).mkdir()
+            (tmp_path / d / name).write_text(d.upper())
+        code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/Page.l.html'),
+                                     str(tmp_path / 'b/page.l.html'), '-o', str(tmp_path / 'out') + '/')
+        assert code == 1 and 'would both be written to' in err
+
+    def test_a_missing_or_repeated_input_is_no_collision(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / 'a').mkdir()
+        (tmp_path / 'a/x.l.html').write_text('= A\n')
+        out = str(tmp_path / 'out') + '/'
+        code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'nope/x.l.html'),
+                                     str(tmp_path / 'a/x.l.html'), '-o', out)
+        assert code == 1 and 'file not found' in err and 'would both' not in err
+        assert (tmp_path / 'out/x.html').is_file()
+        code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/x.l.html'),
+                                     str(tmp_path / 'a/x.l.html'), '-o', out)
+        assert code == 0, err
+
     def test_missing_file_is_an_error(self, tmp_path, monkeypatch, capsys):
         code, out, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'nope.l.html'))
         assert code == 1
