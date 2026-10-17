@@ -10,6 +10,7 @@ a bold, a heading...), at a protected zone, or at text that follows a group that
 (`link::url[label]rest`). A protected URL (placeholder of kind U) is text.
 """
 
+import bisect
 import functools
 import re
 
@@ -21,45 +22,62 @@ _TAG_NAME_BEFORE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*\Z')
 _MAX_TAG_NAME = 64
 
 
+class _Quotes:
+    """Where the quotes, line ends and blank lines of a text are: the end of
+    a quoted string found by bisection, so that a text full of unclosed
+    quotes is still read in one pass."""
+
+    def __init__(self, text):
+        self.at = {q: [m.start() for m in re.finditer(q, text)] for q in '"\''}
+        self.lines = [m.start() for m in re.finditer('\n', text)]
+        self.blanks = [m.start() for m in re.finditer(r'\n[ \t]*\n', text)]
+
+    def closing(self, quote, start, across_lines):
+        """The quote that closes the one at `start`, before the end of its
+        line (or of its paragraph: `across_lines`); None if there is none."""
+        positions = self.at[quote]
+        k = bisect.bisect_right(positions, start)
+        if k == len(positions):
+            return None
+        limits = self.blanks if across_lines else self.lines
+        n = bisect.bisect_right(limits, start)
+        return positions[k] if n == len(limits) or positions[k] < limits[n] else None
+
+
+_VALUE_BEFORE = re.compile(r'=[ \t]*\Z')          # {title="..."}
+_CSS_STRING_BEFORE = re.compile(r'[:(,][ \t]*\Z')     # [content:"]"], [font-family:'A', 'B']
+
+
 @functools.lru_cache(maxsize=8)
 def _matches(text):
     """The closing bracket of each opening one, by position, each kind of
     bracket nesting its own kind only (an unclosed one has none): computed
-    once per text, so that unclosed brackets do not each scan to its end."""
+    once per text, so that unclosed brackets do not each scan to its end.
+
+    A quoted string holds its brackets, as in HTML and CSS: in a {...}, a
+    value quoted after its `=` and closed before the end of its paragraph
+    ({title="a } b"}); in a [...], a CSS string after `:`, `(` or `,` and
+    closed on its line ([content:"]"]). An apostrophe elsewhere is text
+    (l'eau)."""
     matches, stacks = {}, {ch: [] for ch in PAIRS}
     closing = {close: ch for ch, close in PAIRS.items()}
-    for i, ch in enumerate(text):
+    quotes = None
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in '"\'' and (stacks['{'] or stacks['[']):
+            inner = max((k for k in ('{', '[') if stacks[k]), key=lambda k: stacks[k][-1])
+            before = text[max(0, i - 64):i]
+            if (_VALUE_BEFORE if inner == '{' else _CSS_STRING_BEFORE).search(before):
+                quotes = quotes or _Quotes(text)
+                end = quotes.closing(ch, i, across_lines=inner == '{')
+                if end is not None:
+                    i = end + 1
+                    continue
         if ch in PAIRS:
             stacks[ch].append(i)
         elif ch in closing and stacks[closing[ch]]:
             matches[stacks[closing[ch]].pop()] = i
-    return matches
-
-
-_QUOTED_VALUE = re.compile(r'=\s*(["\'])')
-
-
-@functools.lru_cache(maxsize=8)
-def _attribute_matches(text):
-    """The closing brace of each opening one, as _matches, but a value
-    quoted after its `=` and closed on its line holds its braces
-    ({title="a } b"}, {title="a { b"}), as in HTML; an apostrophe elsewhere
-    is text. One pass per text: an element reads its {...} group here."""
-    matches, stack, i = {}, [], 0
-    while i < len(text):
-        ch = text[i]
-        if ch == '=' and stack:
-            m = _QUOTED_VALUE.match(text, i)
-            if m:
-                closing = text.find(m.group(1), m.end())
-                newline = text.find('\n', m.end())
-                if closing != -1 and (newline == -1 or closing < newline):
-                    i = closing + 1
-                    continue
-        if ch == '{':
-            stack.append(i)
-        elif ch == '}' and stack:
-            matches[stack.pop()] = i
         i += 1
     return matches
 
@@ -104,7 +122,7 @@ def extract_bracket_elements(text, index_start):
             break
         if ch in PAIRS:
             close = PAIRS[ch]
-            j = (_attribute_matches if ch == '{' else _matches)(text).get(i)
+            j = _matches(text).get(i)
             if j is None:
                 raise LHTMLParseError(f'Unclosed bracket {ch!r} (expected {close!r})')
             j += 1
@@ -122,6 +140,7 @@ def extract_bracket_elements(text, index_start):
     element['index_end'] = i
     element['groups'] = groups  # protected from formatting even in a stray element
     if stray:                   # not a tag element: all of it is text
+        element['stray'] = bool(groups)
         element['text'] = text[index_start:i]
         return element
     element['text'] = ''.join(word)

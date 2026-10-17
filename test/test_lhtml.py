@@ -202,7 +202,8 @@ class TestVerbatim:
         assert lhtml.run(source) == expected
 
     def test_groups_of_a_stray_element_stay_literal(self):
-        assert lhtml.run('div::[a__b__]x] y ::\n') == '<div>[a__b__]x] y </div>\n'
+        with pytest.warns(lhtml.LHTMLWarning, match='closing bracket without its opening one'):
+            assert lhtml.run('div::[a__b__]x] y ::\n') == '<div>[a__b__]x] y </div>\n'
 
     def test_refused_by_name(self):
         with pytest.raises(lhtml.LHTMLParseError, match='verbatim:: was removed'):

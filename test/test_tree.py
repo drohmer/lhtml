@@ -419,6 +419,61 @@ class TestReviewSurprises:
         assert '<div data-u=http://x?a=b a=b=c data-x="2">' in lhtml.run('d::{data-x="2"} x ::', {'macros': macros}) \
             or 'data-x="2"' in lhtml.run('d::{data-x="2"} x ::', {'macros': macros})
 
+    def test_replacing_an_attribute_of_a_macro_keeps_the_others_as_written(self):
+        macros = {'card': {'tag': 'img', 'attrs': 'title="a  b" loading="lazy"'}}
+        assert lhtml.run('card::{loading="eager"} x.png', {'macros': macros}) == \
+            '<img title="a  b" loading="eager"> x.png'
+
+    def test_one_priority_for_the_attributes_of_a_url_macro(self):
+        # the macro, then its url, then the page: one src each time
+        macros = {'demo': {'tag': 'iframe', 'url': 'src', 'empty': True, 'attrs': 'src="default.html" title="d"'}}
+        run = lambda text: lhtml.run(text, {'macros': macros})
+        assert run('demo::page.html') == '<iframe src="page.html" title="d"></iframe>'
+        assert run('demo::') == '<iframe src="default.html" title="d"></iframe>'
+        assert run('demo::page.html{src="b.html"}') == '<iframe title="d" src="b.html"></iframe>'
+
+    def test_classes_and_styles_add_up(self):
+        assert lhtml.run('img::a.png(.a){class="b a"}') == '<img class="a b" src="a.png" alt="a.png">'
+        assert lhtml.run('span::[margin:0]{style="color:red"} x ::') == \
+            '<span style="margin:0;color:red"> x </span>'
+        macros = {'box': {'class': 'box', 'attrs': 'class="m" style="top:0"'}}
+        assert lhtml.run('box::(.p){class="q" style="left:0"} x ::', {'macros': macros}) == \
+            '<div class="box p m q" style="top:0;left:0"> x </div>'
+        # alone, a class written {...} stays where it is written
+        assert lhtml.run('span::{title="t" class="c"} x ::') == '<span title="t" class="c"> x </span>'
+
+    def test_a_default_of_a_video_written_in_the_page_is_not_doubled(self):
+        html = lhtml.run('videoplay::a.mp4{loop="false"}')
+        assert html.count('loop') == 1 and 'autoplay muted playsinline' in html
+
+    def test_a_css_string_holds_its_brackets(self):
+        assert lhtml.run('span::[content:"]";] texte ::') == \
+            '<span style="content:&quot;]&quot;;"> texte </span>'
+        assert lhtml.run("span::[font-family:'A]', serif] x ::") == \
+            '<span style="font-family:\'A]\', serif"> x </span>'
+        assert lhtml.run("link::u[l'ami [x]]") == '<a href="u">l\'ami [x]</a>'    # an apostrophe in a label is text
+
+    def test_a_quoted_value_may_span_lines(self):
+        assert lhtml.run('span::{title="a\n}b"} texte ::') == '<span title="a\n}b"> texte </span>'
+        # not across a blank line: the brace closes the group, and the element is text
+        html, said = quiet(lhtml.run, 'span::{title="a\n\n}b"} texte ::')
+        assert html == '<span>{title="a\n\n}b"} texte </span>'
+        assert said[0].startswith('span:: has a closing bracket without its opening one')
+
+    def test_a_tag_whose_groups_are_left_as_text_is_warned(self):
+        html, said = quiet(lhtml.run, 'div::[a]x] y ::')
+        assert html == '<div>[a]x] y </div>'
+        assert said == ["div:: has a closing bracket without its opening one: its groups are left as text "
+                        "(near 'div::[a]x]')"]
+        assert quiet(lhtml.run, 'f(a::b) and std::vector[0])')[1] == []       # not a tag: no warning
+
+    def test_unclosed_quotes_stay_linear(self):
+        import time
+        for text in ('x::{a="\n' * 4000, "x::[a:'\n" * 4000, 'x::{a="' * 4000):
+            start = time.perf_counter()
+            quiet(lhtml.run, text)
+            assert time.perf_counter() - start < 2, text[:20]
+
     def test_the_option_warning_names_the_line_that_calls(self):
         import warnings as w
         for call in (lambda: lhtml.run('a', {'line_breaks': 1}), lambda: lhtml.render(lhtml.parse('a'), {'line_breaks': 1})):

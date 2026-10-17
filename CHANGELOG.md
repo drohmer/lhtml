@@ -70,6 +70,17 @@ functions and the errors.
   quadratic).
 
 ### Changed
+- One reader for the attributes (`{...}`, the `attrs` of a macro, the
+  defaults of a tag) and one rule when several give the same one: the tag,
+  then the macro, then its `url`, then the page, the last one given; class
+  and style add up (a class once). Replacing an attribute of a macro keeps
+  the others as written (`title="a  b"` kept its two spaces only when
+  nothing was replaced); a `url` macro whose `attrs` give `src` no longer
+  writes two `src`, and `demo::` keeps the `src` of its `attrs`; a default
+  of `videoplay::` written in the page is not doubled. A CSS string in
+  `[...]` holds its brackets (`[content:"]"]`), a value quoted in `{...}`
+  may span lines (not a blank one), and a tag whose groups are left as
+  text by a stray closing bracket is warned.
 - A tag is an `lhtml.Tag(render, container)`: `render(element, children,
   context)` returns its HTML, closing tag included, and `container` says
   whether it holds what follows. The handlers `(element, tag_to_close,

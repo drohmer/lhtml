@@ -528,6 +528,9 @@ class _Parser:
             _refuse_explicit_closing(element)
         if tag and tag not in self.tags:
             return None
+        if element.get('stray'):
+            _warn(f'{tag}:: has a closing bracket without its opening one: its groups are left as text '
+                  f"(near {element.get('context', '')!r})", element)
         if crossing:                    # a label across the end of a heading, an item, a bold
             _warn(f'{tag}:: is left as text: its text would cross the end of a heading, list item, '
                   f'bold or italic (near {crossing!r})', element)

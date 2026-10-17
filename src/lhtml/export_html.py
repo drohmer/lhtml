@@ -11,20 +11,46 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable
 
-from .patterns import JINJA_RE, PLACEHOLDER
+from . import attributes
+from .patterns import JINJA_RE
 
 
 # ---------------------------------------------------------------------------
 # Attribute helpers
 # ---------------------------------------------------------------------------
 
-def _build_attrs(elements):
-    """Build the common HTML attribute string from an element dict."""
-    parts = []
-    parts.append(export_html_element_class_and_id(elements['()']))
-    parts.append(export_html_element_style(elements['[]']))
-    parts.append(export_html_element_inline(elements['{}']))
-    return ''.join(parts)
+def _build_attrs(elements, style=True):
+    """The HTML attributes of an element: its classes and id (.a #b), its
+    style [...] (`style=False`: a link, whose [...] is its label), then those
+    written {...}. A class or a style written {...} too adds to them."""
+    class_id, styles, inline = _groups(elements, style)
+    return class_id + export_html_element_style(styles) + export_html_element_inline(inline)
+
+
+def _groups(elements, style=True):
+    """(class and id as HTML, the style, the attributes {...} left): the
+    classes and styles written {...} join those of (...) and [...] when both
+    are given, or when {...} writes one twice (the defaults of a macro, then
+    the page); otherwise they stay where they are written."""
+    inline = elements['{}']
+    classes, ids = _class_and_id(elements['()'])
+    written, rest = attributes.take(inline, 'class')
+    if written and (classes or len(written) > 1):
+        for value in written:
+            classes += [value] if JINJA_RE.search(value) else value.split()
+        inline = rest
+    styles = elements['[]'] if style else ''
+    written, rest = attributes.take(inline, 'style')
+    if written and (styles or len(written) > 1):
+        for value in written:
+            styles = f'{styles};{value}' if styles and not styles.rstrip().endswith(';') else styles + value
+        inline = rest
+    class_id = ''
+    if classes:
+        class_id += f' class="{" ".join(dict.fromkeys(classes))}"'
+    if ids:
+        class_id += f' id="{" ".join(ids)}"'
+    return class_id, styles, inline
 
 
 def _attr(value):
@@ -45,24 +71,20 @@ def export_html_element_style(text):
     return f' style="{_attr(text)}"'
 
 
-def export_html_element_class_and_id(text):
-    """Parse '.class1 .class2 #id' (or '.class1.class2#id') into class="..."
-    id="..." attributes."""
-    if not text:
-        return ''
-    classes = []
-    ids = []
-    for token in text.split():
+def _class_and_id(text):
+    """The classes and ids of '.class1 .class2 #id' (or '.class1.class2#id')."""
+    classes, ids = [], []
+    for token in (text or '').split():
         if not token.startswith(('.', '#')):
             continue
         for part in re.findall(r'[.#][^.#]+', token):
             (classes if part[0] == '.' else ids).append(part[1:])
-    parts = []
-    if classes:
-        parts.append(f' class="{" ".join(classes)}"')
-    if ids:
-        parts.append(f' id="{" ".join(ids)}"')
-    return ''.join(parts)
+    return classes, ids
+
+
+def export_html_element_class_and_id(text):
+    """'.class1 .class2 #id' (or '.class1.class2#id') as class="..." id="..."."""
+    return _groups({'()': text, '[]': '', '{}': ''})[0]
 
 
 def export_html_element_inline(text):
@@ -75,38 +97,18 @@ def export_html_element_inline(text):
 # Tag element renderers
 # ---------------------------------------------------------------------------
 
-# A name, then its value: quoted, or unquoted up to the next space (`a=b=c`
-# is one attribute). No leading \s*: finditer skips what is not a name.
-_ATTRIBUTE = re.compile(r'([^\s"\'=<>/{}%]+)(?:[ \t]*=[ \t]*(?:"[^"]*"|\'[^\']*\'|[^\s"\'`]+))?')
-
-
-def attribute_names(text):
-    """The names of the attributes of an attribute group (`title="a" alt`),
-    lower case: those written, not words in their values (Jinja masked:
-    `{% if x %}alt="y"{% endif %}` writes alt)."""
-    text = PLACEHOLDER.sub(' ', JINJA_RE.sub(' ', text or ''))     # Jinja as written, or hidden
-    return {m.group(1).lower() for m in _ATTRIBUTE.finditer(text)}
-
-
-def _written(elements, name):
-    """Whether the attributes {...} of an element write `name`: then they
-    replace the one the tag would give (img::a.png{alt="A"}: one alt)."""
-    return name in attribute_names(elements['{}'])
-
-
 def export_html_link(elements):
     """Render a link:: element as <a href="...">text</a>."""
-    attrs = export_html_element_class_and_id(elements['()'])
-    attrs += export_html_element_inline(elements['{}'])
-    href = '' if _written(elements, 'href') else f' href="{_attr(elements["text"])}"'
-    return f'<a{attrs}{href}>{elements["[]"]}</a>'
+    href = '' if 'href' in attributes.names(elements['{}']) else f' href="{_attr(elements["text"])}"'
+    return f'<a{_build_attrs(elements, style=False)}{href}>{elements["[]"]}</a>'
 
 
 def export_html_img(elements):
     """Render an img:: element as <img src="..." alt="...">; an alt or a src
     written in its attributes replaces the default."""
     src = elements['text']
-    defaults = ''.join(f' {name}="{_attr(src)}"' for name in ('src', 'alt') if not _written(elements, name))
+    written = attributes.names(elements['{}'])
+    defaults = ''.join(f' {name}="{_attr(src)}"' for name in ('src', 'alt') if name not in written)
     return f'<img{_build_attrs(elements)}{defaults}>'
 
 
@@ -124,12 +126,14 @@ def export_html_video(elements, default_inline='', media=None):
     extension = source.rsplit('.', 1)[-1]
     mime_extension = re.split(r'[?#]', extension, maxsplit=1)[0].lower()
 
+    class_id, style, inline = _groups(elements)
+    default_inline = attributes.without(default_inline, attributes.names(elements['{}']))
     parts = ['<video']
-    parts.append(export_html_element_inline(elements['{}']))
+    parts.append(export_html_element_inline(inline))
     if default_inline:
         parts.append(f' {default_inline}')
-    parts.append(export_html_element_class_and_id(elements['()']))
-    parts.append(export_html_element_style(elements['[]']))
+    parts.append(class_id)
+    parts.append(export_html_element_style(style))
     parts.append('>\n')
 
     sources = list(media(source) or []) if media is not None else []

@@ -37,7 +37,8 @@ import os
 import re
 
 from .errors import LHTMLMacroError
-from .export_html import _ATTRIBUTE, TAGS, Tag, _attr, _build_attrs, attribute_names, element_html
+from . import attributes
+from .export_html import TAGS, Tag, _attr, _build_attrs, element_html
 from .process import _warn
 
 
@@ -127,19 +128,16 @@ def macro_tag(name, spec):
                           element, stacklevel=5)
                 all_classes.append(f'{classes[0]}-{value}')
             text = '::' if closed else ''
-        written = attribute_names(element['{}'])     # replace those of the macro
-        defaults = attrs
-        for m in reversed(list(_ATTRIBUTE.finditer(attrs))):     # removed as written, the rest kept
-            if m.group(1).lower() in written:
-                defaults = defaults[:m.start()] + defaults[m.end():]
-        defaults = ' '.join(defaults.split()) if defaults != attrs else attrs
-        inline = ' '.join(a for a in (defaults, element['{}']) if a)
+        url_attribute = ''
         if url:
             closed = text.rstrip().endswith('::')
-            value = text.rstrip()[:-2] if closed else text
-            if url.lower() not in written:
-                inline = ' '.join(a for a in (f'{url}="{_attr(value.strip())}"', inline) if a)
+            value = (text.rstrip()[:-2] if closed else text).strip()
+            if value or url.lower() not in attributes.names(attrs):     # demo:: keeps the src of the macro
+                url_attribute = f'{url}="{_attr(value)}"'
             text = '::' if closed else ''
+        # the macro, then its url, then the page: a later one replaces an attribute
+        defaults, url_attribute, written = attributes.layered(attrs, url_attribute, element['{}'])
+        inline = attributes.join(url_attribute, defaults, written)
         result = {**element,
                   '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
                   '{}': inline, 'text': text}

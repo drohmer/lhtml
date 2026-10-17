@@ -479,10 +479,17 @@ Output:
 | `default` | Variant used when none is given (one of the variants) |
 | `doc` | Description, ignored by LHTML (for documentation tools; `lhtml.describe_macro(name, spec)` gives what a definition renders) |
 
-The classes written in the source are added to those of the macro; an
-attribute written in the source replaces the macro's attribute of the same
-name (`box::{title="x"}`), and adds to the others; its style is the style
-of the element. The `tag` of a macro is an HTML
+The classes written in the source are added to those of the macro, and
+its style to the macro's. Any other attribute is given once, by the last of:
+the tag (`src`, `alt` of `img::`, `href` of `link::`), the `attrs` of the
+macro, its `url` (`demo::page.html`), the source (`box::{title="x"}`). The
+other attributes are kept as written, spaces in their values included; a
+`url` macro written without its URL (`demo::`) keeps the one of its
+`attrs`. A quoted string holds its brackets: in `{...}`, a value quoted
+after its `=` (`{title="a } b"}`, over several lines but not across a
+blank line); in `[...]`, a CSS string (`[content:"]"]`). A tag whose groups
+are left as text because of a closing bracket without its opening one is
+warned. The `tag` of a macro is an HTML
 element, rendered as it is - never through an LHTML tag (`tag: video` gives
 `<video>`, not `video::`; `tag: img` with `url: src` gives `<img src>`), nor
 through another macro. A macro is closed by `::`. Macros are
