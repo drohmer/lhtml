@@ -105,7 +105,7 @@ it is) and the leaves `Code` (`body`, `language`), `InlineCode` (`text`),
 script, style, jinja). The label of a link is its children
 (`link::u[a **b**]`: a `Text` and a `Strong`); the word after a tag is its
 first child (`span::word more ::`: a `Text` for `word`, then the text that
-follows). The text of an `a` element of the tree (`link::`, `a::`, a
+follows). The text of an `a` element of the tree (`link::`, a
 macro of tag `a`) is one label: with `line_breaks`, its line breaks are not
 made visible (raw HTML `<a>` is text: its line breaks are).
 
