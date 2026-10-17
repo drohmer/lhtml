@@ -501,8 +501,10 @@ The classes written in the source come after those of the macro (its
 `class`, then the classes of its `attrs`), and its style after a style of
 the macro's `attrs`: the page wins the cascade. An id written `(#id)` or
 `{id=...}` replaces the macro's. Any other attribute is given once, by the last of:
-the tag (`src`, `alt` of `img::`, `href` of `link::`), the `attrs` of the
-macro, its `url` (`demo::page.html`), the source (`box::{title="x"}`). The
+the `attrs` of the macro, its `url` (`demo::page.html`), the source
+(`box::{title="x"}`); for `img::` and `link::`, their defaults (`src`,
+`alt`, `href`) come first. An attribute the source writes twice in one
+`{...}` is kept as written. The
 other attributes are kept as written, spaces in their values included; a
 `url` macro written without its URL (`demo::`) keeps the one of its
 `attrs`. A quoted string holds its brackets: in `{...}`, a value quoted

@@ -56,25 +56,30 @@ def class_and_id(text):
     return assemble(classes, ids, '', Attributes())[0]
 
 
-def assemble(classes, ids, style, rest):
+def assemble(classes, ids, style, rest, empty=()):
     """(class and id, style, the attributes left), as Attributes, from the
     classes and ids of (...), the style of [...] and the attributes `rest`
     (changed): the classes and styles of `rest` join those of (...) and
     [...] when both are given, or when `rest` gives one twice (the defaults
     of a macro, then the page); otherwise they stay where they are. An
     empty one is given too: (.a){class=""} is class="a", {class=""} alone
-    class="". An id of `rest` replaces the one of (#id)."""
+    class="" (and so when `empty` names it: written empty elsewhere). One
+    written inside a Jinja block ({% if x %}class="a"{% endif %}) stays
+    there. An id of `rest` replaces the one of (#id)."""
     head, styled = Attributes(), Attributes()
-    written = rest.values_of('class')
+    written = rest.values_of('class', nested=False)     # one in a Jinja block stays there
     if written and (classes or len(written) > 1):
         classes = classes + [word for value in written if value for word in _words(value)]
-        del rest['class']
+        rest = rest.without({'class'}, nested=False)
         head['class'] = ''
-    written = rest.values_of('style')
+    written = rest.values_of('style', nested=False)
     if written and (style or len(written) > 1):
         style = join_styles(style, *(value for value in written if value))
-        del rest['style']
+        rest = rest.without({'style'}, nested=False)
         styled['style'] = ''
+    for name, given in (('class', head), ('style', styled)):     # written empty elsewhere: given
+        if name in empty and name not in given and not rest.values_of(name, nested=False):
+            given[name] = ''
     if classes:
         head['class'] = ' '.join(dict.fromkeys(classes))
     if ids and 'id' not in rest:

@@ -736,3 +736,39 @@ class TestModelReview:
         assert isinstance(link.written.label, tuple) and hash(link.written)
         again = next(n for n in lhtml.parse('link::u.html[a]').walk() if n.kind == 'Element')
         assert link.written == again.written
+
+
+class TestAttributesReview:
+    """From the review of the attribute merges."""
+
+    def test_a_class_in_a_jinja_block_stays_in_it(self):
+        assert lhtml.run('img::x.png(.b){ {% if x %}class="a"{% endif %} }') == \
+            '<img class="b" {% if x %}class="a"{% endif %} src="x.png" alt="x.png">'
+        assert lhtml.run('span::{ {% if x %}class="a"{% else %}class="c"{% endif %} } x ::') == \
+            '<span {% if x %}class="a"{% else %}class="c"{% endif %}> x </span>'
+        macros = {'box': {'class': 'b', 'attrs': '{% if x %}style="m:1"{% endif %}'}}
+        assert lhtml.run('box::[z:1] x ::', macros=macros) == \
+            '<div class="b" style="z:1" {% if x %}style="m:1"{% endif %}> x </div>'
+        # {% set x = 1 %} opens no block
+        assert lhtml.run('img::x.png(.b){{% set k = 1 %} class="a"}').startswith('<img class="b a"')
+
+    def test_a_statement_glued_to_a_value_is_part_of_it(self):
+        assert lhtml.run('img::x.png(.p){class=a{% if x %}b{% endif %}}') == \
+            '<img class="p a{% if x %}b{% endif %}" src="x.png" alt="x.png">'
+        macros = {'box': {'attrs': 'title=a{% if x %}b{% endif %}'}}
+        assert lhtml.run('box::{b=2} x ::', macros=macros) == '<div title=a{% if x %}b{% endif %} b=2> x </div>'
+
+    def test_an_empty_class_of_a_macro_is_given(self):
+        for name in ('class', 'style'):
+            macros = {'box': {'attrs': f'{name}=""'}}
+            assert lhtml.run('box:: x ::', macros=macros) == f'<div {name}=""> x </div>'
+        assert lhtml.run('box::{class="z"} x ::', macros={'box': {'attrs': 'class=""'}}) == '<div class="z"> x </div>'
+
+    def test_a_mapping_set_on_a_node_is_rendered(self):
+        element = lhtml.Element('div')
+        element.attributes = {'a': 'b'}
+        assert lhtml.render(element) == '<div a="b"></div>'
+
+    def test_a_macro_is_described_as_it_renders(self):
+        info = lhtml.describe_macro('x', {'class': 'a', 'attrs': 'class="b" title="t"'})
+        assert info['html'] == '<div class="a b" title="t">'

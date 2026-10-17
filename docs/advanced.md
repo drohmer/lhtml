@@ -118,8 +118,10 @@ part of a name or a value (`data-{{ k }}="v"`, `title={{ x }}`). Read from
 the source, an attribute is written back as written until it is set.
 `copy()`, `without(names)` and `extend(other)` give or change Attributes
 without touching the other one. The classes of an element and its style
-add up, the macro's first (`(.a){class="b"}`: `class="a b"`; an empty one
-joins the others, `(.a){class=""}` is `class="a"`, and alone it is kept);
+add up, a macro's first (`(.a){class="b"}`: `class="a b"`; an empty one
+joins the others, `(.a){class=""}` is `class="a"`, and alone it is kept,
+in the page as in the `attrs` of a macro); one written inside a Jinja block
+(`{% if x %}class="a"{% endif %}`) stays in it, as written;
 any other attribute is given once, by the last of the tag, the macro, its
 `url`, the page (an id written `{id=...}` replaces the one of `(#id)`).
 

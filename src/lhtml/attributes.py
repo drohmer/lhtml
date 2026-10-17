@@ -44,11 +44,41 @@ _PART = '\x01'                     # a Jinja expression, part of a name or a val
 def _masked(text):
     """The text with its Jinja at its place: an expression as a part of a
     name or a value (data-{{ k }}="v", title={{ x }}), a statement or a
-    comment as spaces (between attributes: {% if x %}alt="y"{% endif %});
-    the placeholders as spaces."""
-    def mask(m):
-        return (_PART if m.group(0).startswith('{{') else ' ') * len(m.group(0))
-    return PLACEHOLDER.sub(lambda m: ' ' * len(m.group(0)), JINJA_RE.sub(mask, text))
+    comment as spaces (between attributes: {% if x %}alt="y"{% endif %}),
+    unless it is glued to a name or an unquoted value (title=a{% if x %}b{%
+    endif %}): a part of it; the placeholders as spaces."""
+    parts, prev = [], 0
+    for m in JINJA_RE.finditer(text):
+        parts.append(text[prev:m.start()])
+        before = parts[-1][-1:] if parts[-1] else (parts[-2][-1:] if len(parts) > 1 else '')
+        glued = m.group(0).startswith('{{') or before == _PART or \
+            (before and not before.isspace() and before not in '"\'')
+        parts.append((_PART if glued else ' ') * len(m.group(0)))
+        prev = m.end()
+    parts.append(text[prev:])
+    return PLACEHOLDER.sub(lambda m: ' ' * len(m.group(0)), ''.join(parts))
+
+
+# The Jinja statements that open a block (closed by its end...): an
+# attribute written in one depends on it
+_BLOCKS = {'if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'set', 'autoescape', 'raw', 'trans'}
+_STATEMENT = re.compile(r'\{%[-+]?\s*(\w+)(.*?)[-+]?%\}', re.DOTALL)
+
+
+def _depths(text):
+    """(position, depth after it) at the end of each Jinja statement that
+    opens or closes a block."""
+    changes, depth = [], 0
+    for m in _STATEMENT.finditer(text):
+        word = m.group(1)
+        if word.startswith('end'):
+            depth = max(0, depth - 1)
+        elif word in _BLOCKS and not (word == 'set' and '=' in m.group(2)):
+            depth += 1
+        else:
+            continue
+        changes.append((m.end(), depth))
+    return changes
 
 
 def key(name):
@@ -124,6 +154,7 @@ class _Entry:
     value: str | None = None
     written: str | None = None
     space: str | None = None
+    nested: bool = False        # inside a Jinja block ({% if %}...{% endif %})
 
     def html(self):
         written = self.written
@@ -153,10 +184,12 @@ class Attributes(MutableMapping):
         """The attributes of an attribute text (`title="a" alt`)."""
         text = text or ''
         attributes, position = cls(), 0
+        depths = _depths(text)
         for a in read(text):
             position = attributes._fragments(text, position, a.start)
+            depth = next((d for end, d in reversed(depths) if end <= a.start), 0)
             attributes._items.append(_Entry(a.name, a.value, text[a.start:a.end],
-                                            attributes._space(text, position, a.start)))
+                                            attributes._space(text, position, a.start), depth > 0))
             position = a.end
         attributes._fragments(text, position, len(text))
         return attributes
@@ -210,20 +243,20 @@ class Attributes(MutableMapping):
 
     def copy(self):
         copied = Attributes()
-        copied._items = [_Entry(e.name, e.value, e.written, e.space) for e in self._items]
+        copied._items = [_Entry(e.name, e.value, e.written, e.space, e.nested) for e in self._items]
         return copied
 
-    def without(self, names):
+    def without(self, names, *, nested=True):
         """A copy without the attributes named in `names` (keys); the item
         after one removed takes its spaces (as if it was cut out of the
-        text)."""
+        text). `nested=False`: those written inside a Jinja block stay."""
         copied, space, cut = Attributes(), None, False
         for entry in self._items:
-            if entry.name is not None and entry.name in names:
+            if entry.name is not None and entry.name in names and (nested or not entry.nested):
                 if not cut:
                     space, cut = entry.space, True
                 continue
-            entry = _Entry(entry.name, entry.value, entry.written, space if cut else entry.space)
+            entry = _Entry(entry.name, entry.value, entry.written, space if cut else entry.space, entry.nested)
             copied._items.append(entry)
             cut = False
         return copied
@@ -233,9 +266,10 @@ class Attributes(MutableMapping):
         self._items += other.copy()._items
         return self
 
-    def values_of(self, name):
-        """Every value written for `name` (an attribute written twice)."""
-        return [entry.value for entry in self._items if entry.name == key(name)]
+    def values_of(self, name, *, nested=True):
+        """Every value written for `name` (an attribute written twice);
+        `nested=False`: not those written inside a Jinja block."""
+        return [entry.value for entry in self._items if entry.name == key(name) and (nested or not entry.nested)]
 
     def html(self):
         """The attributes as HTML: ` name="value"` each."""

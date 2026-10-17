@@ -1,11 +1,12 @@
 """The HTML of a document tree, from the fields of its nodes alone
 (nodes.py): render(document, line_breaks=False, media=None)."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from html import escape
 import re
 
-from .attributes import quoted
+from .attributes import Attributes, quoted
 from .code import export_html_code
 from .nodes import Code, Element, Emphasis, Heading, InlineCode, Item, List, Math, Raw, Strong, Text, Video
 from .patterns import BLOCK_RAW, BLOCK_TAGS, JINJA_LINE, LEADING_TAG, PREFORMATTED_TAG
@@ -13,6 +14,20 @@ from .process import escape_inline_code, render_inline_code
 
 _ZONES = (Code, InlineCode, Math, Raw)
 _PREFORMATTED = ('pre', 'textarea')     # their line breaks are visible already
+
+
+def _attributes(node):
+    """The HTML of the attributes of a node: an Attributes, or a mapping the
+    caller set since (node.attributes = {...})."""
+    attributes = node.attributes
+    if attributes is None:
+        return ''
+    if not isinstance(attributes, Attributes):
+        if not isinstance(attributes, Mapping):
+            raise TypeError(f'{node.kind}: attributes must be a mapping or lhtml.Attributes, '
+                            f'got {type(attributes).__name__}')
+        attributes = Attributes(attributes)
+    return attributes.html()
 
 
 def _video(node, media):
@@ -23,7 +38,7 @@ def _video(node, media):
     sources = list(media(source) or []) if media is not None else []
     if not sources:
         sources = [(source, f'video/{mime_extension}')]
-    parts = [f'<{node.name}{node.attributes.html()}>\n']
+    parts = [f'<{node.name}{_attributes(node)}>\n']
     for url, mime in sources:
         parts.append(f'\t<source src="{quoted(url)}" type="{quoted(mime)}">\n')
     parts.append(f'\t Cannot play video {escape(source)}\n')
@@ -45,14 +60,14 @@ def _leaf(node, media):
     if isinstance(node, Video):
         return _video(node, media)
     if isinstance(node, Element) and node.void:
-        return f'<{node.name}{node.attributes.html()}>'
+        return f'<{node.name}{_attributes(node)}>'
     return None
 
 
 def _around(node):
     """(opening, closing) of a node that holds its children."""
     if isinstance(node, Heading):
-        return f'<h{node.level}{node.attributes.html()}>', f'</h{node.level}>\n'
+        return f'<h{node.level}{_attributes(node)}>', f'</h{node.level}>\n'
     if isinstance(node, List):
         return '<ul>\n', '</ul>\n'
     if isinstance(node, Item):
@@ -62,7 +77,7 @@ def _around(node):
     if isinstance(node, Emphasis):
         return '<em>', '</em>'
     if isinstance(node, Element):
-        return f'<{node.name}{node.attributes.html()}>', f'</{node.name}>' if node.end_tag else ''
+        return f'<{node.name}{_attributes(node)}>', f'</{node.name}>' if node.end_tag else ''
     return '', ''                       # the document, a node of the caller
 
 

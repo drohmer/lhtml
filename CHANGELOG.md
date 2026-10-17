@@ -92,8 +92,16 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - The attributes are read once and merged as `Attributes`, never written
   as text to be read again: `img::x.png(.a){class=""}` is `class="a"` (it
   was `class="a" class=""`), a variant of a macro is one class
-  (`gap::a.b`: `gap-a.b`, it was cut at its dot), and a name keeps its
-  Jinja as written (`data-{{ K }}` stayed `data-{{ k }}` once set).
+  (`gap::a.b`: `gap-a.b`, it was cut at its dot), the `class` of a macro
+  and the classes of its `attrs` are taken as written (`class: a.b` is
+  `class="a.b"`, it was `a b`; `a#b` was a class and an id), an empty
+  class or style of a macro's `attrs` is given, and a name keeps its
+  Jinja as written (`data-{{ K }}` stayed `data-{{ k }}` once set). A class
+  or a style written inside a Jinja block (`{% if x %}class="a"{% endif %}`)
+  stays in it (it was joined to the others, unconditionally), and a
+  statement glued to an unquoted value is part of it
+  (`title=a{% if x %}b{% endif %}`). `describe_macro` gives the HTML the
+  macro renders (one `class`).
 - The diagnostics escape what their stream cannot encode, the whole line:
   a path or a message with an accent on an ASCII stream no longer drops
   it and those after it. A path on another drive (Windows) stays absolute.
@@ -134,7 +142,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   writes two `src`, and `demo::` keeps the `src` of its `attrs`; a default
   of `videoplay::` written in the page is not doubled. A CSS string in
   `[...]` holds its brackets (`[content:"]"]`), a value quoted in `{...}`
-  may span lines (not a blank one), and a tag whose groups are left as
+  holds them across lines (not across a blank line), and a tag whose groups are left as
   text by a stray closing bracket is warned. A bracket left open in a
   paragraph before (`[0, 1)`) holds no string; a value without its closing
   quote is warned. A Jinja expression is part of a name or a value
