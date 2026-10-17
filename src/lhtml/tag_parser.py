@@ -25,14 +25,24 @@ _MAX_TAG_NAME = 64
 def _matches(text):
     """The closing bracket of each opening one, by position, each kind of
     bracket nesting its own kind only (an unclosed one has none): computed
-    once per text, so that unclosed brackets do not each scan to its end."""
+    once per text, so that unclosed brackets do not each scan to its end.
+    In an attribute group {...}, a quoted value closed on its line is opaque:
+    {title="a } b"} holds the brace."""
     matches, stacks = {}, {ch: [] for ch in PAIRS}
     closing = {close: ch for ch, close in PAIRS.items()}
-    for i, ch in enumerate(text):
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in '"\'' and stacks['{']:
+            end = text.find(ch, i + 1)
+            if end != -1 and '\n' not in text[i:end]:
+                i = end + 1
+                continue
         if ch in PAIRS:
             stacks[ch].append(i)
         elif ch in closing and stacks[closing[ch]]:
             matches[stacks[closing[ch]].pop()] = i
+        i += 1
     return matches
 
 

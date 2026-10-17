@@ -451,8 +451,8 @@ element, rendered as it is - never through an LHTML tag (`tag: video` gives
 `<video>`, not `video::`; `tag: img` with `url: src` gives `<img src>`), nor
 through another macro. A macro is closed by `::`. Macros are
 not active inside inline code (`` `box::` `` stays text), and a macro cannot
-replace a built-in tag (`div`, `img`, ...). Unlike `img::`, the URL of a `url`
-macro is not protected from inline formatting (avoid `__` in it).
+replace a built-in tag (`div`, `img`, ...). The URL of a `url` macro is kept
+as written, as the one of `img::` (`demo::my__demo__.html`).
 
 A variant may be closed at once like any element: `gap::l::`.
 

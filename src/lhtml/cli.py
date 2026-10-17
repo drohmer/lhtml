@@ -115,6 +115,18 @@ def main():
         parser.error(f'-o must be a directory when several input files are given '
                      f'(got {args.output!r}; add a trailing / to create it)')
 
+    if not single_to_stdout:            # every output before any is written
+        written, inputs = {}, {os.path.realpath(f) for f in args.input}
+        for f_in in args.input:
+            out_path = os.path.realpath(_output_path_for(f_in, args.output))
+            if out_path in inputs:      # an input it would overwrite: refused for that file below
+                continue
+            if out_path in written:
+                print(f'lhtml: error: {written[out_path]} and {f_in} would both be written to '
+                      f'{_output_path_for(f_in, args.output)}: nothing written', file=sys.stderr)
+                sys.exit(1)
+            written[out_path] = f_in
+
     errors = 0
     for f_in in args.input:
         if not os.path.isfile(f_in):

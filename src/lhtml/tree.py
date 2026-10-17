@@ -260,7 +260,8 @@ class _Parser:
     # -- the stages ---------------------------------------------------------
 
     def parse(self):
-        prepared = process_prepare(self.source, self.stores)
+        url_tags = tuple(sorted(name for name, tag in self.tags.items() if tag.url))
+        prepared = process_prepare(self.source, self.stores, url_tags)
         self.offsets = self._prepared_offsets(prepared)
         text = _Text(prepared, list(range(len(prepared))))
         text = self.headings(text)

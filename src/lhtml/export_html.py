@@ -75,17 +75,26 @@ def export_html_element_inline(text):
 # Tag element renderers
 # ---------------------------------------------------------------------------
 
+def _written(elements, name):
+    """Whether the attributes {...} of an element write `name`: then they
+    replace the one the tag would give (img::a.png{alt="A"}: one alt)."""
+    return re.search(rf'(?<![\w-]){name}\s*=', elements['{}'] or '') is not None
+
+
 def export_html_link(elements):
     """Render a link:: element as <a href="...">text</a>."""
     attrs = export_html_element_class_and_id(elements['()'])
     attrs += export_html_element_inline(elements['{}'])
-    return f'<a{attrs} href="{_attr(elements["text"])}">{elements["[]"]}</a>'
+    href = '' if _written(elements, 'href') else f' href="{_attr(elements["text"])}"'
+    return f'<a{attrs}{href}>{elements["[]"]}</a>'
 
 
 def export_html_img(elements):
-    """Render an img:: element as <img src="..." alt="...">."""
+    """Render an img:: element as <img src="..." alt="...">; an alt or a src
+    written in its attributes replaces the default."""
     src = elements['text']
-    return f'<img{_build_attrs(elements)} src="{_attr(src)}" alt="{_attr(src)}">'
+    defaults = ''.join(f' {name}="{_attr(src)}"' for name in ('src', 'alt') if not _written(elements, name))
+    return f'<img{_build_attrs(elements)}{defaults}>'
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +145,7 @@ class Tag:
     (context.meta, context.media)."""
     render: Callable
     container: bool | Callable = False
+    url: bool = False               # its text is a URL, kept as written (img::a__b.png)
 
     def holds(self, element):
         if element['text'].endswith('::'):
@@ -162,11 +172,11 @@ def generic(tag):
 TAGS = MappingProxyType({
     'div': generic('div'),
     'span': generic('span'),
-    'link': Tag(lambda element, children, context: export_html_link(element)),
-    'img': Tag(lambda element, children, context: export_html_img(element)),
-    'video': Tag(lambda element, children, context: export_html_video(element, '', context.media)),
+    'link': Tag(lambda element, children, context: export_html_link(element), url=True),
+    'img': Tag(lambda element, children, context: export_html_img(element), url=True),
+    'video': Tag(lambda element, children, context: export_html_video(element, '', context.media), url=True),
     'videoplay': Tag(lambda element, children, context: export_html_video(
-        element, 'autoplay loop muted playsinline', context.media)),
+        element, 'autoplay loop muted playsinline', context.media), url=True),
 })
 
 SPACER = Tag(lambda element, children, context: '<div style="height:1em;"></div>')     # ::nl

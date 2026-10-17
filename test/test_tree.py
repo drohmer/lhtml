@@ -337,3 +337,27 @@ class TestLineBreaksAndTags:
         [heading] = [n for n in document.walk() if n.kind == 'Heading']
         assert heading.attributes == '.{{ c }} #i'
         assert lhtml.render(document) == '<h1 class="{{ c }}" id="i">T</h1>\n\n'
+
+
+class TestReviewSurprises:
+    """Rules that hold for every tag, from an external review."""
+
+    def test_the_url_of_a_url_macro_is_kept_as_written(self):
+        macros = {'demo': {'tag': 'iframe', 'url': 'src', 'class': 'demo', 'empty': True}}
+        html = lhtml.run('demo::my__demo__.html and **b**', {'macros': macros})
+        assert 'src="my__demo__.html"' in html and '<em>' not in html and '<strong>b</strong>' in html
+        assert 'style="width:3px"' in lhtml.run('demo::a.html#x[width:3px]', {'macros': macros})
+        url = lhtml.Tag(lambda element, children, context: f'<a href="{element["text"]}">', url=True)
+        assert lhtml.run('u::a__b__c', tags={'u': url}) == '<a href="a__b__c">'
+
+    def test_a_quoted_attribute_value_holds_its_brackets(self):
+        assert lhtml.run('link::u[Text]{title="a } b"}') == '<a title="a } b" href="u">Text</a>'
+        assert lhtml.run("span::{data-x='[1, 2]'} a ::") == "<span data-x='[1, 2]'> a </span>"
+        # an apostrophe after an unclosed { in text is text
+        assert lhtml.run("a { b l'eau span::[c] d ::") == "a { b l'eau <span style=\"c\"> d </span>"
+
+    def test_an_attribute_written_replaces_the_default(self):
+        assert lhtml.run('img::photo.jpg{alt="Portrait"}') == '<img alt="Portrait" src="photo.jpg">'
+        assert lhtml.run('img::photo.jpg') == '<img src="photo.jpg" alt="photo.jpg">'
+        assert lhtml.run('link::u[T]{href="v"}') == '<a href="v">T</a>'
+        assert lhtml.run('img::a.png{data-alt="x"}') == '<img data-alt="x" src="a.png" alt="a.png">'

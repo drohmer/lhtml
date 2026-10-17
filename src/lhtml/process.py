@@ -15,7 +15,7 @@ from .tag_parser import extract_bracket_elements
 from .code import export_html_code, known_language, unknown_language_message
 from .errors import LHTMLParseError, LHTMLWarning
 from .patterns import (
-    PROTECTED, PROTECTED_BLOCKS,
+    PROTECTED, PROTECTED_BLOCKS, protected_blocks,
     HEADING,
     INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
@@ -124,11 +124,12 @@ def render_inline_code(content):
     return f'<code class="code-inline">{content}</code>'
 
 
-def process_protect(text, stores, blocks=False):
+def process_protect(text, stores, blocks=False, url_tags=None):
     """Replace zones that LHTML must not transform with placeholders.
 
     Protected (the leftmost zone wins): HTML comments, <script>/<style>
-    blocks, inline code, URLs of link::/img::/video:: tags, math
+    blocks, inline code, URLs of link::/img::/video:: tags (and of the
+    tags `url_tags`: the macros that take a URL), math
     (\\(...\\), \\[...\\]) and HTML tags themselves (so attribute values
     are never modified). Text between HTML tags is still processed. Jinja
     expressions, statements and comments are opaque. With `blocks`, code
@@ -149,7 +150,7 @@ def process_protect(text, stores, blocks=False):
         if m.group('url') is not None:
             return m.group('urltag') + stores.add('U', m.group('url'))
         return stores.add('R', m.group(0))
-    pattern = PROTECTED_BLOCKS if blocks else PROTECTED
+    pattern = (protected_blocks(tuple(url_tags)) if url_tags else PROTECTED_BLOCKS) if blocks else PROTECTED
     return regex_transform(text, pattern, _protect)
 
 
@@ -226,11 +227,12 @@ def _refuse_include(text, locate):
         *locate(m.start()))
 
 
-def process_prepare(text, stores):
+def process_prepare(text, stores, url_tags=None):
     """Replace code blocks and protected zones (HTML, inline code,
-    URLs, math, attributes) by placeholders. Raises LHTMLParseError on an
-    include:: directive (removed in 3.0)."""
-    text = process_protect(text, stores, blocks=True)
+    URLs, math, attributes) by placeholders; `url_tags`: the tags whose
+    URL is kept as written (URL_TAGS by default). Raises LHTMLParseError on
+    an include:: directive (removed in 3.0)."""
+    text = process_protect(text, stores, blocks=True, url_tags=url_tags)
     text = process_protect_attributes(text, stores)
     _refuse_include(text, lambda offset: stores.locate(text, offset))
     _refuse_removed(text, stores)   # after the groups are hidden: '::#' in an attribute is text

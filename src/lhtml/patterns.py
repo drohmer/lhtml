@@ -1,5 +1,6 @@
 """Centralized regex patterns and text transformation utilities for LHTML."""
 
+import functools
 import re
 from typing import Callable
 
@@ -65,18 +66,28 @@ URL_TAGS         = ('link', 'img', 'video', 'videoplay')
 # A URL may contain Jinja expressions (img::{{ base }}/photo.jpg)
 URL_TOKEN        = (r'(?:' + _JINJA_EXPRESSION +
                     r'|[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+')
-PROTECTED        = re.compile(
-    r'(?P<jinja>' + JINJA + r')'
-    r'|(?P<comment><!--.*?-->)'
-    r'|(?P<raw><(?i:(?P<rawtag>script|style))\b[^>]*>.*?</(?i:(?P=rawtag))\s*>)'
-    r'|`(?P<icode>[^`\n]*)`'
-    r'|(?P<urltag>(?<![\w-])(?:' + '|'.join(URL_TAGS) + r')::)(?P<url>' + URL_TOKEN + r')'
-    r'|(?P<math>' + MATH.pattern + r')'
-    r'|(?P<tag>' + HTML_TAG.pattern + r')',
-    re.DOTALL)
+def _protected(url_tags):
+    return (r'(?P<jinja>' + JINJA + r')'
+            r'|(?P<comment><!--.*?-->)'
+            r'|(?P<raw><(?i:(?P<rawtag>script|style))\b[^>]*>.*?</(?i:(?P=rawtag))\s*>)'
+            r'|`(?P<icode>[^`\n]*)`'
+            r'|(?P<urltag>(?<![\w-])(?:' + '|'.join(map(re.escape, url_tags)) + r')::)(?P<url>' + URL_TOKEN + r')'
+            r'|(?P<math>' + MATH.pattern + r')'
+            r'|(?P<tag>' + HTML_TAG.pattern + r')')
 
+
+PROTECTED        = re.compile(_protected(URL_TAGS), re.DOTALL)
 # One left-to-right pass: an outer protected zone owns its contents.
 PROTECTED_BLOCKS = re.compile(BLOCKS.pattern + '|' + PROTECTED.pattern, re.DOTALL)
+
+
+@functools.lru_cache(maxsize=32)
+def protected_blocks(url_tags=URL_TAGS):
+    """PROTECTED_BLOCKS with the URL of the tags `url_tags` protected (the
+    built-in ones and the macros that take a URL: lhtml.Tag.url)."""
+    if set(url_tags) == set(URL_TAGS):
+        return PROTECTED_BLOCKS
+    return re.compile(BLOCKS.pattern + '|' + _protected(tuple(url_tags)), re.DOTALL)
 
 # Line breaks option: elements that make a line part of the structure
 BLOCK_TAGS       = frozenset((

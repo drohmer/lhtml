@@ -614,6 +614,16 @@ class TestCli:
         assert code == 0
         assert out == '<strong>A</strong>\n'
 
+    def test_two_inputs_of_the_same_name_are_refused_before_writing(self, tmp_path, monkeypatch, capsys):
+        for d in ('a', 'b'):
+            (tmp_path / d).mkdir()
+            (tmp_path / d / 'page.l.html').write_text(d.upper())
+        out = tmp_path / 'out'
+        code, _, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'a/page.l.html'),
+                                     str(tmp_path / 'b/page.l.html'), '-o', str(out) + '/')
+        assert code == 1 and 'would both be written to' in err
+        assert not (out / 'page.html').exists()
+
     def test_missing_file_is_an_error(self, tmp_path, monkeypatch, capsys):
         code, out, err = self._run_cli(monkeypatch, capsys, str(tmp_path / 'nope.l.html'))
         assert code == 1
