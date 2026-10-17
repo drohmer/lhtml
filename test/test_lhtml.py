@@ -1462,6 +1462,7 @@ class TestPositions:
         macros = {'gap': {'tag': 'div', 'class': 'gap', 'variant': ['s'], 'empty': True}}
         assert self.places('x\n  oops ::\ngap::zz\n', macros=macros) == [(2, 8), (3, 1)]
         assert self.places('a div::(.x[b] c\n') == [(1, 3)]            # unclosed bracket
+        assert self.places('abc\n::(x') == [(2, 1)]                    # not the word of the line before
 
     def test_an_unknown_language_where_its_block_starts(self):
         assert self.places('a\n\ncode::[nosuchlang]\nx\ncode::[-]\n') == [(3, 1)]

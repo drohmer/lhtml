@@ -13,7 +13,7 @@ import re
 import warnings
 from dataclasses import dataclass, field
 
-from .tag_parser import extract_bracket_elements
+from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
 from .export_html import (
     export_html_element_class_and_id, export_html_generic,
 )
@@ -157,7 +157,9 @@ def process_protect(text, stores, blocks=False):
             _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
             language = _code_language(m.group('header'))
             if not known_language(language):
-                _warn(unknown_language_message(language), position(text[:m.start()]), stacklevel=6)
+                start = m.start()           # counted in place: a page may hold many blocks
+                _warn(unknown_language_message(language),
+                      (text.count('\n', 0, start) + 1, start - text.rfind('\n', 0, start)), stacklevel=6)
             return stores.add('C', (m.group('header'), m.group('body')), m.group(0))
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')), m.group(0))
@@ -425,7 +427,8 @@ def process_tag(text, run_context, tags, resolve=None, positions=None):
         try:
             element = extract_bracket_elements(text, m.end())
         except LHTMLParseError as e:
-            name = len(re.search(r'[A-Za-z][\w-]*$|$', text[max(0, m.start() - 64):m.start()]).group())
+            found = _TAG_NAME_BEFORE.search(text, max(0, m.start() - _MAX_TAG_NAME), m.start())
+            name = len(found.group()) if found else 0
             _warn(f'{e} near {_context(text, m.start() - name, m.end() + 30)!r}',
                   (line, column - name if column else None))
             continue
