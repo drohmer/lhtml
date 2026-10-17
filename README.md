@@ -152,6 +152,7 @@ page = lhtml.wrap(html, title='My Page', css=['style.css'], js=['script.js'])
 
 That is the whole API of a page. Custom tags written in Python, the macro
 functions and the document tree are in [docs/advanced.md](docs/advanced.md).
+Coming from LHTML 2: [docs/migration.md](docs/migration.md).
 
 
 ## Syntax Reference

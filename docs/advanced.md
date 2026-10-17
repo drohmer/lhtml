@@ -25,11 +25,10 @@ as any other:
 ```python
 import lhtml
 
-from lhtml.export_html import element_attributes
-
-def alert(element):
-    attributes = element_attributes({**element, '()': '.alert ' + element['()']})   # (.c) [style] {attrs}
-    return lhtml.Element(name='div', attributes=attributes, children=[lhtml.Text(value=element['text'])])
+def alert(written):
+    attributes = written.attributes                     # (.c) [style] {attrs}
+    attributes['class'] = ' '.join(['alert', attributes.get('class') or '']).strip()
+    return lhtml.Element('div', attributes, children=[lhtml.Text(written.text)])
 
 html = lhtml.run(text, tags={'alert': lhtml.Tag(alert, container=True)})
 ```
@@ -39,19 +38,24 @@ Then use in LHTML:
 alert::[background:yellow; padding:10px;] Warning message ::
 ```
 
-`build(element)` receives what the source wrote: `'tag'` (the name),
-`'text'` (the word glued after the groups, without the final `::` of
-`name::text::`), `'inline'` (written `name::text::`), `'()'`, `'[]'`,
-`'{}'` (the groups as written), `'label'` (the nodes of the `[...]` of a
-`link::`, else None), `'line'`, `'column'`, `'context'`. It returns a node,
-or a list of nodes: an `Element`, a `Text`, a `Raw` (HTML written as it
-is: `lhtml.Raw(text='<hr>')`). A tag that holds what follows until its
-`::` says so (`container`: a bool, or a function of the element; written
-`name::text::`, it holds nothing either way) and builds one `Element`: what
-it holds becomes its children, after those it built. `lhtml.export_html.element_attributes(element)`
-gives the attributes the groups write (class and id, style, then `{...}`).
-An exception raised by `build` or `container` becomes an `LHTMLError`
-naming the tag and its place (the exception as its `__cause__`).
+`build(written)` receives what the source wrote, an `lhtml.Written`
+(read-only): `tag` (the name), `text` (the word glued after the groups,
+without the final `::` of `name::text::`), `inline` (written
+`name::text::`), `parentheses`, `brackets`, `braces` (the groups `(...)`,
+`[...]`, `{...}` as written), `label` (the nodes of the `[...]` of a
+`link::`, else None), `line`, `column`, `context` (what a message quotes).
+`written.attributes` is a new `Attributes` each time: those the groups
+write, class and id, style (not for `link::`, whose `[...]` is its label),
+then `{...}`.
+
+`build` returns a node, or a list of nodes: an `Element`, a `Text`, a `Raw`
+for HTML written as it is (`lhtml.Raw('<hr>')`); a str is refused. A tag
+that holds what follows until its `::` says so (`container`: a bool, or a
+function of the Written; written `name::text::`, it holds nothing either
+way) and builds one `Element`: the parser puts what it holds in its
+children, after those it built. An exception raised by `build` or
+`container` becomes an `LHTMLError` naming the tag and its place (the
+exception as its `__cause__`).
 
 A tag whose text is a URL says so, `lhtml.Tag(build, url=True)`: its URL is
 kept as written (`u::a__b.html` is not read as italic), as the ones of the
@@ -79,37 +83,49 @@ html = lhtml.render(document)
 
 Every node is an `lhtml.Node`: its `kind` (the name of its class), its
 `children`, its place, and `walk()`, the node and its descendants in
-document order. The nodes (`lhtml.nodes`) are `Document` (`problems`, `source`), `Heading`
+document order. A node is made as it reads, its place and children as
+keywords:
+
+```python
+note = lhtml.Element('div', {'class': 'note'}, children=[lhtml.Strong(children=[lhtml.Text('Important')])])
+lhtml.render(note)          # '<div class="note"><strong>Important</strong></div>'
+```
+
+The nodes (`lhtml.nodes`) are `Document` (`problems`, `source`), `Heading`
 (`level`, `attributes`), `List`, `Item` (a deeper list is a `List` inside
 the `Item` before it), `Strong`, `Emphasis`, `Element` (`name`, the HTML
-element; `attributes`; `void`: no closing tag; its children), `Video` (an
-`Element` with its `src`: its sources are those of the `media` resolver of
-`render`), `Text` (`value`, written as it is) and the leaves `Code`
-(`language`, `body`), `InlineCode` (`text`), `Math` (`text`, `display`) and
-`Raw` (`text`; `raw_kind`: html, comment, script, style, jinja). The label
-of a link is its children (`link::u[a **b**]`: a `Text` and a `Strong`);
-the word after a tag is its first child (`span::word more ::`: a `Text`
-for `word`, then the text that follows).
+element; `attributes`; `void`: no content nor closing tag; `end_tag`:
+False when its closing tag is not written, an element the source never
+closes; its children), `Video` (an `Element` with its `src`: its sources
+are those of the `media` resolver of `render`), `Text` (`value`, written as
+it is) and the leaves `Code` (`body`, `language`), `InlineCode` (`text`),
+`Math` (`text`, `display`) and `Raw` (`text`; `raw_kind`: html, comment,
+script, style, jinja). The label of a link is its children
+(`link::u[a **b**]`: a `Text` and a `Strong`); the word after a tag is its
+first child (`span::word more ::`: a `Text` for `word`, then the text that
+follows). The text of an `<a>` is one label: with `line_breaks`, its line
+breaks are not made visible.
 
-`attributes` is an `lhtml.Attributes`, a mapping name -> value in order: a
-value as in HTML source (a `"` in a value set is written `&quot;`), None
-for an attribute without value (`autoplay`); a name is read in any case;
-a Jinja fragment written among them (`{% if x %}alt="y"{% endif %}`)
-stays in its place, and an expression is part of a name or a value
-(`data-{{ k }}="v"`, `title={{ x }}`). Read from the source, an attribute
-is written back as written until it is set. The classes of an element and
-its style add up, the macro's first (`(.a){class="b"}`: `class="a b"`);
+`attributes` is an `lhtml.Attributes` (a dict given is made one), a
+mapping name -> value in order: a value as in HTML source (a `"` in a
+value set is written `&quot;`), None for an attribute without value
+(`autoplay`); a name is read in any case, its Jinja as written
+(`data-{{ K }}` is not `data-{{ k }}`); a Jinja fragment written among them
+(`{% if x %}alt="y"{% endif %}`) stays in its place, and an expression is
+part of a name or a value (`data-{{ k }}="v"`, `title={{ x }}`). Read from
+the source, an attribute is written back as written until it is set.
+`copy()`, `without(names)` and `extend(other)` give or change Attributes
+without touching the other one. The classes of an element and its style
+add up, the macro's first (`(.a){class="b"}`: `class="a b"`; an empty one
+joins the others, `(.a){class=""}` is `class="a"`, and alone it is kept);
 any other attribute is given once, by the last of the tag, the macro, its
 `url`, the page (an id written `{id=...}` replaces the one of `(#id)`).
 
-Three fields are information on the source, never read by `render`:
-`Element.tag` (the LHTML tag written, `''` for a bare `::`) and
-`Element.written` (its groups and word as written: `'()'`, `'[]'`, `'{}'`,
-`'text'`; a group across other nodes as written, `**` included), and
-`Heading.written`. An element's `closed` says how the source ends it:
-`'tag'` (its `::`), `'inline'` (`div::text::`), `'void'` (it holds
-nothing), `'container'` (at the end of the heading, item, bold or italic it
-is opened in) or `'never'` (not closed: no closing tag is written).
+What the source wrote is information, never read by `render`:
+`Element.written`, the `Written` its tag was given (None for an element of
+the caller: `written.tag` is the LHTML tag, `''` for a bare `::`; a group
+across other nodes is as written, `**` included), and `Heading.written`,
+its `(.class #id)` as written.
 
 Every node but the document has its place: `span`, the offsets of its source in the text
 given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,
@@ -118,7 +134,7 @@ element, a node made by the caller none. `document.problems` holds the
 warnings, in source order. The nodes nest, nothing crosses (see the `::`
 elements in the [README](../README.md)). The tree is walked and rendered
 without recursion: a document may nest deeper than Python's recursion
-limit.
+limit, whatever its nodes.
 
 ### Custom Code Lexers
 

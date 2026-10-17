@@ -79,7 +79,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - `line` and `column` on `LHTMLWarning` and `LHTMLError`: where the problem
   is in the text given to `run` (1-based, `None` when not known, as for a
   macros file). A tag element carries its `line` and `column` to the
-  `build` of its tag (`element['line']`, `element['column']`).
+  `build` of its tag (`written.line`, `written.column`).
 - `lhtml.parse(text)` gives the document tree (headings, lists, bold,
   italic, `::` elements, and code, inline code, mathematics, raw HTML as
   leaves), every node with its place (`span` in the text given, `line`,
@@ -89,6 +89,14 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   quadratic).
 
 ### Changed
+- The attributes are read once and merged as `Attributes`, never written
+  as text to be read again: `img::x.png(.a){class=""}` is `class="a"` (it
+  was `class="a" class=""`), a variant of a macro is one class
+  (`gap::a.b`: `gap-a.b`, it was cut at its dot), and a name keeps its
+  Jinja as written (`data-{{ K }}` stayed `data-{{ k }}` once set).
+- The diagnostics escape what their stream cannot encode, the whole line:
+  a path or a message with an accent on an ASCII stream no longer drops
+  it and those after it. A path on another drive (Windows) stays absolute.
 - The document tree is authoritative: `render` writes the HTML from the
   fields of the nodes alone (`lhtml.nodes`, exported by `lhtml`), so a node
   changed changes the HTML. `Text.raw`, `Heading.markup_attributes`,
@@ -96,11 +104,16 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   `Document.stores` are gone: no placeholder is left in the tree. An
   `Element` has `name` (the HTML element), `attributes` (an
   `lhtml.Attributes`, an ordered mapping that writes back what it read as
-  written), `void` and its children; the label of a link is its children
-  (`Text`, `Strong`...), the word after a tag its content. `Element.tag`
-  and `Element.written` (the groups as written) are information on the
-  source. A tag is `lhtml.Tag(build, container, url)`: `build(element)`
-  returns its nodes (an `Element`, a `Raw` of HTML written as it is...),
+  written), `void`, `end_tag` and its children; the label of a link is its children
+  (`Text`, `Strong`...), the word after a tag its content. A node is made
+  as it reads, its place and children as keywords: `Text('a')`,
+  `Element('div', {'class': 'c'}, children=[...])`, `Code(body, language)`.
+  `Element.written` (an `lhtml.Written`: the tag, its groups and word as
+  written) is information on the source, never read by `render`: how the
+  source closed an element does not change its HTML (`end_tag` is False
+  for an element never closed). A tag is `lhtml.Tag(build, container, url)`:
+  `build(written)` receives that `Written`, whose `attributes` are those
+  its groups write, and returns its nodes (an `Element`, a `Raw` of HTML written as it is...),
   instead of a `render` returning HTML; the macros and the built-in tags
   are such builders (`video::` is a `Video` node, its sources asked of
   `media` at render). `render.py` and `nodes.py` leave `tree.py`.
