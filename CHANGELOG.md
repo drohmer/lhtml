@@ -66,11 +66,12 @@ macro functions and the errors.
 - The output of the command: stdout holds the HTML only, stderr every
   message (`lhtml/diagnostics.py`). A problem is
   `file:line:column: level: message`; in a terminal, the line of the source
-  follows with the place underlined (tabs, wide characters and long lines
+  follows with the place underlined, for an error as for a warning (tabs, wide characters and long lines
   taken into account), the level colored (`NO_COLOR`, `FORCE_COLOR`,
   `TERM=dumb` respected). The destinations are computed, then checked, then
-  written: an input missing, two inputs to one file (or to names that
-  differ by case only), an output that is an input or lies under a file
+  written: an input missing, two inputs to one file (to names that differ
+  by case only, or to two names of one file, a hard link), an output that
+  is an input or lies under a file
   are each an error and nothing is written (a destination under a file was
   a traceback). Writing files ends with a summary (`2 converted · 1
   warning`; `-q` none, `-v` each file written); exit status 1 when a file
@@ -88,6 +89,29 @@ macro functions and the errors.
   quadratic).
 
 ### Changed
+- The document tree is authoritative: `render` writes the HTML from the
+  fields of the nodes alone (`lhtml.nodes`, exported by `lhtml`), so a node
+  changed changes the HTML. `Text.raw`, `Heading.markup_attributes`,
+  `Element.groups`/`value`/`element`, the `index` of the zones and
+  `Document.stores` are gone: no placeholder is left in the tree. An
+  `Element` has `name` (the HTML element), `attributes` (an
+  `lhtml.Attributes`, an ordered mapping that writes back what it read as
+  written), `void` and its children; the label of a link is its children
+  (`Text`, `Strong`...), the word after a tag its content. `Element.tag`
+  and `Element.written` (the groups as written) are information on the
+  source. A tag is `lhtml.Tag(build, container, url)`: `build(element)`
+  returns its nodes (an `Element`, a `Raw` of HTML written as it is...),
+  instead of a `render` returning HTML; the macros and the built-in tags
+  are such builders (`video::` is a `Video` node, its sources asked of
+  `media` at render). `render.py` and `nodes.py` leave `tree.py`.
+  Changed on the way, by the same rules for every tag: `img::a.png::` is
+  closed at once, `::` not in its URL (as a macro with `url:` did); a group
+  across other nodes (`span::[**b**]`) is kept as written, where the HTML
+  of the bold was written inside the attribute; inline code or a code
+  block inside a group stays as written (its HTML was written inside the
+  attribute); a `"` of a generated attribute (the id of a heading) is
+  escaped; the text of a group of what is not an element gets its line
+  breaks (`-b`) as any text, and the zones in it are zones.
 - One reader for the attributes (`{...}`, the `attrs` of a macro, the
   defaults of a tag) and one rule when several give the same one: the tag,
   then the macro, then its `url`, then the page, the last one given; class
@@ -118,9 +142,7 @@ macro functions and the errors.
   `<strong><em>...</strong>...</em>`).
 - The README starts with a two-minute sheet and one path, `lhtml.run(text)`;
   the macro functions, custom tags in Python, the document tree and the
-  layout of the code move to `docs/advanced.md`. The document tree
-  (`parse`, `render`) is experimental in 3.0: to read, not to edit (render
-  reads the internal copies of the nodes). The CLI section says what one
+  layout of the code move to `docs/advanced.md`. The CLI section says what one
   input and several inputs do without `-o`.
 - Rules that hold for every tag (from an external review; LHTML 2 had the
   same surprises): the URL of a macro with `url:` is kept as written, as the

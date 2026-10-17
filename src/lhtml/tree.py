@@ -1,7 +1,7 @@
 """The document tree of LHTML: parse, then render (lhtml.run is both).
 
     document = parse(text, macros=None, tags=None)
-    html     = render(document, line_breaks=False, media=None)
+    html     = render(document, line_breaks=False, media=None)    (render.py)
 
 The tree holds headings, lists, bold and italic, the `::` elements, and the
 zones LHTML never reads (code, inline code, mathematics, raw HTML, Jinja) as
@@ -19,7 +19,10 @@ passes LHTML 2 and 3.0 had, which wrote '<h1>', '<strong>' into the text
 instead (the tree replaced them on 2026-10-17 with the same HTML on the
 tests, a corpus of five projects and 80 000 fuzzed documents). Each
 character keeps its origin, the source or an event; the tree is built from
-the events, and `render` writes the HTML from the tree alone.
+the events. A tag builds the nodes of its element (export_html.Tag), the
+label of a link is its children, and the placeholders of the zones are
+gone from the tree: `render` writes the HTML from the fields of the nodes
+alone (nodes.py).
 
 The nodes nest: nothing crosses. An element opened in a heading, a list
 item, a bold or an italic span, and not closed there (its `::` elsewhere,
@@ -38,138 +41,22 @@ import bisect
 import re
 import warnings
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import Callable
 
 from .errors import LHTMLError, LHTMLParseError
-from .export_html import SPACER, TAGS, Tag, export_html_element_class_and_id
+from .export_html import SPACER, TAGS, Tag, class_and_id, node_list
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
+from .nodes import (
+    Code, Document, Element, Emphasis, Heading, InlineCode, Item, List, Math, Node, Raw, Strong, Text,
+)
 from .patterns import (
     BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
 from .process import (
-    ProtectionStores, normalize_input, process_prepare, process_unprotect,
-    line_breaks as _with_line_breaks, render_inline_code, render_code_block, _code_language,
+    ProtectionStores, normalize_input, process_prepare, _code_language,
     _is_tag_boundary, _adjust_bare_tag, _context, _warn, check_is_closing_tag,
     _refuse_explicit_closing,
 )
 from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
-
-
-# ---------------------------------------------------------------------------
-# The nodes
-# ---------------------------------------------------------------------------
-
-@dataclass(eq=False)
-class Node:
-    span: tuple = (0, 0)            # offsets in the text given to parse (end excluded)
-    line: int | None = None         # 1-based, of span[0]
-    column: int | None = None
-    children: list = field(default_factory=list)
-
-    @property
-    def kind(self):
-        return type(self).__name__
-
-    def walk(self):
-        """The node and its descendants, in document order (no recursion:
-        a document may nest deeper than Python's recursion limit)."""
-        stack = [self]
-        while stack:
-            node = stack.pop()
-            yield node
-            stack.extend(reversed(node.children))
-
-
-@dataclass(eq=False)
-class Document(Node):
-    problems: list = field(default_factory=list)    # LHTMLWarning, with their line and column
-    stores: ProtectionStores | None = None          # the opaque zones, for render
-
-
-@dataclass(eq=False)
-class Text(Node):
-    value: str = ''                 # as written
-    raw: str = ''                   # with the placeholders of the zones it holds (render)
-
-
-@dataclass(eq=False)
-class Heading(Node):
-    level: int = 1
-    attributes: str = ''            # (.class #id) as written
-    markup_attributes: str = field(default='', repr=False)     # the same, as render reads them
-
-
-@dataclass(eq=False)
-class List(Node):
-    pass
-
-
-@dataclass(eq=False)
-class Item(Node):
-    pass
-
-
-@dataclass(eq=False)
-class Strong(Node):
-    pass
-
-
-@dataclass(eq=False)
-class Emphasis(Node):
-    pass
-
-
-@dataclass(eq=False)
-class Element(Node):
-    name: str = ''                  # '' for a bare :: (an anonymous div, a spacer)
-    groups: dict = field(default_factory=dict)      # '[]' style, '()' classes and id, '{}' attributes
-    value: str = ''                 # the word glued after the groups
-    # 'tag' (closed by its ::), 'inline' (div::text::) or 'void' (no children),
-    # 'container' (closed at the end of the heading, item, bold or italic it
-    # is opened in), 'never' (not closed: no closing tag)
-    closed: str = 'tag'
-    element: dict = field(default_factory=dict, repr=False)     # what the tag renders from
-    tag: Tag | None = field(default=None, repr=False)
-    opened_in: Node | None = field(default=None, repr=False)    # its container, None: the document
-
-
-@dataclass(eq=False)
-class Code(Node):
-    language: str = ''
-    body: str = ''
-    index: int = 0
-
-
-@dataclass(eq=False)
-class InlineCode(Node):
-    text: str = ''
-    index: int = 0
-
-
-@dataclass(eq=False)
-class Math(Node):
-    text: str = ''
-    display: bool = False
-    index: int = 0
-
-
-@dataclass(eq=False)
-class Raw(Node):
-    text: str = ''
-    raw_kind: str = 'html'          # html, comment, script, style, jinja
-    index: int = 0
-
-
-# ---------------------------------------------------------------------------
-# What a tag receives
-# ---------------------------------------------------------------------------
-
-@dataclass
-class ProcessingContext:
-    """What a tag receives as the third argument of its render."""
-    media: Callable | None = None   # media(src) -> [(url, mime)], given by the caller
-    line_breaks: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +98,8 @@ class _Parser:
         self.source = normalize_input(text)
         self.tags = tags
         self.stores = ProtectionStores()
-        self.events = []            # (what, node): 'open', 'close', 'leaf'
+        self.events = []            # (what, node): 'open', 'close', 'leaf' (a list of nodes)
+        self.parsed = {}            # an element -> (its element dict, the container it is opened in)
         self.lines = [0] + [m.end() for m in re.finditer('\n', self.source)]
 
     # -- positions --------------------------------------------------------
@@ -254,7 +142,8 @@ class _Parser:
         for o in set(origins):
             if o < 0:
                 what, node = self.events[-o - 1]
-                (opened if what == 'open' else closed if what == 'close' else set()).add(node)
+                if what != 'leaf':
+                    (opened if what == 'open' else closed).add(node)
         return opened ^ closed
 
     # -- the stages ---------------------------------------------------------
@@ -274,9 +163,8 @@ class _Parser:
     def headings(self, text):
         def pieces(m):
             level = len(m.group(1))
-            class_id = self.stores.restore(m.group(2) or '', 'A').strip()
-            node = Heading(level=level, attributes=self.stores.original(m.group(2) or '').strip(),
-                           markup_attributes=class_id)
+            written = self.stores.original(m.group(2) or '').strip()
+            node = Heading(level=level, attributes=class_and_id(written), written=written)
             span = self.source_of(text.origins[m.start():m.end()]) or (0, 0)
             node.span = span
             node.line, node.column = self.place(span[0])
@@ -336,7 +224,7 @@ class _Parser:
                     chars.append('\n')
                     origins.append(text.origins[end])
                 else:                   # the last line: its line break is written, as content
-                    brk = Text(value='\n', raw='\n')
+                    brk = Text(value='\n')
                     if span:            # where the line ends
                         brk.span = (span[1], span[1])
                         brk.line, brk.column = self.place(span[1])
@@ -381,7 +269,7 @@ class _Parser:
         flat = text.chars               # the text, each node read by a stage one EVENT_CHAR
         containers, closes = self._containers(text)
         self.open, self.closed_early, self.next_close = [], [], 0
-        resolve = lambda s: self.stores.restore(self.stores.restore(s, 'A'), 'U')
+        original = self.stores.original
         for m in TAG_MARKER.finditer(flat):
             if m.start() < prev:
                 continue
@@ -405,17 +293,34 @@ class _Parser:
                 continue
             element['line'] = line
             element['column'] = column - len(tag) if column else None
-            context = resolve(self._shown(text, tag_start, element['index_end']))
-            element['context'] = _context(context, 0, len(context))
-            if any(EVENT_CHAR in element[key] for key in ('text', '[]', '()', '{}')):
-                self._show_groups(text, m.end(), element)
+            element['context'] = self._quote(text, tag_start, element['index_end'])
+            element['label'] = None
+            if element.get('stray'):    # all of it is its text
+                if EVENT_CHAR in flat[m.end():element['index_end']]:
+                    _warn(f'{tag}:: has a closing bracket without its opening one: it is left as text '
+                          f"(near {element['context']!r})", element)
+                    chars.append(text.chars[prev:element['index_end']])
+                    origins.extend(text.origins[prev:element['index_end']])
+                    prev = element['index_end']
+                    continue
+            for kind in ('[]', '()', '{}'):     # a group across nodes (a bold, a list): as written
+                if EVENT_CHAR in element[kind]:
+                    element[kind] = ' '.join(self._source(text, a - 1, b + 1)[1:-1]
+                                             for k, a, b in element['groups'] if k == kind)
             for key in ('text', '[]', '()', '{}'):
-                element[key] = resolve(element[key])
+                element[key] = original(element[key])
+            element['inline'] = element['text'].endswith('::')
+            if element['inline']:
+                element['text'] = element['text'][:-2]
             self._end_containers(closes, tag_start)
             crossing = self._crosses(text.origins[tag_start:element['index_end']])
             if crossing:                # its source as written, not the markup the stages wrote
                 span = self.source_of(text.origins[tag_start:element['index_end']])
                 crossing = _context(self.source[span[0]:span[1]], 0, span[1] - span[0])
+            if tag == 'link' and not crossing and not element.get('stray'):     # its label: nodes
+                label = [(a, b) for kind, a, b in element['groups'] if kind == '[]']
+                element['label'] = self._label_nodes(text, label)
+                element['[]'] = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
             what = self._decide(element, containers[tag_start], crossing)
             if what is None:            # not a tag: its text stays, and is not read again
                 chars.append(text.chars[prev:element['index_end']])
@@ -429,56 +334,65 @@ class _Parser:
             if kind == 'close':         # the element ends with its ::
                 if span:
                     node.span = (node.span[0], span[1])
-            else:
-                if span:
-                    node.span = span
-                node.line, node.column = element['line'], element['column']
+            else:                       # the nodes its tag built, where it is
+                for built in (node if kind == 'leaf' else [node]):
+                    for n in built.walk():
+                        if n.line is None:
+                            n.span = span or n.span
+                            n.line, n.column = element['line'], element['column']
             event = self.event(kind, node)
             chars.append(EVENT_CHAR)
             origins.append(-(event + 1))
             prev = last_tag_end = element['index_end']
         self._end_containers(closes, len(flat) + 1)
         for node in self.open:
-            _warn(f"{_label(node)} is never closed (near {node.element['context']!r})", node.element)
+            element = self.parsed[node][0]
+            _warn(f"{_label(node)} is never closed (near {element['context']!r})", element)
         chars.append(text.chars[prev:])
         origins.extend(text.origins[prev:])
         return _Text(''.join(chars), origins)
 
-    def _shown(self, text, start, end):
-        """The text between two positions with the markup of its nodes,
-        as the text passes wrote it ('<strong>'): what an element holds in
-        its groups (a link label), what a message quotes."""
-        start = max(0, start)
-        if EVENT_CHAR not in text.chars[start:end]:
-            return text.chars[start:end]
-        parts = []
-        for ch, origin in zip(text.chars[start:end], text.origins[start:end]):
-            if ch != EVENT_CHAR or origin >= 0:
-                parts.append(ch)
-                continue
-            what, node = self.events[-origin - 1]
-            if what == 'leaf':
-                parts.append(node.raw)
-            else:
-                parts.append(_MARKUP[type(node)](node)[what == 'close'])
-        return ''.join(parts)
+    def _source(self, text, start, end):
+        """The source as written of the text between two positions."""
+        span = self.source_of(text.origins[start:end])
+        return self.source[span[0]:span[1]] if span else ''
+
+    def _label_nodes(self, text, ranges):
+        """The nodes of the label of a link (its [...] groups, joined by a
+        space): its text, bold, italic, zones."""
+        root = Node()
+        for k, (start, end) in enumerate(ranges):
+            if k:
+                root.children.append(Text(value=' '))
+            stack, buffer, origins, done = [root], [], [], set()
+            for ch, origin in zip(text.chars[start:end], text.origins[start:end]):
+                if origin >= 0:
+                    buffer.append(ch)
+                    origins.append(origin)
+                    continue
+                if origin in done:
+                    continue
+                done.add(origin)
+                if buffer:
+                    self._text_nodes(''.join(buffer), origins, stack[-1])
+                    buffer, origins = [], []
+                what, node = self.events[-origin - 1]
+                if what == 'open':
+                    stack[-1].children.append(node)
+                    stack.append(node)
+                elif what == 'close':
+                    stack.pop()
+                else:
+                    stack[-1].children.extend(node if isinstance(node, list) else [node])
+            if buffer:
+                self._text_nodes(''.join(buffer), origins, stack[-1])
+        return root.children
 
     def _quote(self, text, start, end):
         """What a message quotes of the text between two positions: its
         source as written, on one line."""
         span = self.source_of(text.origins[max(0, start):end])
         return _context(self.source[span[0]:span[1]], 0, span[1] - span[0]) if span else ''
-
-    def _show_groups(self, text, after, element):
-        """The groups (and the text of a stray element) of an element whose
-        source holds nodes: with their markup (extract_bracket_elements
-        joins the groups of a kind with a space)."""
-        if element['()'] == element['[]'] == element['{}'] == '' and element['groups'] \
-                and EVENT_CHAR in element['text']:    # stray: all of it is its text
-            element['text'] = self._shown(text, after, element['index_end'])
-            return
-        for kind in ('[]', '()', '{}'):
-            element[kind] = ' '.join(self._shown(text, a, b) for k, a, b in element['groups'] if k == kind)
 
     def _containers(self, text):
         """The innermost container open at each position of the text (None:
@@ -507,11 +421,12 @@ class _Parser:
         while self.next_close < len(closes) and closes[self.next_close][0] < position:
             container = closes[self.next_close][1]
             self.next_close += 1
-            while self.open and self.open[-1].opened_in is container:
+            while self.open and self.parsed[self.open[-1]][1] is container:
                 node = self.open.pop()
+                element = self.parsed[node][0]
                 _warn(f'{_label(node)} is closed at the end of the {_KINDS[type(container)]} it is '
-                      f"opened in: its :: is elsewhere, or missing (near {node.element['context']!r})",
-                      node.element)
+                      f"opened in: its :: is elsewhere, or missing (near {element['context']!r})",
+                      element)
                 self.closed_early.append(node)
 
     def _place_of(self, text, position):
@@ -540,51 +455,55 @@ class _Parser:
         if check_is_closing_tag(element):
             return self._close_tag(element, container)
         if element['text'] == 'nl':
-            return 'leaf', Element(groups=self._written(element), value='nl',
-                                   closed='void', element=element, tag=SPACER, opened_in=container)
+            return self._open(element, SPACER, '', container)
         if element['[]'] or element['()'] or element['{}'] or element['text']:
             return self._open(element, self.tags['div'], '', container)    # an anonymous div
         return None
 
-    def _written(self, element):
-        """The groups of an element as written: the zones they hold (Jinja,
-        mathematics, inline code) as written, the bold and italic of a link
-        label as HTML (the stages read them before the element). The element
-        keeps the placeholders of the zones for its tag, as the text passes
-        gave them."""
-        return {k: self.stores.original(element[k]) for k in ('[]', '()', '{}')}
-
     def _open(self, element, tag, name, container):
+        """The nodes the tag builds: ('open', its element) when it holds
+        what follows, else ('leaf', [nodes])."""
         try:
             holds = tag.holds(element)
         except LHTMLError:
             raise
         except Exception as e:
             raise _tag_error(f'{name}::', 'container', e, element) from e
-        closed = 'tag' if holds else 'inline' if element['text'].endswith('::') else 'void'
-        node = Element(name=name, groups=self._written(element),
-                       value=self.stores.original(element['text']), closed=closed, element=element, tag=tag,
-                       opened_in=container)
+        try:
+            built = node_list(tag.build(element))
+        except LHTMLError:
+            raise
+        except Exception as e:
+            raise _tag_error(f'{name}::', 'build', e, element) from e
+        if holds and (len(built) != 1 or not isinstance(built[0], Element)):
+            raise _tag_error(f'{name}::', 'build', TypeError('a container builds one Element'), element)
+        written = {k: element[k] for k in ('()', '[]', '{}', 'text')}
+        closed = 'tag' if holds else 'inline' if element['inline'] else 'void'
+        for node in built:
+            if isinstance(node, Element):
+                node.tag, node.closed, node.written = name, closed, written
         if holds:
-            self.open.append(node)
-            return 'open', node
-        return 'leaf', node
+            self.parsed[built[0]] = (element, container)
+            self.open.append(built[0])
+            return 'open', built[0]
+        return 'leaf', built
 
     def _close_tag(self, element, container):
         """A `::`: it closes the last open element if they are in the same
         container; otherwise it closes nothing, and stays as text."""
         top = self.open[-1] if self.open else None
-        if top is not None and top.opened_in is container:
+        if top is not None and self.parsed[top][1] is container:
             return 'close', self.open.pop()
         early = self.closed_early[-1] if self.closed_early else None
-        if early is not None and (top is None or early.element['index_start'] > top.element['index_start']):
+        start = lambda node: self.parsed[node][0]['index_start']
+        if early is not None and (top is None or start(early) > start(top)):
             self.closed_early.pop()
             _warn(f'this :: closes nothing: {_label(early)} was closed at the end of the '
-                  f"{_KINDS[type(early.opened_in)]} it is opened in (near {early.element['context']!r})",
-                  element)
+                  f"{_KINDS[type(self.parsed[early][1])]} it is opened in "
+                  f"(near {self.parsed[early][0]['context']!r})", element)
         elif top is not None:
             _warn(f'this :: closes nothing: it is inside a {_KINDS.get(type(container), "container")} '
-                  f"that {_label(top)} is not in (near {top.element['context']!r})", element)
+                  f"that {_label(top)} is not in (near {self.parsed[top][0]['context']!r})", element)
         else:
             _warn(f"Closing tag :: has no matching opening tag (near {element.get('context', '')!r})",
                   element)
@@ -593,7 +512,7 @@ class _Parser:
     # -- the tree ---------------------------------------------------------------
 
     def build(self, text):
-        document = Document(span=(0, len(self.source)), stores=self.stores)
+        document = Document(span=(0, len(self.source)))
         stack = [document]
         buffer, buffer_origins = [], []
         done = set()
@@ -626,7 +545,7 @@ class _Parser:
                 stack[-1].children.append(node)
                 stack.append(node)
             elif what == 'leaf':
-                stack[-1].children.append(node)
+                stack[-1].children.extend(node if isinstance(node, list) else [node])
             else:                       # the elements still open in it end with it (warned)
                 while stack[-1] is not node:
                     stack.pop().closed = 'container'
@@ -651,9 +570,32 @@ class _Parser:
             else:
                 node.span = (min(node.span[0], start), max(node.span[1], end))
 
+    def _expanded(self, raw, origins):
+        """The text with what its placeholders of text (a URL, a group of
+        what is not an element) hide, put back: the zones in them are zones
+        (a code block in the {...} of a::b is a code block). Their characters
+        are placed where the placeholder is."""
+        if not any(m.group(1) in 'AU' for m in PLACEHOLDER.finditer(raw)):
+            return raw, origins
+        parts, places, position = [], [], 0
+        for m in PLACEHOLDER.finditer(raw):
+            if m.group(1) not in 'AU':
+                continue
+            parts.append(raw[position:m.start()])
+            places.extend(origins[position:m.start()])
+            entry = getattr(self.stores, m.group(1))[int(m.group(2))]
+            entry, entry_places = self._expanded(entry, [origins[m.start()]] * len(entry))
+            parts.append(entry)
+            places.extend(entry_places)
+            position = m.end()
+        parts.append(raw[position:])
+        places.extend(origins[position:])
+        return ''.join(parts), places
+
     def _text_nodes(self, raw, origins, parent):
         """Text, and the opaque zones its placeholders hold (a URL or a
         group hidden in a text is text: one node with the text around it)."""
+        raw, origins = self._expanded(raw, origins)
         nodes, position = [], 0
         for m in PLACEHOLDER.finditer(raw):
             if m.start() > position:
@@ -664,9 +606,9 @@ class _Parser:
             nodes.append(self._text(raw[position:], origins[position:]))
         for node in nodes:
             last = parent.children[-1] if parent.children else None
-            if isinstance(node, Text) and isinstance(last, Text) and last.span[1] == node.span[0]:
+            if isinstance(node, Text) and isinstance(last, Text) and last.span[1] == node.span[0] \
+                    and last.line is not None:
                 last.value += node.value
-                last.raw += node.raw
                 last.span = (last.span[0], node.span[1])
             else:
                 parent.children.append(node)
@@ -679,26 +621,26 @@ class _Parser:
         return node
 
     def _text(self, raw, origins):
-        return self._located(Text(value=self.stores.original(raw), raw=raw), origins)
+        return self._located(Text(value=self.stores.original(raw)), origins)
 
     def _zone(self, m, origins):
         kind, index = m.group(1), int(m.group(2))
         original = self.stores.original(m.group(0))
         if kind == 'C':
             header, body = self.stores.C[index]
-            node = Code(language=_code_language(header), body=body, index=index)
+            node = Code(language=_code_language(header), body=body)
         elif kind == 'I':
-            node = InlineCode(text=original[1:-1], index=index)
+            node = InlineCode(text=original[1:-1])
         elif kind == 'R' and original.startswith(('\\(', '\\[')):
-            node = Math(text=original, display=original.startswith('\\['), index=index)
+            node = Math(text=original, display=original.startswith('\\['))
         elif kind == 'R':
             raw_kind = ('comment' if original.startswith(('<!--', '{#')) else
                         'jinja' if original.startswith(('{{', '{%')) else
                         'script' if original[:7].lower() == '<script' else
                         'style' if original[:6].lower() == '<style' else 'html')
-            node = Raw(text=original, raw_kind=raw_kind, index=index)
+            node = Raw(text=original, raw_kind=raw_kind)
         else:                           # a URL or a group of an element that is not one: text
-            return self._located(Text(value=original, raw=m.group(0)), origins)
+            return self._located(Text(value=original), origins)
         return self._located(node, origins)
 
 
@@ -710,7 +652,7 @@ _KINDS = {Heading: 'heading', List: 'list', Item: 'list item', Strong: 'bold', E
 
 
 def _label(node):
-    return f'{node.name}::'
+    return f'{node.tag}::'
 
 
 def _tag_error(label, what, error, element):
@@ -771,117 +713,5 @@ def parse(text, *, macros=None, tags=None):
             node.span = (given(node.span[0]), given(node.span[1]))
     document.span = (0, len(text))
     document.problems = [w.message for w in caught]
+    document.source = text
     return document
-
-
-_MARKUP = {
-    Heading: lambda node: (f'<h{node.level}'
-                           + (export_html_element_class_and_id(node.markup_attributes)
-                              if node.markup_attributes else '')
-                           + '>', f'</h{node.level}>\n'),
-    List: lambda node: ('<ul>\n', '</ul>\n'),
-    Item: lambda node: ('<li>\n', '</li>\n'),
-    Strong: lambda node: ('<strong>', '</strong>'),
-    Emphasis: lambda node: ('<em>', '</em>'),
-}
-_STORE = {Code: 'C', InlineCode: 'I', Math: 'R', Raw: 'R'}
-
-
-def _node_html(node, children, context):
-    """The HTML of a node around the HTML of its children."""
-    markup = _MARKUP.get(type(node))
-    if markup is not None:
-        opening, closing = markup(node)
-        return opening + children + closing
-    if not isinstance(node, Element):
-        return children
-    element = {**node.element, 'closed': node.closed != 'never'}
-    try:
-        html = node.tag.render(element, children, context)
-    except LHTMLError:
-        raise
-    except Exception as e:
-        raise _tag_error(_label(node), 'render', e, node.element) from e
-    if not isinstance(html, str):
-        raise LHTMLError(f'{_label(node)} its render returned {type(html).__name__}, not a str '
-                         f"(near {node.element.get('context')!r})", node.line, node.column)
-    return html
-
-
-def _render_tree(root, context):
-    """The HTML of a node, its children first (no recursion: a document may
-    nest deeper than Python's recursion limit)."""
-    stack = [(root, iter(root.children), [])]
-    while True:
-        node, children, parts = stack[-1]
-        child = next(children, None)
-        if child is None:
-            stack.pop()
-            html = _node_html(node, ''.join(parts), context)
-            if not stack:
-                return html
-            stack[-1][2].append(html)
-        elif isinstance(child, Text):
-            parts.append(child.raw)
-        elif type(child) in _STORE:
-            parts.append(f'\x00{_STORE[type(child)]}{child.index}\x00')
-        else:
-            stack.append((child, iter(child.children), []))
-
-
-def _tokens(document, context):
-    """The HTML of the nodes as tokens, in order: (html, kind), kind 'text',
-    'leaf' or 'markup' (process.line_breaks). Each tag is rendered once,
-    with its children, as without line-breaks; where its HTML holds its
-    children once and as given, it is split around them (its opening, the
-    tokens of its children, its closing). A tag that transforms or repeats
-    its children is one token: its HTML as it wrote it."""
-    out = []
-    stack = [(document, iter(document.children), 0)]      # (node, its children, where its tokens start)
-    while stack:
-        node, children, start = stack[-1]
-        child = next(children, None)
-        if child is not None:
-            if isinstance(child, Text):
-                out.append((child.raw, 'text'))
-            elif type(child) in _STORE:
-                out.append((f'\x00{_STORE[type(child)]}{child.index}\x00', 'leaf'))
-            else:
-                out.append(None)        # its opening, once its children are written
-                stack.append((child, iter(child.children), len(out)))
-            continue
-        stack.pop()
-        if node is document:
-            return out
-        if type(node) in _MARKUP:
-            opening, closing = _MARKUP[type(node)](node)
-            out[start - 1] = (opening, 'markup')
-            out.append((closing, 'markup'))
-            continue
-        children_html = ''.join(html for html, _ in out[start:])
-        html = _node_html(node, children_html, context)
-        at = html.find(children_html) if children_html else -1
-        if at >= 0 and html.count(children_html) == 1:
-            out[start - 1] = (html[:at], 'markup')
-            out.append((html[at + len(children_html):], 'markup'))
-        else:
-            del out[start:]
-            out[start - 1] = (html, 'markup')
-
-
-def render(document, *, line_breaks=False, media=None):
-    """The HTML of a document tree. `line_breaks`: the line breaks of the
-    source are rendered as <br>; `media`: the resolver of the sources of a
-    video, media(src) -> [(url, mime type)] (none: the source as written)."""
-    if media is not None and not callable(media):
-        raise TypeError(f'"media" must be callable, got {type(media).__name__}')
-    context = ProcessingContext(media, bool(line_breaks))
-    stores = document.stores
-    if context.line_breaks:
-        text = _with_line_breaks(_tokens(document, context), stores)
-    else:
-        text = _render_tree(document, context)
-    text = stores.restore(text, 'I', render_inline_code)
-    text = process_unprotect(text, stores)
-    text = stores.restore(text, 'C', render_code_block)
-    return text

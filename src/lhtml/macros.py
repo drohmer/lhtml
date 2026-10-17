@@ -38,7 +38,9 @@ import re
 
 from .errors import LHTMLMacroError
 from . import attributes
-from .export_html import TAGS, Tag, _attr, _build_attrs, element_html
+from .attributes import quoted
+from .export_html import TAGS, Tag, element_attributes
+from .nodes import Element, Text
 from .process import _warn
 
 
@@ -112,49 +114,36 @@ def macro_tag(name, spec):
     variant = spec.get('variant')
     default = spec.get('default')
 
-    def merged(element, warn):
-        text = element['text']
+    def build(element):
+        word = element['text']
         all_classes = list(classes)
         if variant:
-            value = text.strip()
-            closed = value.endswith('::')          # gap::l:: (closed at once)
-            if closed:
-                value = value[:-2].strip()
-            value = value or (str(default) if default is not None else '')
+            value = word.strip() or (str(default) if default is not None else '')
             if value:
-                if warn and value not in [str(v) for v in variant]:
+                if value not in [str(v) for v in variant]:
                     _warn(f'{name}::{value}: unknown variant (expected one of '
                           f'{", ".join(str(v) for v in variant)}) near {element.get("context", "")!r}',
                           element, stacklevel=5)
                 all_classes.append(f'{classes[0]}-{value}')
-            text = '::' if closed else ''
+            word = ''
         url_attribute = ''
         if url:
-            closed = text.rstrip().endswith('::')
-            value = (text.rstrip()[:-2] if closed else text).strip()
+            value = word.strip()
             if value or url.lower() not in attributes.names(attrs):     # demo:: keeps the src of the macro
-                url_attribute = f'{url}="{_attr(value)}"'
-            text = '::' if closed else ''
+                url_attribute = f'{url}="{quoted(value)}"'
+            word = ''
         # the macro, then its url, then the page: a later one replaces an attribute
         defaults, url_attribute, written = attributes.layered(attrs, url_attribute, element['{}'])
-        inline = attributes.join(url_attribute, defaults, written)
-        result = {**element,
-                  '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
-                  '{}': inline, 'text': text}
-        if not void and empty and not result['text'].endswith('::'):
-            result['text'] += '::'                 # closed at once
-        return result
+        node = Element(name=tag, void=void, attributes=element_attributes({
+            '()': ' '.join(['.' + c for c in all_classes] + ([element['()']] if element['()'] else [])),
+            '[]': element['[]'], '{}': attributes.join(url_attribute, defaults, written)}))
+        if void:                        # the word after it is text
+            return [node] + ([Text(value=word)] if word else [])
+        if word:
+            node.children.append(Text(value=word))
+        return node
 
-    def holds(element):                # the parser asks once: the variant is warned then
-        return not void and not merged(element, warn=True)['text'].endswith('::')
-
-    def render(element, children, context):
-        m = merged(element, warn=False)
-        if void:
-            return f'<{tag}{_build_attrs(m)}>' + ('' if m['text'] == '::' else m['text'])
-        return element_html(tag, m, children)
-
-    return Tag(render, container=holds, url=bool(url))
+    return Tag(build, container=not void and not empty, url=bool(url))
 
 
 def describe_macro(name, spec):
@@ -165,7 +154,7 @@ def describe_macro(name, spec):
     tag = spec.get('tag') or 'div'
     html = '<' + tag
     if spec.get('class'):
-        html += f' class="{_attr(spec["class"])}"'
+        html += f' class="{quoted(spec["class"])}"'
     if spec.get('attrs'):
         html += ' ' + spec['attrs'].strip()
     variant = spec.get('variant')

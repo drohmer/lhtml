@@ -210,7 +210,8 @@ class TestVerbatim:
 
 class TestPluginSystem:
     def test_custom_tag(self):
-        tags = {'alert': lhtml.Tag(lambda el, children, context: f'<div class="alert">{el.get("text", "")}</div>')}
+        tags = {'alert': lhtml.Tag(lambda el: lhtml.Element(attributes=lhtml.Attributes({'class': 'alert'}),
+                                                            children=[lhtml.Text(value=el['text'])]))}
         r = lhtml.run('\nalert::Warning\n', tags=tags)
         assert '<div class="alert">Warning</div>' in r
         assert 'alert' not in lhtml.TAGS
@@ -420,7 +421,7 @@ class TestTagBoundaries:
 
 class TestTagNames:
     def test_plugin_name_with_digit_dash_underscore(self):
-        tags = {name: lhtml.Tag(lambda el, children, context, name=name: f'<{name}/>')
+        tags = {name: lhtml.Tag(lambda el, name=name: lhtml.Raw(text=f'<{name}/>'))
                 for name in ('h2', 'my-tag', 'my_tag')}
         assert lhtml.run('h2::x my-tag::y my_tag::z\n', tags=tags) == '<h2/> <my-tag/> <my_tag/>\n'
 
@@ -881,10 +882,10 @@ class TestBareTagEdgeCases:
 
 class TestPluginReadmeExample:
     def test_alert_example(self):
-        def render_alert(element, children, context):
-            style = element.get('[]', '')
-            return f'<div class="alert" style="{style}">{element["text"]}{children}</div>'
-        alert = lhtml.Tag(render_alert, container=True)
+        def alert_element(element):
+            attributes = lhtml.Attributes({'class': 'alert', 'style': element['[]']})
+            return lhtml.Element(name='div', attributes=attributes, children=[lhtml.Text(value=element['text'])])
+        alert = lhtml.Tag(alert_element, container=True)
         r = lhtml.run('alert::[background:yellow; padding:10px;] Warning message ::\n',
                       tags={'alert': alert})
         assert r == '<div class="alert" style="background:yellow; padding:10px;"> Warning message </div>\n'
@@ -1563,6 +1564,30 @@ class TestCommandOutput:
         good.write_text('ok\n')
         code, _, err = self._run_cli(monkeypatch, capsys, str(bad), str(good), '-o', str(tmp_path / 'o') + '/')
         assert code == 1 and err.splitlines()[-1] in ('1 converted · 1 failed', '1 converted, 1 failed')
+
+
+    def test_two_outputs_that_are_one_file_are_refused(self, tmp_path, monkeypatch, capsys):
+        a, b = tmp_path / 'a.l.html', tmp_path / 'b.l.html'
+        a.write_text('A\n')
+        b.write_text('B\n')
+        (tmp_path / 'out').mkdir()
+        (tmp_path / 'out/a.html').write_text('old\n')
+        os.link(tmp_path / 'out/a.html', tmp_path / 'out/b.html')
+        code, _, err = self._run_cli(monkeypatch, capsys, str(a), str(b), '-o', str(tmp_path / 'out') + '/')
+        assert code == 1 and 'would both be written to' in err and 'nothing written' in err
+        assert (tmp_path / 'out/a.html').read_text() == 'old\n'
+
+    def test_an_error_shows_its_line(self, tmp_path, monkeypatch, capsys):
+        from lhtml import cli
+        f = tmp_path / 'a.l.html'
+        f.write_text('x\ninclude::header.html\n')
+        reported = []
+        real = cli.Reporter.report
+        monkeypatch.setattr(cli.Reporter, 'report', lambda self, d, source=None: reported.append((d, source))
+                            or real(self, d, source))
+        code, _, err = self._run_cli(monkeypatch, capsys, str(f))
+        [(diagnostic, source)] = reported
+        assert code == 1 and (diagnostic.line, diagnostic.column) == (2, 1) and source == 'x\ninclude::header.html\n'
 
 
 class TestDiagnostics:

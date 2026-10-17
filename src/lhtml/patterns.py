@@ -120,30 +120,12 @@ def make_placeholder(kind: str, idx: int) -> str:
     return f'{PLACEHOLDER_CHAR}{kind}{idx}{PLACEHOLDER_CHAR}'
 
 
-def restore_from_index(text: str, kind: str, store: list,
-                       render_fn: Callable[[object], str] | None = None) -> str:
-    """Replace the placeholders of kind `kind` by their stored content.
-
-    If given, `render_fn(entry)` produces the replacement of a stored entry.
-    Restoration is recursive: protected content may itself contain
-    placeholders of the same kind.
-    """
-    def _restore(m):
-        idx = int(m.group(2))
-        if m.group(1) != kind or idx >= len(store):
-            return m.group(0)
-        entry = store[idx]
-        return restore_from_index(render_fn(entry) if render_fn else entry, kind, store, render_fn)
-    return regex_transform(text, PLACEHOLDER, _restore)
-
-
 def regex_transform(text: str, pattern: re.Pattern, transform_fn: Callable[[re.Match], str]) -> str:
     """Apply a regex-based transformation across text.
 
     For each match of `pattern` in `text`, calls `transform_fn(match)`
     to produce the replacement string. Non-matching text passes through.
 
-    Used to restore the placeholders (restore_from_index).
     """
     parts = []
     prev = 0

@@ -12,7 +12,7 @@ import warnings
 from dataclasses import dataclass, field
 
 from .tag_parser import extract_bracket_elements
-from .code import export_html_code, known_language, unknown_language_message
+from .code import known_language, unknown_language_message
 from .errors import LHTMLParseError, LHTMLWarning
 from .patterns import (
     PROTECTED, PROTECTED_BLOCKS, protected_blocks,
@@ -21,7 +21,7 @@ from .patterns import (
     BLOCK_TAGS, LEADING_TAG, TRAILING_TAG, LEADING_PLACEHOLDER, TRAILING_PLACEHOLDER,
     JINJA_LINE, BLOCK_RAW, PREFORMATTED_TAG,
     PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR,
-    regex_transform, restore_from_index, make_placeholder,
+    regex_transform, make_placeholder,
 )
 
 
@@ -61,9 +61,6 @@ class ProtectionStores:
         """(line, column) of `offset` of the prepared `text` in the source."""
         return position(self.original(text[:offset]))
 
-    def restore(self, text, kind, render_fn=None):
-        return restore_from_index(text, kind, getattr(self, kind), render_fn)
-
 
 def position(before):
     """(line, column), 1-based, of the place that `before`, the text before it, ends at."""
@@ -102,12 +99,6 @@ def read_source(filename):
 def _code_language(header):
     m = re.search(r'\[([^\[\]\n]*)\]', header)
     return m.group(1) if m else ''
-
-
-def render_code_block(entry):
-    """Highlight a stored (header, body) code block."""
-    header, body = entry
-    return export_html_code(body, _code_language(header), warn=False)   # warned at process_protect
 
 
 # ---------------------------------------------------------------------------
@@ -199,13 +190,6 @@ def process_protect_attributes(text, stores):
             prev = end
     parts.append(text[prev:])
     return ''.join(parts)
-
-
-def process_unprotect(text, stores):
-    """Restore the raw zones and URLs protected by process_protect."""
-    text = stores.restore(text, 'A')
-    text = stores.restore(text, 'R')
-    return stores.restore(text, 'U')
 
 
 # ---------------------------------------------------------------------------

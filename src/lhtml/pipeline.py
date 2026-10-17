@@ -6,7 +6,8 @@ is a leaf of the tree, never read as LHTML; headings, lists, bold, italic
 and the :: elements are its nodes.
 """
 
-from .tree import parse, render
+from .render import render
+from .tree import parse
 
 
 def run(text, *, macros=None, tags=None, line_breaks=False, media=None):

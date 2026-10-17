@@ -25,7 +25,12 @@ from .code import LEXERS
 from .export_html import TAGS, Tag
 from .macros import describe_macro, load_macros, registry_with_macros
 from .pipeline import run
-from .tree import parse, render
+from .attributes import Attributes
+from .nodes import (
+    Code, Document, Element, Emphasis, Heading, InlineCode, Item, List, Math, Node, Raw, Strong, Text, Video,
+)
+from .render import render
+from .tree import parse
 from .wrap_html import wrap
 
 
@@ -37,7 +42,9 @@ def main():
 
 __all__ = [
     '__version__', 'run', 'parse', 'render', 'wrap', 'main', 'TAGS', 'Tag', 'LEXERS',
-    'describe_macro', 'load_macros', 'registry_with_macros',
+    'describe_macro', 'load_macros', 'registry_with_macros', 'Attributes',
+    'Node', 'Document', 'Text', 'Heading', 'List', 'Item', 'Strong', 'Emphasis', 'Element', 'Video',
+    'Code', 'InlineCode', 'Math', 'Raw',
     # Errors
     'LHTMLError', 'LHTMLParseError',
     'LHTMLWarning', 'LHTMLMacroError',

@@ -90,7 +90,7 @@ input is written to that file, several into that directory; two inputs that
 would be written to the same file are refused before anything is written.
 
 - stdout holds the HTML only, stderr every message: `lhtml page.l.html > page.html` writes a clean file.
-- The destinations are checked before any file is written: an input missing, two inputs written to one file (or to names that differ by case only), an output that is an input (or a symbolic or hard link to one), an output under a file: an error each, and nothing is written.
+- The destinations are checked before any file is written: an input missing, two inputs written to one file (or to names that differ by case only, or to two names of one file), an output that is an input (or a symbolic or hard link to one), an output under a file: an error each, and nothing is written.
 - Then each file is converted and written; one that fails does not stop the others. Writing files ends with a summary (`2 converted · 1 warning`).
 - Exit status: 0; 1 when a file is not converted or not written; 2 for a wrong use of the command.
 - Files are read and written as UTF-8 (a BOM is accepted).
