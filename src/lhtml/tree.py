@@ -44,7 +44,7 @@ from .errors import LHTMLError, LHTMLParseError
 from .export_html import SPACER, TAGS, Tag, export_html_element_class_and_id
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
 from .patterns import (
-    BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
+    BOLD, CHILDREN_CHAR, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
 from .process import (
     ProtectionStores, normalize_input, process_prepare, process_unprotect,
@@ -795,9 +795,6 @@ def _render_tree(root, context):
             stack.append((child, iter(child.children), []))
 
 
-_CHILDREN = '\ue001'               # where a tag writes its children
-
-
 def _tokens(document, context):
     """The HTML of the nodes as tokens, in order: (html, kind), kind 'text',
     'leaf' or 'markup' (process.line_breaks). An element writes its opening
@@ -820,8 +817,8 @@ def _tokens(document, context):
             if type(child) in _MARKUP:
                 parts = _MARKUP[type(child)](child)
             elif child.children:
-                html = _node_html(child, _CHILDREN, context)
-                parts = html.split(_CHILDREN) if html.count(_CHILDREN) == 1 else None
+                html = _node_html(child, CHILDREN_CHAR, context)
+                parts = html.split(CHILDREN_CHAR) if html.count(CHILDREN_CHAR) == 1 else None
             if parts is None:
                 out.append((_render_tree(child, context), 'markup'))
                 continue

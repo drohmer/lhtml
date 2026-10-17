@@ -278,3 +278,16 @@ class TestLineBreaks:
     def test_a_tag_that_writes_its_children_twice_is_one_piece(self):
         twice = lhtml.Tag(lambda element, children, context: f'<i>{children}{children}</i>', container=True)
         assert lhtml.run('a\nt:: b ::\nc', self.ON, tags={'t': twice}) == 'a<br>\n<i> b  b </i><br>\nc'
+
+
+class TestMarksOfTheCaller:
+    """The marks of the tree are Unicode noncharacters: a private-use
+    character of the caller (the markers of a source map) is text."""
+
+    def test_a_private_use_character_is_text(self):
+        marker = 'page.html.j2:3'
+        assert lhtml.run('div::(.x)' + marker + ' a ::') == '<div class="x">' + marker + ' a </div>'
+        assert lhtml.run('span::x' + marker + '::') == '<span>x' + marker + '</span>'
+
+    def test_a_mark_of_the_tree_in_the_input_is_replaced(self):
+        assert lhtml.run('a﷐b ﷑') == 'a�b �'

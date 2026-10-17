@@ -23,7 +23,11 @@ TAG_MARKER       = re.compile(r'(?<!:)::(?!:)')
 # A node of the document tree, once a stage has read it: one character of
 # the text the next stages read (lhtml/tree.py). It is a boundary, as the
 # end of a line is: it ends the word of an element, and a tag may follow it.
-EVENT_CHAR       = '\ue000'
+# A Unicode noncharacter, for internal use: not a private-use character,
+# which a caller may write in its text (the source map of the generator);
+# one in the input is replaced (process.normalize_input).
+EVENT_CHAR       = '\ufdd0'
+CHILDREN_CHAR    = '\ufdd1'         # where a tag's render writes its children (line-breaks)
 SPACER           = re.compile(r'nl(?![\w-])')
 
 # Block directives must not follow a backquote (inline code) or a colon.
