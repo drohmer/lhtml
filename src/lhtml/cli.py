@@ -1,5 +1,7 @@
 """LHTML command-line interface.
 
+Each problem is one line on stderr, `file:line:column: level: message`.
+
 Usage:
     lhtml [-w] file.l.html                       # Single file → stdout
     lhtml [-w] file.l.html -o output.html         # Single file → output file
@@ -54,8 +56,15 @@ def _output_path_for(input_path, output_arg):
     return output_arg
 
 
+def diagnostic(path, level, problem):
+    """`path:line:column: level: message`, the place as far as it is known."""
+    place = ':'.join(str(n) for n in (getattr(problem, 'line', None), getattr(problem, 'column', None))
+                     if n is not None)
+    return f"{path}{':' + place if place else ''}: {level}: {problem}"
+
+
 def _process_file(f_in, meta_base):
-    """Process a single LHTML file and return (html, warning_messages)."""
+    """Process a single LHTML file and return (html, warnings)."""
     meta = dict(meta_base)
     meta['current_directory'] = os.path.dirname(os.path.abspath(f_in)) + '/'
 
@@ -63,14 +72,15 @@ def _process_file(f_in, meta_base):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         html = _ensure_trailing_newline(run(txt, meta))
-    return html, [str(w.message) for w in caught]
+    return html, sorted((w.message for w in caught),       # in the order of the file
+                        key=lambda m: (getattr(m, 'line', None) or 0, getattr(m, 'column', None) or 0))
 
 
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(description='Lightweight HTML')
-    parser.add_argument('inputFiles', nargs='+', help='Input file(s)')
-    parser.add_argument('-w', '--wrapAuto',
+    parser.add_argument('input', nargs='+', help='Input file(s)')
+    parser.add_argument('-w', '--wrap',
                         help='Wrap content in basic HTML template',
                         action='store_true')
     parser.add_argument('-b', '--line-breaks',
@@ -85,7 +95,7 @@ def main():
     args = parser.parse_args()
 
     meta = {}
-    if args.wrapAuto:
+    if args.wrap:
         meta['wrap-auto'] = True
     if args.line_breaks:
         meta['line-breaks'] = True
@@ -94,10 +104,10 @@ def main():
             meta['macros'] = load_macros([os.path.abspath(f) for f in args.macros])
             registry_with_macros(meta['macros'])  # validate before processing files
         except LHTMLError as e:
-            print(f'lhtml: error: {e}', file=sys.stderr)
+            print(diagnostic(args.macros[0] if len(args.macros) == 1 else 'lhtml', 'error', e), file=sys.stderr)
             sys.exit(1)
 
-    single_file = len(args.inputFiles) == 1
+    single_file = len(args.input) == 1
     single_to_stdout = single_file and args.output is None
 
     if (not single_file and args.output is not None
@@ -106,16 +116,16 @@ def main():
                      f'(got {args.output!r}; add a trailing / to create it)')
 
     errors = 0
-    for f_in in args.inputFiles:
+    for f_in in args.input:
         if not os.path.isfile(f_in):
-            print(f'lhtml: error: file not found [{f_in}]', file=sys.stderr)
+            print(f'{f_in}: error: file not found', file=sys.stderr)
             errors += 1
             continue
 
         try:
             html, messages = _process_file(f_in, meta)
-            for message in messages:
-                print(f'lhtml: warning in {f_in}: {message}', file=sys.stderr)
+            for warning in messages:
+                print(diagnostic(f_in, 'warning', warning), file=sys.stderr)
 
             if single_to_stdout:
                 sys.stdout.buffer.write(html.encode('utf-8'))
@@ -126,7 +136,7 @@ def main():
             if any(os.path.realpath(out_path) == os.path.realpath(source)
                    or (os.path.exists(out_path) and os.path.exists(source)
                        and os.path.samefile(out_path, source))
-                   for source in args.inputFiles):
+                   for source in args.input):
                 raise ValueError(f'output file would overwrite the input file [{out_path}]')
             out_dir = os.path.dirname(out_path)
             if out_dir:
@@ -134,7 +144,7 @@ def main():
             with open(out_path, 'w', encoding='utf-8', newline='') as f_out:
                 f_out.write(html)
         except (LHTMLError, OSError, UnicodeError, ValueError) as e:
-            print(f'lhtml: error in {f_in}: {e}', file=sys.stderr)
+            print(diagnostic(f_in, 'error', e), file=sys.stderr)
             errors += 1
 
     if errors:

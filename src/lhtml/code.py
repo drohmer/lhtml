@@ -46,29 +46,44 @@ LEXERS = {
     'c++': CppCgpLexer,
 }
 
+LEXER_OPTIONS = dict(stripall=False, stripnl=True, ensurenl=True, tabsize=2, encoding='utf-8')
+
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def export_html_code(text, language):
-    """Highlight a code block and return HTML."""
+def _lexer(language):
+    """The lexer of a language name, None if neither LEXERS nor Pygments know it."""
     language = (language or '').strip()
     lexer_class = LEXERS.get(language) or LEXERS.get(language.lower())
-    lexer_options = dict(stripall=False, stripnl=True, ensurenl=True,
-                         tabsize=2, encoding='utf-8')
     if lexer_class is not None:
-        lexer = lexer_class()
-    elif not language:
-        lexer = TextLexer(**lexer_options)
-    else:
-        try:
-            lexer = get_lexer_by_name(language, **lexer_options)
-        except ClassNotFound:
-            from .errors import LHTMLWarning
-            warnings.warn(f'Unknown language {language!r} for code::[...] block, '
-                          'rendered as plain text', LHTMLWarning, stacklevel=2)
-            lexer = TextLexer(**lexer_options)
+        return lexer_class()
+    if not language:
+        return TextLexer(**LEXER_OPTIONS)
+    try:
+        return get_lexer_by_name(language, **LEXER_OPTIONS)
+    except ClassNotFound:
+        return None
 
+
+def known_language(language):
+    return _lexer(language) is not None
+
+
+def unknown_language_message(language):
+    return f'Unknown language {language.strip()!r} for code::[...] block, rendered as plain text'
+
+
+def export_html_code(text, language, warn=True):
+    """Highlight a code block and return HTML. An unknown language is
+    rendered as plain text, with a warning unless `warn` is False (the
+    pipeline warns where the block is, lhtml.process)."""
+    lexer = _lexer(language)
+    if lexer is None:
+        if warn:
+            from .errors import LHTMLWarning
+            warnings.warn(unknown_language_message(language), LHTMLWarning, stacklevel=2)
+        lexer = TextLexer(**LEXER_OPTIONS)
     formatter = HtmlFormatter(linenos=False, cssclass='code')
     return highlight(text, lexer, formatter)

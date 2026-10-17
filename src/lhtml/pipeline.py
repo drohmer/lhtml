@@ -35,6 +35,9 @@ def run(text, meta=None, tags=None):
         them), media (a callable: media(src) -> [(url, mime type)], the
         sources of a video). LHTML reads no file but these macro files.
     tags: custom tag handlers {name: handler}, added to the built-in TAGS.
+
+    The problems found are LHTMLWarning warnings and LHTMLError errors, with
+    the `line` and `column` in `text` where they are (None if not known).
     """
     meta = dict(meta or {})
     media = meta.get('media')
@@ -51,12 +54,13 @@ def run(text, meta=None, tags=None):
     stores = ProtectionStores()
 
     text = process_prepare(normalize_input(text), stores)
+    positions = stores.tag_positions(text)      # where each element is, for the messages
     text = process_title(text, stores)
     text = process_listing(text)
     text = process_bold(text)
     text = process_italic(text)
     text = process_tag(text, context, handlers,
-                       resolve=lambda s: stores.restore(stores.restore(s, 'A'), 'U'))
+                       resolve=lambda s: stores.restore(stores.restore(s, 'A'), 'U'), positions=positions)
     text = stores.restore(text, 'I', render_inline_code)          # inline code is literal
     if meta.get('line-breaks') is True:     # protected zones are still placeholders
         text = process_line_breaks(text, stores)

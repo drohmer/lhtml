@@ -17,7 +17,7 @@ from .tag_parser import extract_bracket_elements
 from .export_html import (
     export_html_element_class_and_id, export_html_generic,
 )
-from .code import export_html_code
+from .code import export_html_code, known_language, unknown_language_message
 from .errors import LHTMLParseError, LHTMLWarning
 from .patterns import (
     PROTECTED, PROTECTED_BLOCKS,
@@ -49,14 +49,53 @@ class ProtectionStores:
     I: list = field(default_factory=list)
     U: list = field(default_factory=list)
     A: list = field(default_factory=list)  # LHTML attribute group contents
+    # the text each placeholder hides, as written: where a problem is (`locate`)
+    sources: dict = field(default_factory=lambda: {kind: [] for kind in 'CRIUA'})
 
-    def add(self, kind, entry):
+    def add(self, kind, entry, source=None):
         store = getattr(self, kind)
         store.append(entry)
+        self.sources[kind].append(entry if source is None else source)
         return make_placeholder(kind, len(store) - 1)
+
+    def original(self, text):
+        """`text` with its placeholders replaced by what they hide, as written."""
+        return PLACEHOLDER.sub(lambda m: self.original(self.sources[m.group(1)][int(m.group(2))]), text)
+
+    def locate(self, text, offset):
+        """(line, column) of `offset` of the prepared `text` in the source."""
+        return position(self.original(text[:offset]))
+
+    def tag_positions(self, text):
+        """(line, column) in the source of each `::` (TAG_MARKER) of the
+        prepared `text`, in order. The passes before process_tag add lines
+        (a heading, a list) but no `::`: the k-th `::` it reads is this k-th."""
+        positions, line, column, previous = [], 1, 1, 0
+        for m in TAG_MARKER.finditer(text):
+            segment = self.original(text[previous:m.start()])
+            if '\n' in segment:
+                line += segment.count('\n')
+                column = len(segment) - segment.rfind('\n')
+            else:
+                column += len(segment)
+            positions.append((line, column))
+            previous = m.start()
+        return positions
 
     def restore(self, text, kind, render_fn=None):
         return restore_from_index(text, kind, getattr(self, kind), render_fn)
+
+
+def position(before):
+    """(line, column), 1-based, of the place that `before`, the text before it, ends at."""
+    return before.count('\n') + 1, len(before) - before.rfind('\n')
+
+
+def _warn(message, place, stacklevel=3):
+    """A warning at `place`: (line, column), or an element with them."""
+    if isinstance(place, dict):
+        place = place.get('line'), place.get('column')
+    warnings.warn(LHTMLWarning(message, *(place or (None, None))), stacklevel=stacklevel)
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +124,7 @@ def _code_language(header):
 def render_code_block(entry):
     """Highlight a stored (header, body) code block."""
     header, body = entry
-    return export_html_code(body, _code_language(header))
+    return export_html_code(body, _code_language(header), warn=False)   # warned at process_protect
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +153,14 @@ def process_protect(text, stores, blocks=False):
     """
     def _protect(m):
         if blocks and m.group('code') is not None:
-            _refuse_include(m.group('body'))
-            return stores.add('C', (m.group('header'), m.group('body')))
+            # the text is the source here: an offset in it is a place
+            _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
+            language = _code_language(m.group('header'))
+            if not known_language(language):
+                _warn(unknown_language_message(language), position(text[:m.start()]), stacklevel=6)
+            return stores.add('C', (m.group('header'), m.group('body')), m.group(0))
         if m.group('icode') is not None:
-            return stores.add('I', escape_inline_code(m.group('icode')))
+            return stores.add('I', escape_inline_code(m.group('icode')), m.group(0))
         if m.group('url') is not None:
             return m.group('urltag') + stores.add('U', m.group('url'))
         return stores.add('R', m.group(0))
@@ -172,16 +215,19 @@ def _refuse_removed(text, stores):
     m = REMOVED_COMMENT.search(text)
     if m is not None:
         raise LHTMLParseError(f'::# comments were removed in LHTML 3.0: use a Jinja comment '
-                              f'{{# ... #}} or an HTML comment <!-- ... --> (near {text[m.start():m.start() + 30]!r})')
-    if any(m.group(1) is None or stores.A[int(m.group(1))] == ''
-           for m in REMOVED_VERBATIM.finditer(text)):         # verbatim::[] (not verbatim::[abc])
-        raise LHTMLParseError('verbatim:: was removed in LHTML 3.0: show text as it is with '
-                              'code::[text] ... code::[-], or write raw HTML directly')
+                              f'{{# ... #}} or an HTML comment <!-- ... --> (near {_context(text, m.start(), m.end() + 30)!r})',
+                              *stores.locate(text, m.start()))
+    for m in REMOVED_VERBATIM.finditer(text):
+        if m.group(1) is None or stores.A[int(m.group(1))] == '':     # verbatim::[] (not verbatim::[abc])
+            raise LHTMLParseError('verbatim:: was removed in LHTML 3.0: show text as it is with '
+                                  'code::[text] ... code::[-], or write raw HTML directly',
+                                  *stores.locate(text, m.start()))
 
 
-def _refuse_include(text):
+def _refuse_include(text, locate):
     """include:: was removed in LHTML 3.0: LHTML reads no file. Raise where
-    LHTML 2 would have expanded one, rather than leave the directive as text."""
+    LHTML 2 would have expanded one, rather than leave the directive as text.
+    `locate(offset)`: the (line, column) of an offset of `text`."""
     m = INCLUDE.search(text)
     if m is None:
         return
@@ -191,7 +237,8 @@ def _refuse_include(text):
         name = text[m.end():].split(None, 1)[0] if text[m.end():].strip() else ''
     raise LHTMLParseError(
         f'include::{name} was removed in LHTML 3.0 (LHTML reads no file): include '
-        f'the file before calling LHTML, with Jinja {{% include "{name}" %}} for instance')
+        f'the file before calling LHTML, with Jinja {{% include "{name}" %}} for instance',
+        *locate(m.start()))
 
 
 def process_prepare(text, stores):
@@ -200,7 +247,7 @@ def process_prepare(text, stores):
     include:: directive (removed in 3.0)."""
     text = process_protect(text, stores, blocks=True)
     text = process_protect_attributes(text, stores)
-    _refuse_include(text)
+    _refuse_include(text, lambda offset: stores.locate(text, offset))
     _refuse_removed(text, stores)   # after the groups are hidden: '::#' in an attribute is text
     return text
 
@@ -250,8 +297,8 @@ def process_title(text, stores):
 
 def _warn_unmatched_closing(element):
     """Warn about a closing :: without opening tag; the source is kept."""
-    warnings.warn(f"Closing tag :: has no matching opening tag (near {element.get('context', '')!r})",
-                  LHTMLWarning, stacklevel=4)
+    _warn(f"Closing tag :: has no matching opening tag (near {element.get('context', '')!r})",
+          element, stacklevel=5)
     return '', False
 
 
@@ -295,9 +342,8 @@ def _refuse_explicit_closing(element):
     context = element.get('context', '')
     if element['tag'] == '':
         raise LHTMLParseError(f'{context}: ::name[-] and ::[-] were removed in LHTML 3.0: '
-                              f'close a tag with ::')
-    warnings.warn(f'{context}: [-] is a style here, not a closing tag (close a tag with ::)',
-                  LHTMLWarning, stacklevel=4)
+                              f'close a tag with ::', element.get('line'), element.get('column'))
+    _warn(f'{context}: [-] is a style here, not a closing tag (close a tag with ::)', element, stacklevel=5)
 
 
 def _context(text, start, end, max_len=40):
@@ -351,7 +397,7 @@ def _adjust_bare_tag(text, m, element):
     return True
 
 
-def process_tag(text, run_context, tags, resolve=None):
+def process_tag(text, run_context, tags, resolve=None, positions=None):
     """Process all :: tag elements in text.
 
     Args:
@@ -359,22 +405,29 @@ def process_tag(text, run_context, tags, resolve=None):
         tags: the handlers of the named tags {name: handler}.
         resolve: function applied to the parsed fields before dispatch
             (used to restore protected URLs).
+        positions: (line, column) in the source of each `::` of the text
+            (ProtectionStores.tag_positions): an element gets its 'line' and
+            'column', which its warnings and errors carry.
     """
     parts = []
     prev = 0
     last_tag_end = -1
     tag_to_close = []
-    open_contexts = []
+    open_elements = []
+    markers = list(TAG_MARKER.finditer(text))
+    if positions is None or len(positions) != len(markers):
+        positions = [(None, None)] * len(markers)
 
-    for m in TAG_MARKER.finditer(text):
+    for m, (line, column) in zip(markers, positions):
         if m.start() < prev:
             continue  # skip overlapping matches
 
         try:
             element = extract_bracket_elements(text, m.end())
         except LHTMLParseError as e:
-            warnings.warn(f'{e} near {_context(text, m.start(), m.end() + 30)!r}',
-                          LHTMLWarning, stacklevel=2)
+            name = len(re.search(r'[A-Za-z][\w-]*$|$', text[max(0, m.start() - 64):m.start()]).group())
+            _warn(f'{e} near {_context(text, m.start() - name, m.end() + 30)!r}',
+                  (line, column - name if column else None))
             continue
         tag = element['tag']
         tag_start = m.start() - len(tag)
@@ -386,6 +439,8 @@ def process_tag(text, run_context, tags, resolve=None):
             continue
         if not tag and not _adjust_bare_tag(text, m, element):
             continue
+        element['line'] = line
+        element['column'] = column - len(tag) if column else None
         context = text[tag_start:element['index_end']]
         if resolve is not None:
             context = resolve(context)
@@ -396,8 +451,8 @@ def process_tag(text, run_context, tags, resolve=None):
 
         depth = len(tag_to_close)
         html_out, is_real_tag = _dispatch_tag(element, tag_to_close, run_context, tags)
-        del open_contexts[len(tag_to_close):]
-        open_contexts.extend([element['context']] * (len(tag_to_close) - depth))
+        del open_elements[len(tag_to_close):]
+        open_elements.extend([element] * (len(tag_to_close) - depth))
 
         if is_real_tag:
             parts.append(text[prev:tag_start])
@@ -407,8 +462,8 @@ def process_tag(text, run_context, tags, resolve=None):
             parts.append(text[prev:element['index_end']])
         prev = element['index_end']
 
-    for tag, context in zip(tag_to_close, open_contexts):
-        warnings.warn(f'Tag <{tag}> is never closed (near {context!r})', LHTMLWarning, stacklevel=2)
+    for tag, element in zip(tag_to_close, open_elements):
+        _warn(f"Tag <{tag}> is never closed (near {element['context']!r})", element)
 
     parts.append(text[prev:])
     return ''.join(parts)

@@ -940,8 +940,8 @@ class TestCliRobustness:
         code, _, err = self._run_cli(monkeypatch, capsys, str(a), str(b),
                                      '-o', str(tmp_path / 'out') + '/')
         assert code == 0
-        assert err.count('lhtml: warning in') == 2
-        assert 'e1.l.html' in err and 'e2.l.html' in err
+        assert err.count(':2:1: warning: Closing tag :: has no matching opening tag') == 2
+        assert f'{a}:2:1: warning:' in err and f'{b}:2:1: warning:' in err
 
 
 
@@ -1441,3 +1441,45 @@ class TestMedia:
     def test_no_front_matter(self):
         r = lhtml.run('---\nmedia: x\n---\nvideo::v.mp4\n')
         assert r.startswith('---\nmedia: x\n---\n') and '<source src="v.mp4"' in r
+
+
+class TestPositions:
+    """A warning or an error carries the line and column of the source where it is."""
+
+    @staticmethod
+    def places(text, **meta):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            lhtml.run(text, meta)
+        return [(w.message.line, w.message.column) for w in caught]
+
+    def test_a_tag_after_lines_that_lhtml_adds_or_hides(self):
+        # a heading and a list add lines to the text, code and math hide some
+        text = '= T\n* a\n* b\ncode::[c]\nx\ny\ncode::[-]\n**b** `c::d` \\(x\ny\\) div::[a:b] text\n'
+        assert self.places(text) == [(9, 5)]
+
+    def test_each_warning_of_the_tag_pass(self):
+        macros = {'gap': {'tag': 'div', 'class': 'gap', 'variant': ['s'], 'empty': True}}
+        assert self.places('x\n  oops ::\ngap::zz\n', macros=macros) == [(2, 8), (3, 1)]
+        assert self.places('a div::(.x[b] c\n') == [(1, 3)]            # unclosed bracket
+
+    def test_an_unknown_language_where_its_block_starts(self):
+        assert self.places('a\n\ncode::[nosuchlang]\nx\ncode::[-]\n') == [(3, 1)]
+
+    @pytest.mark.parametrize('text, place', [
+        ('a\n\n  ::# c', (3, 3)),
+        ('x\n`a\nb` include::f.txt', (3, 4)),
+        ('code::[]\nx\ninclude::f.txt\ncode::[-]\n', (3, 1)),
+        ('p\n::[-]', (2, 1)),
+        ('z\n<b>\n</b> verbatim::[]', (3, 6)),
+    ])
+    def test_an_error_where_it_is(self, text, place):
+        with pytest.raises(lhtml.LHTMLParseError) as error:
+            lhtml.run(text)
+        assert (error.value.line, error.value.column) == place
+
+    def test_cli_prints_file_line_column(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / 'p.l.html'
+        f.write_text('x\n  ::# no\n')
+        code, _, err = TestCli._run_cli(self, monkeypatch, capsys, str(f))
+        assert code == 1 and err.startswith(f'{f}:2:3: error: ::# comments were removed')

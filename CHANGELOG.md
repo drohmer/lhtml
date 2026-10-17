@@ -56,8 +56,14 @@ The API is `run`, `TAGS`, `LEXERS`, the macro functions and the errors.
   `media(src) -> [(url, mime type)]`, listing the sources of a video. An
   empty list, or no resolver, keeps the source as written. It is read from
   the meta given by the caller only, not from the front matter.
+- `line` and `column` on `LHTMLWarning` and `LHTMLError`: where the problem
+  is in the text given to `run` (1-based, `None` when not known, as for a
+  macros file). A tag element carries its `line` and `column` to its handler.
 
 ### Changed
+- The CLI prints a problem as one line, `file:line:column: level: message`;
+  `--wrapAuto` is `--wrap` (`-w` unchanged).
+- An unknown language of a `code::` block is reported where the block starts.
 - `videoplay::` adds `playsinline` to `autoplay loop muted`: on an iPhone,
   the video plays in the page instead of opening full screen.
 - The CLI writes `\n` line endings on Windows too.

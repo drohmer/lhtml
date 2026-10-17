@@ -41,7 +41,7 @@ Dependencies (`pygments`, `pyyaml`) are installed automatically.
 ```bash
 lhtml input.l.html                    # Convert to stdout
 lhtml input.l.html -o output.html     # Convert to file
-lhtml input.l.html -w                 # Wrap in full HTML document (--wrapAuto)
+lhtml input.l.html -w                 # Wrap in full HTML document (--wrap)
 lhtml input.l.html -b                 # Render source line breaks as <br> (--line-breaks)
 lhtml input.l.html -m macros.yaml     # Declare macros, custom :: tags (--macros)
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
@@ -196,6 +196,8 @@ Tag names start with a letter and may contain letters, digits, `_` and `-` (usef
 A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons: a run of three or more (`:::`, `::::`) is text. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
 
 A tag that is opened but never closed, or a `::` without matching opening tag, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
+
+A warning or an error has the `line` and `column` where it is in the text given to `lhtml.run` (`None` when not known). The command line prints each problem as `file:line:column: level: message`.
 
 #### Div / Span with Styles
 

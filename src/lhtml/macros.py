@@ -123,10 +123,10 @@ def make_handler(name, spec):
             value = value or (str(default) if default is not None else '')
             if value:
                 if value not in [str(v) for v in variant]:
-                    warnings.warn(f'{name}::{value}: unknown variant (expected one of '
-                                  f'{", ".join(str(v) for v in variant)}) '
-                                  f'near {element.get("context", "")!r}',
-                                  LHTMLWarning, stacklevel=4)
+                    warnings.warn(LHTMLWarning(f'{name}::{value}: unknown variant (expected one of '
+                                               f'{", ".join(str(v) for v in variant)}) '
+                                               f'near {element.get("context", "")!r}',
+                                               element.get('line'), element.get('column')), stacklevel=4)
                 all_classes.append(f'{classes[0]}-{value}')
             text = '::' if closed else ''
         inline = ' '.join(a for a in (attrs, element['{}']) if a)
