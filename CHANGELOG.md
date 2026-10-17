@@ -111,7 +111,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   `Element.written` (an `lhtml.Written`: the tag, its groups and word as
   written) is information on the source, never read by `render`: how the
   source closed an element does not change its HTML (`end_tag` is False
-  for an element never closed). A tag is `lhtml.Tag(build, container, url)`:
+  for an element still open at the end of the document). A tag is `lhtml.Tag(build, container, url)`:
   `build(written)` receives that `Written`, whose `attributes` are those
   its groups write, and returns its nodes (an `Element`, a `Raw` of HTML written as it is...),
   instead of a `render` returning HTML; the macros and the built-in tags

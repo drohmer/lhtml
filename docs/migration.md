@@ -57,7 +57,8 @@ yours to read and change ([advanced use](advanced.md#the-document-tree)).
 - A node is made as it reads: `Text('a')`, `Element('div', {...}, children=[...])`,
   `Code(body, language)`. `span`, `line`, `column` and `children` are keywords.
 - `Element.tag` and `Element.written['()']` are `Element.written.tag` and
-  `Element.written.parentheses` (`brackets`, `braces`, `text`): None for an
-  element the caller made.
+  `Element.written.parentheses` (`brackets`, `braces`, `text`);
+  `Element.written` is None for an element the caller made.
 - `Element.closed` is gone: `render` does not read how the source closed an
-  element. `Element.end_tag` is False when its closing tag is not written.
+  element. `Element.end_tag` is False when its closing tag is not written
+  (an element still open at the end of the document).

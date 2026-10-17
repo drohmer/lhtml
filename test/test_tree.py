@@ -717,3 +717,22 @@ class TestAttributeMerges:
         b['y'] = '3'
         assert (a['y'], dict(b)) == ('2', {'y': '3'})
         assert dict(a.without({'x'})) == {'y': '2'} and 'x' in a
+
+
+class TestModelReview:
+    """From the review of the model."""
+
+    def test_a_video_is_made_from_its_src(self):
+        assert lhtml.render(lhtml.Video('clip.mp4')).startswith('<video>\n\t<source src="clip.mp4"')
+
+    def test_attributes_are_a_mapping(self):
+        assert lhtml.render(lhtml.Element('div', None)) == '<div></div>'
+        for wrong in ('class="a"', [('a', 'b')]):
+            with pytest.raises(TypeError, match='mapping'):
+                lhtml.Element('div', wrong)
+
+    def test_the_written_of_a_link_is_a_value(self):
+        link = next(n for n in lhtml.parse('link::u.html[a]').walk() if n.kind == 'Element')
+        assert isinstance(link.written.label, tuple) and hash(link.written)
+        again = next(n for n in lhtml.parse('link::u.html[a]').walk() if n.kind == 'Element')
+        assert link.written == again.written

@@ -475,7 +475,7 @@ class _Parser:
         what follows, else ('leaf', [nodes])."""
         given = Written(tag=element['tag'], text=element['text'], inline=element['inline'],
                         parentheses=element['()'], brackets=element['[]'], braces=element['{}'],
-                        label=element['label'], line=element['line'], column=element['column'],
+                        label=None if element['label'] is None else tuple(element['label']), line=element['line'], column=element['column'],
                         context=element['context'])
         try:
             holds = tag.holds(given)

@@ -28,9 +28,15 @@ class Node:
         return type(self).__name__
 
     def __post_init__(self):
-        if isinstance(getattr(self, 'attributes', None), Mapping) \
-                and not isinstance(self.attributes, Attributes):
+        if not hasattr(self, 'attributes') or isinstance(self.attributes, Attributes):
+            return
+        if self.attributes is None:
+            self.attributes = Attributes()
+        elif isinstance(self.attributes, Mapping):
             self.attributes = Attributes(self.attributes)    # a dict of the caller
+        else:
+            raise TypeError(f'{self.kind}: attributes must be a mapping or lhtml.Attributes, '
+                            f'got {type(self.attributes).__name__}')
 
     def __repr__(self):
         """Its fields, and the number of its children (not them: a tree may
@@ -60,7 +66,8 @@ class Written:
     parentheses  classes and id as written (.a .b #c)
     brackets     style as written (for link::, its label)
     braces       HTML attributes as written
-    label        the nodes of the label of a link (its [...]), else None
+    label        the nodes of the label of a link (its [...]), a tuple, else
+                 None: the link's children (the same nodes)
     line, column where it is; context: what a message quotes
 
     `attributes`: the HTML attributes it writes, a new Attributes - its
@@ -72,7 +79,7 @@ class Written:
     parentheses: str = ''
     brackets: str = ''
     braces: str = ''
-    label: list | None = None
+    label: tuple | None = field(default=None, compare=False)
     line: int | None = None
     column: int | None = None
     context: str = ''
@@ -126,10 +133,12 @@ class Element(Node):
     """An HTML element: <name attributes>children</name>.
 
     `void`: an element without content nor closing tag (<img>, <hr>).
-    `end_tag`: False when its closing tag is not written (the source never
-    closes it). `written`: what the source wrote, the Written its tag was
-    given (None for an element of the caller): information on the source,
-    render does not read it."""
+    `end_tag`: False when its closing tag is not written (an element still
+    open at the end of the document; one the end of a heading, an item, a
+    bold or an italic closes gets its closing tag). `written`: what the
+    source wrote, the Written its tag was given (None for an element the
+    caller made, or one a tag made inside the nodes it returns):
+    information on the source, render does not read it."""
     name: str
     attributes: Attributes = field(default_factory=Attributes)
     void: bool = False
@@ -140,8 +149,11 @@ class Element(Node):
 @dataclass(eq=False, repr=False)
 class Video(Element):
     """<video attributes> with its sources: those the `media` resolver of
-    render gives for `src`, or `src` itself."""
-    name: str = 'video'
+    render gives for `src`, or `src` itself: Video('clip.mp4')."""
+    name: str = field(default='video', kw_only=True)
+    attributes: Attributes = field(default_factory=Attributes, kw_only=True)
+    void: bool = field(default=False, kw_only=True)
+    end_tag: bool = field(default=True, kw_only=True)
     src: str = ''
 
 

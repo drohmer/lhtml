@@ -95,9 +95,11 @@ The nodes (`lhtml.nodes`) are `Document` (`problems`, `source`), `Heading`
 (`level`, `attributes`), `List`, `Item` (a deeper list is a `List` inside
 the `Item` before it), `Strong`, `Emphasis`, `Element` (`name`, the HTML
 element; `attributes`; `void`: no content nor closing tag; `end_tag`:
-False when its closing tag is not written, an element the source never
-closes; its children), `Video` (an `Element` with its `src`: its sources
-are those of the `media` resolver of `render`), `Text` (`value`, written as
+False when its closing tag is not written, an element still open at the
+end of the document (one the end of a heading, an item, a bold or an
+italic closes gets it); its children), `Video` (an `Element` with its
+`src`, `Video('clip.mp4')`: its sources are those of the `media` resolver
+of `render`), `Text` (`value`, written as
 it is) and the leaves `Code` (`body`, `language`), `InlineCode` (`text`),
 `Math` (`text`, `display`) and `Raw` (`text`; `raw_kind`: html, comment,
 script, style, jinja). The label of a link is its children
@@ -122,8 +124,9 @@ any other attribute is given once, by the last of the tag, the macro, its
 `url`, the page (an id written `{id=...}` replaces the one of `(#id)`).
 
 What the source wrote is information, never read by `render`:
-`Element.written`, the `Written` its tag was given (None for an element of
-the caller: `written.tag` is the LHTML tag, `''` for a bare `::`; a group
+`Element.written`, the `Written` its tag was given (None for an element the
+caller made, and for one a tag made inside the nodes it returns;
+`written.label` is the link's children, the same nodes: `written.tag` is the LHTML tag, `''` for a bare `::`; a group
 across other nodes is as written, `**` included), and `Heading.written`,
 its `(.class #id)` as written.
 
