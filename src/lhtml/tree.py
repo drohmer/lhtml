@@ -178,7 +178,7 @@ class _Parser:
         def pieces(m):
             level = len(m.group(1))
             written = self.stores.original(m.group(2) or '').strip()
-            node = Heading(level=level, attributes=class_and_id(written), written=written)
+            node = Heading(level=level, attributes=class_and_id(written), parentheses=written)
             span = self.source_of(text.origins[m.start():m.end()]) or (0, 0)
             node.span = span
             node.line, node.column = self.place(span[0])

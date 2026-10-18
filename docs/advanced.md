@@ -130,7 +130,7 @@ What the source wrote is information, never read by `render`:
 `Element.written`, the `Written` its tag was given (None for an element the
 caller made, and for one a tag made inside the nodes it returns;
 `written.label` is the link's children, the same nodes: `written.tag` is the LHTML tag, `''` for a bare `::`; a group
-across other nodes is as written, `**` included), and `Heading.written`,
+across other nodes is as written, `**` included), and `Heading.parentheses`,
 its `(.class #id)` as written.
 
 Every node but the document has its place: `span`, the offsets of its source in the text

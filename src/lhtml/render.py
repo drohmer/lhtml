@@ -115,7 +115,9 @@ def _is_block(node):
 def _preformatted(node, closing=False):
     """+1 where a <pre> or a <textarea> opens, -1 where it closes."""
     if isinstance(node, Element) and node.name.lower() in _PREFORMATTED:
-        return -1 if closing else 1
+        if closing:                     # never closed: it holds the rest of the page
+            return -1 if node.end_tag else 0
+        return 1
     if isinstance(node, Raw):           # <pre> written as raw HTML
         m = PREFORMATTED_TAG.match(node.text)
         return (-1 if m.group(1) else 1) if m else 0

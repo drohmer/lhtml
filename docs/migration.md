@@ -59,6 +59,7 @@ yours to read and change ([advanced use](advanced.md#the-document-tree)).
 - `Element.tag` and `Element.written['()']` are `Element.written.tag` and
   `Element.written.parentheses` (`brackets`, `braces`, `text`);
   `Element.written` is None for an element the caller made.
+- `Heading.parentheses`: the `(.class #id)` of a heading as written.
 - `Element.closed` is gone: `render` does not read how the source closed an
   element. `Element.end_tag` is False when its closing tag is not written
   (an element still open at the end of the document).

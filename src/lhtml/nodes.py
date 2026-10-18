@@ -104,7 +104,7 @@ class Text(Node):
 class Heading(Node):
     level: int = 1
     attributes: Attributes = field(default_factory=Attributes)
-    written: str = ''               # its (.class #id) as written in the source (information)
+    parentheses: str = ''           # its (.class #id) as written in the source (information)
 
 
 @dataclass(eq=False, repr=False)

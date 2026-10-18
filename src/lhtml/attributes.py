@@ -19,7 +19,7 @@ after those of (.a .b), the styles after the one of [...].
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 
 from .patterns import JINJA_RE, PLACEHOLDER
@@ -276,6 +276,23 @@ class Attributes(MutableMapping):
 
     def __repr__(self):
         return f'Attributes({self.html().strip()!r})'
+
+    def _compared(self):
+        return [(e.name, e.value if e.name is not None else e.written, e.nested) for e in self._items]
+
+    def __eq__(self, other):
+        """Attributes are equal when they give the same attributes, Jinja
+        fragments and blocks in the same order (as written or not); equal to
+        a mapping when they are only its names and values, once each."""
+        if isinstance(other, Attributes):
+            return self._compared() == other._compared()
+        if isinstance(other, Mapping):
+            plain = all(e.name is not None and not e.nested for e in self._items) and \
+                len(self._items) == len(self._names)
+            return plain and dict(self) == dict(other)
+        return NotImplemented
+
+    __hash__ = None
 
     def copy(self) -> Attributes:
         copied = Attributes()

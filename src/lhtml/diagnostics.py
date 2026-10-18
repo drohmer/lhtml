@@ -94,10 +94,17 @@ def excerpt(source_line, column, show=lambda ch: ch):
     end = at
     while end < len(line) and not line[end].isspace():
         end += 1
+    widths = [4 if ch == '\t' else _width(show(ch)) for ch in line]    # columns, as shown
     start, stop, before, after = 0, len(line), '', ''
-    if len(line) > _EXCERPT:
-        start = max(0, at - _EXCERPT // 3)
-        stop = min(len(line), start + _EXCERPT)
+    if sum(widths) > _EXCERPT:          # cut around the place: a third before it, by columns
+        start, used = at, 0
+        while start > 0 and used + widths[start - 1] <= _EXCERPT // 3:
+            start -= 1
+            used += widths[start]
+        stop, used = start, 0
+        while stop < len(line) and used + widths[stop] <= _EXCERPT:
+            used += widths[stop]
+            stop += 1
         before = '…' if start else ''
         after = '…' if stop < len(line) else ''
     end = max(at + 1, min(end, stop)) if at < len(line) else at

@@ -360,7 +360,7 @@ class TestAuthoritativeTree:
     def test_the_attributes_of_a_heading_are_as_written(self):
         document = lhtml.parse('=(.{{ c }} #i) T\n')
         [heading] = [n for n in document.walk() if n.kind == 'Heading']
-        assert heading.written == '.{{ c }} #i' and dict(heading.attributes) == {'class': '{{ c }}', 'id': 'i'}
+        assert heading.parentheses == '.{{ c }} #i' and dict(heading.attributes) == {'class': '{{ c }}', 'id': 'i'}
         assert lhtml.render(document) == '<h1 class="{{ c }}" id="i">T</h1>\n\n'
 
 
@@ -974,3 +974,26 @@ class TestDesignGroup5:
         assert lhtml.run('span::[a:1][b:2] x ::') == '<span style="a:1;b:2"> x </span>'
         assert lhtml.run('span::[a:1;][b:2] x ::') == '<span style="a:1;b:2"> x </span>'
         assert lhtml.run('link::u[a][b]') == '<a href="u">a b</a>'         # a label, two groups
+
+    def test_a_heading_keeps_its_parentheses(self):
+        heading = next(n for n in lhtml.parse('=(.a #b) T').walk() if n.kind == 'Heading')
+        assert heading.parentheses == '.a #b'
+
+    def test_attributes_equal(self):
+        A = lhtml.Attributes
+        assert A.read('a="1"') == A({'a': '1'}) and A.read('a=1') == {'a': '1'}
+        assert A.read('{% if x %}a=1{% endif %}') != {'a': '1'}      # its block: not a dict
+        assert A.read('a=1 a=2') != {'a': '1'}
+        assert A.read('{% if x %}a=1{% endif %}') != A.read('a=1')
+
+    def test_an_excerpt_is_cut_by_columns(self):
+        from lhtml.diagnostics import excerpt
+        shown, underline = excerpt('é' * 150 + ' X ' + 'é' * 50, 152,
+                                   lambda ch: ch.encode('ascii', 'backslashreplace').decode())
+        assert len(shown) < 120 and shown[underline.index('^')] == 'X'
+
+    def test_a_pre_never_closed_keeps_the_rest_preformatted(self):
+        document = lhtml.Document(children=[lhtml.Text('a\nb\n'),
+                                            lhtml.Element('pre', children=[lhtml.Text('x\ny')], end_tag=False),
+                                            lhtml.Text('\nc\nd')])
+        assert lhtml.render(document, line_breaks=True) == 'a<br>\nb\n<pre>x\ny\nc\nd'
