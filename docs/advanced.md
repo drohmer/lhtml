@@ -143,6 +143,27 @@ elements in the [README](../README.md)). The tree is walked and rendered
 without recursion: a document may nest deeper than Python's recursion
 limit, whatever its nodes.
 
+### Reading a source as LHTML reads it
+
+A tool around LHTML (a site generator's lint, a source map, a plugin) may
+need to agree with it on what is code and what is text, without parsing:
+
+```python
+for zone in lhtml.zones(text):          # in order, one left-to-right pass
+    zone.kind                           # code, jinja, comment, raw, inline_code, url, math, tag
+    text[zone.start:zone.end]
+    zone.tag, zone.value                # a url zone: img, a.png
+
+written = lhtml.read_tag(text, start)   # the Written of the name:: tag at `start`
+written.braces                          # its {...} as written
+```
+
+`zones` takes `url_tags` (the tags whose text is a URL: the built-in ones,
+`lhtml.URL_TAGS`; add the macros with `url:`), `code` (the pattern of the
+code blocks of another markup, the fenced blocks of Markdown, in place of
+`code::[...]`) and `start`. `read_tag` reads a URL whole
+(`img::{{ base }}/a.png`).
+
 ### Custom Code Lexers
 
 A call may name its own languages, `{name: Pygments lexer class}`, looked

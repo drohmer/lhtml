@@ -11,6 +11,7 @@ Usage:
     document = lhtml.parse(text)          # the document tree: lhtml.Element, lhtml.Text... (nodes.py)
     html = lhtml.render(document)         # its HTML, from the fields of the nodes
     document.problems                     # the LHTMLWarning found (parse(..., warn=False): not warned)
+    lhtml.zones(text)                     # the zones LHTML leaves as they are, for tools (lhtml.read_tag too)
     tags = {'alert': lhtml.Tag(build)}    # build(written) -> nodes: a tag of the caller (docs/advanced.md)
 
 run is documented in pipeline.py.
@@ -33,6 +34,7 @@ from .nodes import (
     Written,
 )
 from .render import render
+from .source import URL_TAGS, Zone, read_tag, zones
 from .tree import parse
 from .wrap_html import wrap
 
@@ -48,6 +50,7 @@ __all__ = [
     'describe_macro', 'load_macros', 'registry_with_macros', 'Attributes',
     'Node', 'Document', 'Text', 'Heading', 'List', 'Item', 'Strong', 'Emphasis', 'Element', 'Video',
     'Code', 'InlineCode', 'Math', 'Raw', 'Written',
+    'zones', 'Zone', 'read_tag', 'URL_TAGS',
     # Errors
     'LHTMLError', 'LHTMLParseError',
     'LHTMLWarning', 'LHTMLMacroError',

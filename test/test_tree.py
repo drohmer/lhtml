@@ -3,6 +3,7 @@ shape, its places, the crossings, the tags. Before it was the engine of run,
 its HTML was compared with the text passes it replaced on this suite, the
 corpus and 80 000 fuzzed documents (docs/design.md of the generator, N5);
 the HTML of run is what the rest of the suite checks."""
+import re
 import warnings
 
 import pytest
@@ -1049,3 +1050,33 @@ class TestTagsInALabel:
         assert self.said('link::a[link::b[x]]') == [
             "link:: in the label of a link is left as text (near 'link::b[x]')"]
         assert lhtml.run('link::u[cgp::mesh a::b a :: b]') == '<a href="u">cgp::mesh a::b a :: b</a>'
+
+
+class TestReadingASource:
+    """lhtml.zones and lhtml.read_tag: a source as LHTML reads it, for tools."""
+
+    def test_the_zones(self):
+        text = ('code::[python]\nc\ncode::[-]\n{{ j }} {# k #}\n<!-- h -->\n<script>s</script>\n`i`\n'
+                'img::{{ base }}/a.png(.w)\n\\(m\\)\n<b>\n')
+        found = [(z.kind, text[z.start:z.end]) for z in lhtml.zones(text)]
+        assert [kind for kind, _ in found] == ['code', 'jinja', 'comment', 'comment', 'raw', 'inline_code',
+                                               'url', 'math', 'tag']
+        url = next(z for z in lhtml.zones(text) if z.kind == 'url')
+        assert (url.tag, url.value) == ('img', '{{ base }}/a.png')
+
+    def test_an_outer_zone_owns_what_it_holds(self):
+        assert [z.kind for z in lhtml.zones('`<script>x</script>` <!-- `c` -->')] == ['inline_code', 'comment']
+
+    def test_the_zones_of_other_tags_and_of_another_markup(self):
+        assert [z.tag for z in lhtml.zones('demo::a__b.html', url_tags=('demo',))] == ['demo']
+        assert lhtml.zones('demo::a__b.html') == []
+        fences = re.compile(r'(?m:^```[^\n]*\n.*?^```$)', re.DOTALL)
+        assert [z.kind for z in lhtml.zones('```\n<b>\n```\n<i>', code=fences)] == ['code', 'tag']
+        assert [z.kind for z in lhtml.zones('= T\n<b>', start=4)] == ['tag']
+
+    def test_read_tag(self):
+        written = lhtml.read_tag('x includeadv::{root: a, file: b} y', 2)
+        assert (written.tag, written.braces, written.text) == ('includeadv', 'root: a, file: b', '')
+        written = lhtml.read_tag('img::{{ base }}/a.png(.w)[s]', 0)
+        assert (written.text, written.parentheses, written.brackets) == ('{{ base }}/a.png', '.w', 's')
+        assert lhtml.read_tag('span::x::', 0).inline and lhtml.read_tag('no tag', 0) is None

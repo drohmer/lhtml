@@ -659,7 +659,8 @@ changed). An `LHTMLError` stops the parse: its `line`, `column`, `path`
 The API is what `lhtml` exports (`lhtml.__all__`): `run`, `parse`,
 `render`, `wrap`, `highlight`, `Tag`, `TAGS`, `Written`, the nodes,
 `Attributes`, `LEXERS`, `load_macros`, `describe_macro`,
-`registry_with_macros`, the errors, and the command `lhtml`. It changes
+`registry_with_macros`, `zones`, `Zone`, `read_tag`, `URL_TAGS`, the errors,
+and the command `lhtml`. It changes
 only with a major version (4.0), as the HTML LHTML writes for a source. The
 modules inside the package (`lhtml.patterns`, `lhtml.process`,
 `lhtml.tree`...) are its implementation and may change in any release.

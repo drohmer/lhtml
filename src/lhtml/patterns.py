@@ -65,7 +65,9 @@ URL_TAGS         = ('link', 'img', 'video', 'videoplay')
 # A URL may contain Jinja expressions (img::{{ base }}/photo.jpg)
 URL_TOKEN        = (r'(?:' + _JINJA_EXPRESSION +
                     r'|[^\s\[\](){}<>"`\x00]|\((?![.#])[^\s()\[\]{}<>"`\x00]*\))+')
-def _protected(url_tags):
+def protected_zones(url_tags):
+    """The pattern of the zones LHTML leaves as they are (but code blocks),
+    the URL of the tags `url_tags` among them; one named group each."""
     names = '|'.join(map(re.escape, url_tags)) or '(?!)'        # none: no URL protected
     return (r'(?P<jinja>' + JINJA + r')'
             r'|(?P<comment><!--.*?-->)'
@@ -82,11 +84,11 @@ def protected_blocks(url_tags):
     zone owns its contents): code blocks, then the others, the URL of the
     tags `url_tags` among them (the built-in ones and the macros that take a
     URL: lhtml.Tag.url)."""
-    return re.compile(BLOCKS.pattern + '|' + _protected(tuple(sorted(url_tags))), re.DOTALL)
+    return re.compile(BLOCKS.pattern + '|' + protected_zones(tuple(sorted(url_tags))), re.DOTALL)
 
 
 # The zones of the built-in tags: read by the site generator (lib/source_scan.py)
-PROTECTED        = re.compile(_protected(URL_TAGS), re.DOTALL)
+PROTECTED        = re.compile(protected_zones(URL_TAGS), re.DOTALL)
 PROTECTED_BLOCKS = protected_blocks(URL_TAGS)
 
 # Line breaks option: elements that make a line part of the structure
