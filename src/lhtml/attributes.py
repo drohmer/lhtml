@@ -22,6 +22,7 @@ import re
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 
+from . import jinja_blocks
 from .patterns import JINJA_RE, PLACEHOLDER
 
 # A name, then its value: quoted, or unquoted up to the next space (`a=b=c`
@@ -57,53 +58,6 @@ def _masked(text):
         prev = m.end()
     parts.append(text[prev:])
     return PLACEHOLDER.sub(lambda m: ' ' * len(m.group(0)), ''.join(parts))
-
-
-# The Jinja statements that open a block (closed by its end...): an
-# attribute written in one depends on it
-_BLOCKS = {'if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'set', 'autoescape', 'raw', 'trans'}
-# the statements of a block whose attributes join the others with it
-# (_blocks): those of the blocks that write what they hold where they are,
-# holding no other statement (not a {% set %}: a value folded would be read
-# before it, nor a {% macro %}, a {% block %}...)
-_FOLDED = {word for block in ('if', 'for', 'with', 'filter', 'autoescape', 'raw')
-           for word in (block, 'end' + block)} | {'elif', 'else'}
-_TRIM = re.compile(r'^(\{%)[-+]|[-+](%\})$')       # whitespace control: {%- and -%}
-_STATEMENT = re.compile(r'\{%[-+]?\s*(\w+)(.*?)[-+]?%\}', re.DOTALL)
-
-
-def _statement(written):
-    """'open', 'close' or 'branch' ({% else %}...) for a Jinja statement
-    that opens, closes or divides a block; None otherwise."""
-    m = _STATEMENT.fullmatch(written or '')
-    if m is None:
-        return None
-    word = m.group(1)
-    if word.startswith('end'):
-        return 'close'
-    if word in _BLOCKS and not (word == 'set' and '=' in m.group(2)):
-        return 'open'
-    return 'branch' if word in ('else', 'elif', 'empty') else None
-
-
-def _depths(text):
-    """(position, depth after it) at the end of each Jinja statement that
-    opens or closes a block: the statements Jinja reads, not a {% in an
-    expression's string ({{ '{% if %}' }}) or in a comment."""
-    changes, depth = [], 0
-    for zone in JINJA_RE.finditer(text):
-        m = _STATEMENT.fullmatch(zone.group(0))
-        if m is None:                   # an expression, a comment
-            continue
-        word = m.group(1)
-        if word.startswith('end'):
-            depth = max(0, depth - 1)
-        elif word in _BLOCKS and not (word == 'set' and '=' in m.group(2)):
-            depth += 1
-        else:
-            continue
-        changes.append((zone.end(), depth))
-    return changes
 
 
 def key(name):
@@ -219,7 +173,7 @@ class Attributes(MutableMapping):
         """The attributes of an attribute text (`title="a" alt`)."""
         text = text or ''
         attributes, position = cls(), 0
-        depths, k, depth = _depths(text), 0, 0
+        depths, k, depth = jinja_blocks.depths(text), 0, 0
         for a in read(text):
             position = attributes._fragments(text, position, a.start)
             while k < len(depths) and depths[k][0] <= a.start:     # both in order: one walk
@@ -257,7 +211,7 @@ class Attributes(MutableMapping):
             return
         # set, it is given always: the others go, those of Jinja blocks too
         found = next((entry for entry in self._items if entry.name == name and not entry.nested), None)
-        dropped = self._in_blocks(name, self._blocks(name))     # those of {% if %} and {% for %}
+        dropped = jinja_blocks.entries_in(name, jinja_blocks.blocks(self._items, name))  # those folded
         dropped.update(id(e) for e in self._items if e.name == name and e is not found and not e.nested)
         if found is not None:
             found.value, found.written = value, None    # in its place, written once
@@ -327,72 +281,17 @@ class Attributes(MutableMapping):
         self['class'] = ' '.join(dict.fromkeys(words(current) + added))
         return self
 
-    def _blocks(self, name):
-        """The {% if %} and {% for %} blocks written among them (from the
-        opening statement to its closing one) that hold an attribute `name`:
-        their items; and {% with %}, {% filter %}, {% autoescape %},
-        {% raw %} ones. Not the others, nor one that holds another statement:
-        what a {% set %}, a {% macro %} or a {% block %} holds is not written
-        there as it is, and a value folded would be read before its {% set %}."""
-        blocks, block, depth = [], [], 0
-        for entry in self._items:
-            kind = _statement(entry.written) if entry.name is None else None
-            if kind == 'open':
-                depth += 1
-            if depth:
-                block.append(entry)
-            if kind == 'close' and depth:
-                depth -= 1
-                if depth == 0:
-                    words = [m.group(1) for e in block if e.name is None
-                             for m in [_STATEMENT.fullmatch(e.written or '')] if m]
-                    if all(word in _FOLDED for word in words) and any(e.name == name for e in block):
-                        blocks.append(block)
-                    block = []
-        return blocks
-
     def folded(self, name: str, joiner: str = ' ') -> tuple[str, Attributes]:
         """The values of `name` written in Jinja blocks, as one value that
         keeps their blocks ({% if x %}class="a"{% else %}class="c"{% endif %}:
         '{% if x %}a{% else %}c{% endif %}'), and a copy without them (a block
-        left with statements only goes too). ('', a copy): none."""
-        blocks = self._blocks(name)
-        if not blocks:
+        left with statements only goes too). ('', a copy): none. The blocks
+        folded and how: lhtml.jinja_blocks."""
+        found = jinja_blocks.blocks(self._items, name)
+        if not found:
             return '', self.copy()
-        parts = []
-        for block in blocks:
-            # a joiner before a value when one may be written before it: in
-            # the block before it (not in another branch), or a turn of a loop
-            folded, value_before, opened = [], False, []    # opened: [word, value before, a value in]
-            for entry in block:
-                kind = _statement(entry.written) if entry.name is None else None
-                if kind:            # its whitespace control would take the joiners
-                    folded.append(_TRIM.sub(r'\1\2', entry.written))
-                    if kind == 'open':
-                        opened.append([_STATEMENT.fullmatch(entry.written).group(1), value_before, False])
-                    elif kind == 'branch':
-                        value_before = opened[-1][1]
-                    elif kind == 'close':
-                        _, before, written = opened.pop()
-                        value_before = before or written
-                elif entry.name == name and entry.value:
-                    loop = any(word == 'for' for word, _, _ in opened)
-                    folded.append((joiner if value_before or loop else '') + entry.value)
-                    value_before = True
-                    for level in opened:
-                        level[2] = True
-            parts.append(''.join(folded))
-        return joiner.join(parts), self._without_entries(self._in_blocks(name, blocks))
-
-    @staticmethod
-    def _in_blocks(name, blocks):
-        """The ids of the entries `name` of the Jinja `blocks`, and of the
-        whole block when it holds nothing else but its statements."""
-        dropped = set()
-        for block in blocks:
-            kept = [e for e in block if e.name != name and not (e.name is None and _statement(e.written))]
-            dropped.update(id(e) for e in (block if not kept else [e for e in block if e.name == name]))
-        return dropped
+        value = joiner.join(jinja_blocks.fold(block, name, joiner) for block in found)
+        return value, self._without_entries(jinja_blocks.entries_in(name, found))
 
     def _without_entries(self, dropped):
         """A copy without the entries whose id is in `dropped`."""
