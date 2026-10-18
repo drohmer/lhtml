@@ -65,6 +65,20 @@ _BLOCKS = {'if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'set', 'auto
 _STATEMENT = re.compile(r'\{%[-+]?\s*(\w+)(.*?)[-+]?%\}', re.DOTALL)
 
 
+def _statement(written):
+    """'open', 'close' or 'branch' ({% else %}...) for a Jinja statement
+    that opens, closes or divides a block; None otherwise."""
+    m = _STATEMENT.fullmatch(written or '')
+    if m is None:
+        return None
+    word = m.group(1)
+    if word.startswith('end'):
+        return 'close'
+    if word in _BLOCKS and not (word == 'set' and '=' in m.group(2)):
+        return 'open'
+    return 'branch' if word in ('else', 'elif', 'empty') else None
+
+
 def _depths(text):
     """(position, depth after it) at the end of each Jinja statement that
     opens or closes a block: the statements Jinja reads, not a {% in an
@@ -235,10 +249,16 @@ class Attributes(MutableMapping):
         if name not in self._names:
             self._append(_Entry(name, value))
             return
-        found = next(entry for entry in self._items if entry.name == name)
-        found.value, found.written = value, None    # in its place, written once
-        if self._names[name] > 1:
-            self._replace([entry for entry in self._items if entry.name != name or entry is found])
+        # set, it is given always: the others go, those of Jinja blocks too
+        found = next((entry for entry in self._items if entry.name == name and not entry.nested), None)
+        dropped = self._in_blocks(name, self._blocks(name))
+        dropped.update(id(e) for e in self._items if e.name == name and e is not found)
+        if found is not None:
+            found.value, found.written = value, None    # in its place, written once
+        if dropped:
+            self._replace(self._without_entries(dropped)._items)
+        if found is None:
+            self._append(_Entry(name, value))
 
     def __delitem__(self, name):
         if name not in self:
@@ -291,6 +311,71 @@ class Attributes(MutableMapping):
         added = [word for name in names for word in words(name)]
         self['class'] = ' '.join(dict.fromkeys(words(current) + added))
         return self
+
+    def _blocks(self, name):
+        """The Jinja blocks written among them (from an opening statement
+        to its closing one) that hold an attribute `name`: their items."""
+        blocks, block, depth = [], None, 0
+        for entry in self._items:
+            kind = _statement(entry.written) if entry.name is None else None
+            if kind == 'open':
+                if depth == 0:
+                    block = []
+                depth += 1
+            if block is not None:
+                block.append(entry)
+            if kind == 'close' and depth:
+                depth -= 1
+                if depth == 0:
+                    if any(e.name == name for e in block):
+                        blocks.append(block)
+                    block = None
+        return blocks
+
+    def folded(self, name: str, joiner: str = ' ') -> tuple[str, Attributes]:
+        """The values of `name` written in Jinja blocks, as one value that
+        keeps their blocks ({% if x %}class="a"{% else %}class="c"{% endif %}:
+        '{% if x %}a{% else %}c{% endif %}'), and a copy without them (a block
+        left with statements only goes too). ('', a copy): none."""
+        blocks = self._blocks(name)
+        if not blocks:
+            return '', self.copy()
+        parts, dropped = [], set()
+        for block in blocks:
+            folded, value_before = [], False
+            for entry in block:
+                if entry.name is None and _statement(entry.written):
+                    folded.append(entry.written)
+                    value_before = False
+                elif entry.name == name and entry.value:
+                    folded.append((joiner if value_before else '') + entry.value)
+                    value_before = True
+            parts.append(''.join(folded))
+        return joiner.join(parts), self._without_entries(self._in_blocks(name, blocks))
+
+    @staticmethod
+    def _in_blocks(name, blocks):
+        """The ids of the entries `name` of the Jinja `blocks`, and of the
+        whole block when it holds nothing else but its statements."""
+        dropped = set()
+        for block in blocks:
+            kept = [e for e in block if e.name != name and not (e.name is None and _statement(e.written))]
+            dropped.update(id(e) for e in (block if not kept else [e for e in block if e.name == name]))
+        return dropped
+
+    def _without_entries(self, dropped):
+        """A copy without the entries whose id is in `dropped`; the item
+        after one cut takes its spaces (as if it was cut out of the text)."""
+        copied, space, cut = Attributes(), None, False
+        for entry in self._items:
+            if id(entry) in dropped:
+                if not cut:
+                    space, cut = entry.space, True
+                continue
+            copied._append(_Entry(entry.name, entry.value, entry.written, space if cut else entry.space,
+                                  entry.nested))
+            cut = False
+        return copied
 
     def values_of(self, name: str, *, nested: bool = True) -> list[str | None]:
         """Every value written for `name` (an attribute written twice);
@@ -352,18 +437,22 @@ def assemble(classes, ids, style, rest, empty=()):
     of a macro, then the page); otherwise they stay where they are. An
     empty one is given too: (.a){class=""} is class="a", {class=""} alone
     class="" (and so when `empty` names it: written empty elsewhere). One
-    written inside a Jinja block ({% if x %}class="a"{% endif %}) stays
-    there. An id of `rest` replaces the one of (#id)."""
+    written inside a Jinja block keeps it: (.b){{% if x %}class="a"{% endif %}}
+    is class="b {% if x %}a{% endif %}" (alone, it stays where it is). An id
+    of `rest` replaces the one of (#id)."""
     head, styled = Attributes(), Attributes()
-    written = rest.values_of('class', nested=False)     # one in a Jinja block stays there
-    if written and (classes or len(written) > 1):
+    written = rest.values_of('class', nested=False)
+    conditional, without = rest.folded('class')
+    if (written or conditional) and (classes or len(written) + bool(conditional) > 1):
         classes = classes + [word for value in written if value for word in words(value)]
-        rest = rest.without({'class'}, nested=False)
+        classes += [conditional] if conditional else []
+        rest = without.without({'class'}, nested=False)
         head['class'] = ''
     written = rest.values_of('style', nested=False)
-    if written and (style or len(written) > 1):
-        style = join_styles(style, *(value for value in written if value))
-        rest = rest.without({'style'}, nested=False)
+    conditional, without = rest.folded('style', ';')
+    if (written or conditional) and (style or len(written) + bool(conditional) > 1):
+        style = join_styles(style, *(value for value in written if value), conditional)
+        rest = without.without({'style'}, nested=False)
         styled['style'] = ''
     for name, given in (('class', head), ('style', styled)):     # written empty elsewhere: given
         if name in empty and name not in given and not rest.values_of(name, nested=False):

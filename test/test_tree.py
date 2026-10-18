@@ -742,14 +742,20 @@ class TestModelReview:
 class TestAttributesReview:
     """From the review of the attribute merges."""
 
-    def test_a_class_in_a_jinja_block_stays_in_it(self):
+    def test_a_class_in_a_jinja_block_keeps_it(self):
         assert lhtml.run('img::x.png(.b){ {% if x %}class="a"{% endif %} }') == \
-            '<img class="b" {% if x %}class="a"{% endif %} src="x.png" alt="x.png">'
+            '<img class="b {% if x %}a{% endif %}" src="x.png" alt="x.png">'
+        assert lhtml.run('span::(.b){ {% if x %}class="a"{% else %}class="c"{% endif %} } x ::') == \
+            '<span class="b {% if x %}a{% else %}c{% endif %}"> x </span>'
+        # alone, it stays where it is
         assert lhtml.run('span::{ {% if x %}class="a"{% else %}class="c"{% endif %} } x ::') == \
             '<span {% if x %}class="a"{% else %}class="c"{% endif %}> x </span>'
+        # the other attributes of its block stay in it
+        assert lhtml.run('span::(.b){{% if x %}class="a" title="t"{% endif %} id="i"} x ::') == \
+            '<span class="b {% if x %}a{% endif %}" {% if x %}title="t"{% endif %} id="i"> x </span>'
         macros = {'box': {'class': 'b', 'attrs': '{% if x %}style="m:1"{% endif %}'}}
         assert lhtml.run('box::[z:1] x ::', macros=macros) == \
-            '<div class="b" style="z:1" {% if x %}style="m:1"{% endif %}> x </div>'
+            '<div class="b" style="z:1;{% if x %}m:1{% endif %}"> x </div>'
         # {% set x = 1 %} opens no block
         assert lhtml.run('img::x.png(.b){{% set k = 1 %} class="a"}').startswith('<img class="b a"')
 
@@ -950,3 +956,21 @@ class TestAuthorsGroup4:
     def test_an_indented_code_closer_adds_no_line(self):
         assert lhtml.run('  code::[text]\n  x\n  code::[-]\n') == \
             '  <div class="code"><pre><span></span>  x\n</pre></div>\n\n'
+
+
+class TestDesignGroup5:
+
+    def test_setting_an_attribute_of_jinja_branches_gives_it_always(self):
+        cases = {'{% if x %}title="a"{% else %}title="b"{% endif %} alt="z"': ' alt="z" title="T"',
+                 'title="o" {% if x %}title="a" id="i"{% endif %}': ' title="T" {% if x %}id="i"{% endif %}',
+                 'title="o" {% if x %}title="a"{% endif %}': ' title="T"',
+                 'a=1 title="o" b=2': ' a=1 title="T" b=2'}
+        for written, html in cases.items():
+            attributes = lhtml.Attributes.read(written)
+            attributes['title'] = 'T'
+            assert attributes.html() == html, written
+
+    def test_two_style_groups_are_one_style(self):
+        assert lhtml.run('span::[a:1][b:2] x ::') == '<span style="a:1;b:2"> x </span>'
+        assert lhtml.run('span::[a:1;][b:2] x ::') == '<span style="a:1;b:2"> x </span>'
+        assert lhtml.run('link::u[a][b]') == '<a href="u">a b</a>'         # a label, two groups

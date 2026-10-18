@@ -341,13 +341,13 @@ class _Parser:
                     origins.extend(text.origins[prev:element.end])
                     prev = element.end
                     continue
-            for kind in ('[]', '()', '{}'):     # a group across nodes (a bold, a list): as written
-                if EVENT_CHAR in element.group(kind):
-                    element.set_group(kind, ' '.join(self._source(text, a - 1, b + 1)[1:-1]
-                                                     for k, a, b in element.groups if k == kind))
             element.text = original(element.text)
-            for kind in ('[]', '()', '{}'):
-                element.set_group(kind, original(element.group(kind)))
+            element.clear_groups()              # each group as written, then joined
+            for kind, a, b in (() if element.stray else element.groups):     # stray: all of it is text
+                written = flat[a:b]
+                if EVENT_CHAR in written:       # across nodes (a bold, a list): its source
+                    written = self._source(text, a - 1, b + 1)[1:-1]
+                element.add_group(kind, original(written))
             if tag in self.tags and attributes.unclosed(element.braces):
                 warn(f"{tag}:: a value of its {{...}} has no closing quote: it is written so "
                       f"(near {element.context!r})", element)

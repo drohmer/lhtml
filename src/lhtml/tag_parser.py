@@ -15,6 +15,7 @@ import functools
 import re
 from dataclasses import dataclass, field
 
+from .attributes import join_styles
 from .errors import LHTMLParseError, warn
 from .patterns import EVENT_CHAR, PLACEHOLDER_CHAR, SPACER
 
@@ -105,8 +106,8 @@ class TagElement:
     """A `name::` element as the source writes it: `tag` (the name, '' for a
     bare ::), from `start` (where the name starts) to `end`; its groups as
     written, `parentheses` (classes and id), `brackets` (style, or the
-    label of a link), `braces` (HTML attributes), each group written twice
-    joined with a space; `text`, the word after `::`; `groups`, (kind,
+    label of a link), `braces` (HTML attributes), a group written twice
+    joined (add_group); `text`, the word after `::`; `groups`, (kind,
     start, end) of each group, its content text[start:end]; `stray`: a
     closing bracket without its opening one, all of it is text.
 
@@ -137,8 +138,13 @@ class TagElement:
         setattr(self, GROUP_FIELDS[kind], value)
 
     def add_group(self, kind, value):
+        """A group written again: two styles are one ([a:1][b:2]: a:1;b:2),
+        the others (and the label of a link) joined with a space."""
         written = self.group(kind)
-        self.set_group(kind, f'{written} {value}' if written else value)
+        if kind == '[]' and self.tag != 'link':
+            self.set_group(kind, join_styles(written, value))
+        else:
+            self.set_group(kind, f'{written} {value}' if written else value)
 
     def clear_groups(self):
         self.parentheses = self.brackets = self.braces = ''
