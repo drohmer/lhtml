@@ -51,10 +51,9 @@ FIELDS = {'tag', 'class', 'attrs', 'empty', 'url', 'variant', 'default', 'doc'}
 # HTML elements without closing tag (a macro using them is always empty)
 VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
              'source', 'track', 'wbr'}
-BUILTIN_TAGS = ('div', 'span', 'link', 'img', 'video', 'videoplay', 'code',
-                'include', 'nl')
 RESERVED_NAMES = ('macros',)    # a file may hold its macros under 'macros:'
 NOT_ELEMENTS = ('nl', 'code', 'include')     # LHTML tags that are not elements
+BUILTIN_TAGS = tuple(TAGS) + NOT_ELEMENTS
 
 
 def _check(name, spec):

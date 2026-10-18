@@ -16,45 +16,43 @@ from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAM
 from .code import known_language, unknown_language_message
 from .errors import LHTMLParseError, LHTMLWarning, suggestion
 from .patterns import (
-    PROTECTED, PROTECTED_BLOCKS, protected_blocks,
+    protected_blocks,
     HEADING,
     INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
     PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR,
-    regex_transform, make_placeholder,
+    make_placeholder,
 )
 
 
 @dataclass
 class ProtectionStores:
-    """Content replaced by placeholders during processing, by kind:
+    """The text each placeholder hides, as written, by kind:
 
-    C: code blocks, kept as (header, body) and highlighted at the end
+    C: code blocks
     R: raw zones: HTML tags, comments, <script>/<style>, math
-    I: inline code (content with < and > escaped)
-    U: URL of link::/img::/video::/videoplay:: tags
+    I: inline code
+    U: URL of link::/img::/video::/videoplay:: tags (and of url macros)
     A: LHTML styles, classes/IDs and HTML attributes
 
     The kinds are kept apart on purpose: they are the opaque leaves of the
     document tree (tree.py: code with its language, raw HTML, math, inline
     code), or text the tree keeps as written (a URL, an attribute value).
+    A text may hold placeholders itself (a group holding raw HTML).
     """
-    C: list = field(default_factory=list)
-    R: list = field(default_factory=list)
-    I: list = field(default_factory=list)
-    U: list = field(default_factory=list)
-    A: list = field(default_factory=list)  # LHTML attribute group contents
-    # the text each placeholder hides, as written: where a problem is (`locate`)
-    sources: dict = field(default_factory=lambda: {kind: [] for kind in 'CRIUA'})
+    written: dict = field(default_factory=lambda: {kind: [] for kind in 'CRIUA'})
 
-    def add(self, kind, entry, source=None):
-        store = getattr(self, kind)
-        store.append(entry)
-        self.sources[kind].append(entry if source is None else source)
+    def add(self, kind, written):
+        store = self.written[kind]
+        store.append(written)
         return make_placeholder(kind, len(store) - 1)
+
+    def hidden(self, m):
+        """The text a placeholder (its match) hides, its placeholders kept."""
+        return self.written[m.group(1)][int(m.group(2))]
 
     def original(self, text):
         """`text` with its placeholders replaced by what they hide, as written."""
-        return PLACEHOLDER.sub(lambda m: self.original(self.sources[m.group(1)][int(m.group(2))]), text)
+        return PLACEHOLDER.sub(lambda m: self.original(self.hidden(m)), text)
 
     def locate(self, text, offset):
         """(line, column) of `offset` of the prepared `text` in the source."""
@@ -179,29 +177,29 @@ class _MarksOnLine:
         return self.counts
 
 
-def process_protect(text, stores, blocks=False, url_tags=None):
+def process_protect(text, stores, url_tags):
     """Replace zones that LHTML must not transform with placeholders.
 
     Protected (the leftmost zone wins): HTML comments, <script>/<style>
     blocks, inline code, URLs of link::/img::/video:: tags (and of the
     tags `url_tags`: the macros that take a URL), math
     (\\(...\\), \\[...\\]) and HTML tags themselves (so attribute values
-    are never modified). Text between HTML tags is still processed. Jinja
-    expressions, statements and comments are opaque. With `blocks`, code
-    blocks participate in the same left-to-right scan.
+    are never modified), and code blocks, in the same left-to-right scan.
+    Text between HTML tags is still processed. Jinja expressions,
+    statements and comments are opaque.
     """
     marks = _MarksOnLine(text)
 
     def _protect(m):
-        if blocks and m.group('code') is not None:
+        if m.group('code') is not None:
             # the text is the source here: an offset in it is a place
             _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
             language = _code_language(m.group('header'))
             if not known_language(language):
                 _warn(unknown_language_message(language), marks.place(m.start()), stacklevel=6)
-            return stores.add('C', (m.group('header'), m.group('body')), m.group(0))
+            return stores.add('C', m.group(0))
         if m.group('icode') is not None:
-            return stores.add('I', escape_inline_code(m.group('icode')), m.group(0))
+            return stores.add('I', m.group(0))
         if m.group('url') is not None:
             url = m.group('url')
             if url.endswith(('**', '__')):      # the marks before it on its line, counted only then
@@ -210,9 +208,7 @@ def process_protect(text, stores, blocks=False, url_tags=None):
                 after = ''
             return m.group('urltag') + stores.add('U', url) + after
         return stores.add('R', m.group(0))
-    pattern = (protected_blocks(tuple(url_tags)) if url_tags is not None else PROTECTED_BLOCKS) \
-        if blocks else PROTECTED
-    return regex_transform(text, pattern, _protect)
+    return protected_blocks(tuple(url_tags)).sub(_protect, text)
 
 
 def process_protect_attributes(text, stores):
@@ -221,7 +217,7 @@ def process_protect_attributes(text, stores):
         if not m.group(2):
             return m.group(0)
         return f'{m.group(1)}({stores.add("A", m.group(2))}) {m.group(3)}'
-    text = regex_transform(text, HEADING, _heading)
+    text = HEADING.sub(_heading, text)
 
     parts, prev = [], 0
     for m in TAG_MARKER.finditer(text):
@@ -259,7 +255,7 @@ def _refuse_removed(text, stores):
                               f'{{# ... #}} or an HTML comment <!-- ... --> (near {_context(text, m.start(), m.end() + 30)!r})',
                               *stores.locate(text, m.start()))
     for m in REMOVED_VERBATIM.finditer(text):
-        if m.group(1) is None or stores.A[int(m.group(1))] == '':     # verbatim::[] (not verbatim::[abc])
+        if m.group(1) is None or stores.written['A'][int(m.group(1))] == '':     # verbatim::[] (not verbatim::[abc])
             raise LHTMLParseError('verbatim:: was removed in LHTML 3.0: show text as it is with '
                                   'code::[text] ... code::[-], or write raw HTML directly',
                                   *stores.locate(text, m.start()))
@@ -282,12 +278,12 @@ def _refuse_include(text, locate):
         *locate(m.start()))
 
 
-def process_prepare(text, stores, url_tags=None):
+def process_prepare(text, stores, url_tags):
     """Replace code blocks and protected zones (HTML, inline code,
     URLs, math, attributes) by placeholders; `url_tags`: the tags whose
-    URL is kept as written (URL_TAGS by default). Raises LHTMLParseError on
+    URL is kept as written. Raises LHTMLParseError on
     an include:: directive (removed in 3.0)."""
-    text = process_protect(text, stores, blocks=True, url_tags=url_tags)
+    text = process_protect(text, stores, url_tags)
     text = process_protect_attributes(text, stores)
     _refuse_include(text, lambda offset: stores.locate(text, offset))
     _refuse_removed(text, stores)   # after the groups are hidden: '::#' in an attribute is text

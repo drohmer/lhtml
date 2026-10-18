@@ -2,7 +2,6 @@
 
 import functools
 import re
-from typing import Callable
 
 
 # ---------------------------------------------------------------------------
@@ -77,18 +76,18 @@ def _protected(url_tags):
             r'|(?P<tag>' + HTML_TAG.pattern + r')')
 
 
-PROTECTED        = re.compile(_protected(URL_TAGS), re.DOTALL)
-# One left-to-right pass: an outer protected zone owns its contents.
-PROTECTED_BLOCKS = re.compile(BLOCKS.pattern + '|' + PROTECTED.pattern, re.DOTALL)
-
-
 @functools.lru_cache(maxsize=32)
-def protected_blocks(url_tags=URL_TAGS):
-    """PROTECTED_BLOCKS with the URL of the tags `url_tags` protected (the
-    built-in ones and the macros that take a URL: lhtml.Tag.url)."""
-    if set(url_tags) == set(URL_TAGS):
-        return PROTECTED_BLOCKS
-    return re.compile(BLOCKS.pattern + '|' + _protected(tuple(url_tags)), re.DOTALL)
+def protected_blocks(url_tags):
+    """The zones LHTML does not read, in one left-to-right pass (an outer
+    zone owns its contents): code blocks, then the others, the URL of the
+    tags `url_tags` among them (the built-in ones and the macros that take a
+    URL: lhtml.Tag.url)."""
+    return re.compile(BLOCKS.pattern + '|' + _protected(tuple(sorted(url_tags))), re.DOTALL)
+
+
+# The zones of the built-in tags: read by the site generator (lib/source_scan.py)
+PROTECTED        = re.compile(_protected(URL_TAGS), re.DOTALL)
+PROTECTED_BLOCKS = protected_blocks(URL_TAGS)
 
 # Line breaks option: elements that make a line part of the structure
 BLOCK_TAGS       = frozenset((
@@ -108,27 +107,7 @@ PLACEHOLDER_CHAR = '\x00'
 PLACEHOLDER      = re.compile(r'\x00([A-Z])(\d+)\x00')
 
 
-# ---------------------------------------------------------------------------
-# Generic regex transform utility
-# ---------------------------------------------------------------------------
-
 def make_placeholder(kind: str, idx: int) -> str:
     """Return the placeholder for entry `idx` of the store `kind` (one uppercase letter)."""
     return f'{PLACEHOLDER_CHAR}{kind}{idx}{PLACEHOLDER_CHAR}'
 
-
-def regex_transform(text: str, pattern: re.Pattern, transform_fn: Callable[[re.Match], str]) -> str:
-    """Apply a regex-based transformation across text.
-
-    For each match of `pattern` in `text`, calls `transform_fn(match)`
-    to produce the replacement string. Non-matching text passes through.
-
-    """
-    parts = []
-    prev = 0
-    for m in pattern.finditer(text):
-        parts.append(text[prev:m.start()])
-        parts.append(transform_fn(m))
-        prev = m.end()
-    parts.append(text[prev:])
-    return ''.join(parts)

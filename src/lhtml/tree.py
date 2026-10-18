@@ -52,7 +52,7 @@ from .nodes import (
     Code, Document, Element, Emphasis, Heading, InlineCode, Item, List, Math, Node, Raw, Strong, Text, Written,
 )
 from .patterns import (
-    BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
+    BOLD, CODE_BLOCK, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
 from .process import (
     PROBLEMS, ProtectionStores, normalize_input, process_prepare, _code_language,
@@ -379,28 +379,7 @@ class _Parser:
                     space.span = (joint[0], joint[0])
                     space.line, space.column = self.place(joint[0])
                 root.children.append(space)
-            stack, buffer, origins, done = [root], [], [], set()
-            for ch, origin in zip(text.chars[start:end], text.origins[start:end]):
-                if origin >= 0:
-                    buffer.append(ch)
-                    origins.append(origin)
-                    continue
-                if origin in done:
-                    continue
-                done.add(origin)
-                if buffer:
-                    self._text_nodes(''.join(buffer), origins, stack[-1])
-                    buffer, origins = [], []
-                what, node = self.events[-origin - 1]
-                if what == 'open':
-                    stack[-1].children.append(node)
-                    stack.append(node)
-                elif what == 'close':
-                    stack.pop()
-                else:
-                    stack[-1].children.extend(node if isinstance(node, list) else [node])
-            if buffer:
-                self._text_nodes(''.join(buffer), origins, stack[-1])
+            self._replay(text.chars[start:end], text.origins[start:end], root)
         return root.children
 
     def _quote(self, text, start, end):
@@ -412,10 +391,9 @@ class _Parser:
     def _containers(self, text):
         """The innermost container open at each position of the text (None:
         the document), and where each container closes: [(position, node)]."""
-        at, stack, seen, closes = [], [None], set(), []
+        at, stack, closes = [], [None], []
         for i, o in enumerate(text.origins):
-            if o < 0 and o not in seen:
-                seen.add(o)
+            if o < 0:                   # an event: one character
                 what, node = self.events[-o - 1]
                 if what == 'open':
                     if isinstance(node, List) and isinstance(stack[-1], Item):
@@ -563,10 +541,18 @@ class _Parser:
 
     def build(self, text):
         document = Document(span=(0, len(self.source)))
-        stack = [document]
+        for node in self._replay(text.chars, text.origins, document):
+            node.end_tag = False        # elements never closed: no closing tag
+        self._spans(document)
+        return document
+
+    def _replay(self, chars, origins, root):
+        """The nodes of a text of the stages, in `root`: its text between
+        the events, the nodes the events open, close or are. The nodes left
+        open at its end are returned."""
+        stack = [root]
         below = [0]                     # for each node of the stack, the last one that is no Element
         buffer, buffer_origins = [], []
-        done = set()
 
         def flush():
             if buffer:
@@ -574,17 +560,13 @@ class _Parser:
                 buffer.clear()
                 buffer_origins.clear()
 
-        for ch, origin in zip(text.chars, text.origins):
+        for ch, origin in zip(chars, origins):
             if origin >= 0:
                 buffer.append(ch)
                 buffer_origins.append(origin)
                 continue
-            event = -origin - 1
-            if event in done:           # the other characters of the same markup
-                continue
-            done.add(event)
-            flush()
-            what, node = self.events[event]
+            flush()                     # an event: one character
+            what, node = self.events[-origin - 1]
             if what == 'open':
                 if isinstance(node, List):      # the elements open in the text of its item end here
                     k = below[-1]
@@ -602,10 +584,7 @@ class _Parser:
                 stack.pop()
                 below.pop()
         flush()
-        for node in stack[1:]:          # elements never closed: no closing tag
-            node.end_tag = False
-        self._spans(document)
-        return document
+        return stack[1:]
 
     def _spans(self, document):
         """A node that has no source of its own (a list, a wrapper item)
@@ -634,7 +613,7 @@ class _Parser:
                 continue
             parts.append(raw[position:m.start()])
             places.extend(origins[position:m.start()])
-            entry = getattr(self.stores, m.group(1))[int(m.group(2))]
+            entry = self.stores.hidden(m)
             entry, entry_places = self._expanded(entry, self._placed(entry, self.offsets[origins[m.start()]]))
             parts.append(entry)
             places.extend(entry_places)
@@ -683,11 +662,11 @@ class _Parser:
         return self._located(Text(value=self.stores.original(raw)), origins)
 
     def _zone(self, m, origins):
-        kind, index = m.group(1), int(m.group(2))
+        kind = m.group(1)
         original = self.stores.original(m.group(0))
         if kind == 'C':
-            header, body = self.stores.C[index]
-            node = Code(language=_code_language(header), body=body)
+            block = CODE_BLOCK.match(original)
+            node = Code(language=_code_language(block.group('header')), body=block.group('body'))
         elif kind == 'I':
             node = InlineCode(text=original[1:-1])
         elif kind == 'R' and original.startswith(('\\(', '\\[')):
