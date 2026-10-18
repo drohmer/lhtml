@@ -21,16 +21,18 @@ import bisect
 import functools
 import re
 from collections.abc import Iterable, Iterator, Mapping
+import dataclasses
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from .errors import quote
+from .errors import LHTMLError, quote
 from .nodes import Raw, Written
 from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones
 from .process import MarksOnLine, url_and_closing_marks
 from .tag_parser import extract_bracket_elements
 from .tags import Tag
-from .tree import parse, registry
+from .code import checked_lexers
+from .tree import _parse, registry
 
 # The kinds of zones, as the groups of the patterns name them
 _KINDS = {'code': 'code', 'jinja': 'jinja', 'comment': 'comment', 'raw': 'raw', 'icode': 'inline_code',
@@ -61,8 +63,11 @@ class Zone:
 def _pattern(url_tags, code):
     if code is None:
         return protected_blocks(tuple(sorted(url_tags)))
-    return re.compile(f'(?P<code>{code.pattern})|' + protected_zones(tuple(sorted(url_tags))),
-                      re.DOTALL | code.flags)
+    flags = 's' + ''.join(letter for letter, flag in (('i', re.I), ('m', re.M), ('x', re.X))
+                          if code.flags & flag)    # its own, not those of the other zones
+    end = '\n' if code.flags & re.X else ''        # (re.X: a # comment ends with its line)
+    return re.compile(f'(?P<code>(?{flags}:{code.pattern}{end}))|' + protected_zones(tuple(sorted(url_tags))),
+                      re.DOTALL)
 
 
 def zones(text: str, *, url_tags: Iterable[str] = URL_TAGS, code: re.Pattern | None = None,
@@ -96,7 +101,6 @@ class SourceTag(NamedTuple):
     written: Written
 
 
-_NAME = re.compile(r'([A-Za-z][\w-]*)::')
 _SYNTAX = ('code', 'nl', 'include')    # LHTML syntax, not tags
 
 
@@ -113,25 +117,24 @@ def read_tags(text: str, names: Iterable[str] | None = None, *, macros: Mapping 
     `url_tags`: names whose text is a URL besides those of the run (the
     built-in ones, the macros with `url:`). Each SourceTag(start, end,
     written): `written` as a Tag gets it (its label: the nodes of a link's
-    label), the tag at text[start:end]. Every tag holds nothing here (an
-    element that holds what follows is its opening, `div::(.c)`). A syntax
-    removed in 3.0 raises LHTMLParseError, as parse does."""
+    label), the tag at text[start:end] (an element that holds what follows:
+    its opening, `div::(.c)`). The tags of the run are read with their own
+    rules (a container in a link's label is text there), a name of
+    `names` that is none of them as a tag that holds nothing. A syntax
+    removed in 3.0, or an error of a tag, raises as in parse."""
     run = registry(None, macros)
     wanted = set(run) if names is None else set(names)
-    wanted &= {m.group(1) for m in _NAME.finditer(text)}
     wanted -= set(_SYNTAX)
-    url_tags = frozenset(url_tags) | {name for name, tag in run.items() if tag.url}
-    found = []
-
-    def keep(written):
-        node = Raw('')
-        found.append((node, written))
-        return node
-    tags = {name: Tag(keep, url=name in url_tags) for name in wanted}
-    parse(text, macros=macros, tags=tags, warn=False)
-    for node, written in sorted(found, key=lambda pair: pair[0].span):
-        if node.line is not None and written.tag in wanted:
-            yield SourceTag(node.span[0], node.span[1], written)
+    url_tags = frozenset(url_tags)
+    tags = dict(run)
+    for name in wanted - set(run):      # a tag of the tool: read, it writes nothing
+        tags[name] = Tag(lambda written: Raw(''), url=name in url_tags)
+    for name in url_tags & set(run):    # its text a URL, the rest its own
+        tags[name] = dataclasses.replace(tags[name], url=True)
+    _, read = _parse(text, tags, checked_lexers(None), False)
+    for (start, end), written in sorted(read, key=lambda pair: pair[0]):
+        if written.tag in wanted:
+            yield SourceTag(start, end, written)
 
 
 @functools.lru_cache(maxsize=8)
@@ -140,46 +143,51 @@ def _line_starts(text):
     return [0] + [m.end() for m in re.finditer('\n', text)]
 
 
-_ONE_NAME = re.compile(r'[A-Za-z][\w-]*::')
+@functools.lru_cache(maxsize=8)
+def _read_by_parse(text, name, url_tags):
+    """The tags `name` parse reads in a text, by their start: once per text."""
+    try:
+        return {found.start: found for found in read_tags(text, {name}, url_tags=url_tags)}
+    except LHTMLError:                  # a syntax removed in 3.0: read as syntax
+        return {}
+
+
+_ONE_NAME = re.compile(r'(?<![\w-])[A-Za-z][\w-]*::')
 _URL = re.compile(URL_TOKEN)
 
 
 def read_tag(text: str, start: int, *, url_tags: Iterable[str] = URL_TAGS) -> SourceTag | None:
-    """The tag written at `start` (its name, then ::, any name), read as
-    syntax, wherever it is - in a code block too: what a tool replaces
-    before LHTML reads the page (lhtml.read_tags gives what parse reads).
-    SourceTag(start, end, written), None if no name and :: are there:
-    `written` holds its tag, text, inline, groups as written, line, column
-    and context, not a label (the nodes of a label are parse's). The text
-    of a tag of `url_tags` is a URL as parse reads it: whole
-    (img::{{ base }}/a.png), ending before the ** that closes a bold opened
-    before it on its line (**img::a.png**). A bracket without its closing
-    one raises LHTMLParseError. The text is read once for all the calls on
-    it (its brackets matched once): read_tag reads a page tag by tag."""
+    """The tag written at `start` (its name, then ::, any name; None if no
+    name starts there), what a tool replaces before LHTML reads the page.
+    Where parse reads a tag, as read_tags gives it (a bold, a link's label,
+    Jinja around it); elsewhere - a code block, a comment, inline code, a
+    tag parse leaves as text - as syntax, the text as it is: its groups,
+    and its URL whole for a tag of `url_tags`, `written` with its tag,
+    text, inline, groups, line, column and context, no label. There a
+    bracket without its closing one raises LHTMLParseError. The page is
+    parsed once for all the calls on it: read_tag reads a page tag by tag."""
+    if not 0 <= start <= len(text):
+        raise ValueError(f'start: {start} is not a place in the text (0 to {len(text)})')
     m = _ONE_NAME.match(text, start)
     if m is None:
         return None
     name, after = m.group(0)[:-2], m.end()
+    url_tags = frozenset(url_tags)
+    read = _read_by_parse(text, name, url_tags).get(start)
+    if read is not None:
+        return read
     lines = _line_starts(text)
     line = bisect.bisect_right(lines, start)
-    marks = MarksOnLine(text, lines[line - 1], line)        # its line only: a page read tag by tag
-    url, closing = None, ''
-    if name in frozenset(url_tags):     # its URL first: kept as written
+    url = None
+    if name in url_tags:                # its URL first: kept as written
         found = _URL.match(text, after)
         if found:
             url = found.group(0)
-            if url.endswith(('**', '__')):
-                url, closing = url_and_closing_marks(url, marks.before(start))
-            after = found.start() + len(url)
-    if closing:                         # **img::a.png**: the bold ends it
-        element, end = None, after
-    else:                               # after a URL, a group ends the word, as in parse
-        element = extract_bracket_elements(text, after, after_text=url is not None)
-        end = element.end
-    word = (url or '') + (element.text if element else '')
+            after = found.end()
+    element = extract_bracket_elements(text, after, after_text=url is not None)
+    word = (url or '') + element.text
     inline = word.endswith('::')
-    column = start - lines[line - 1] + 1
-    return SourceTag(start, end, Written(
+    return SourceTag(start, element.end, Written(
         tag=name, text=word[:-2] if inline else word, inline=inline,
-        parentheses=element.parentheses if element else '', brackets=element.brackets if element else '',
-        braces=element.braces if element else '', line=line, column=column, context=quote(text, start, end)))
+        parentheses=element.parentheses, brackets=element.brackets, braces=element.braces,
+        line=line, column=start - lines[line - 1] + 1, context=quote(text, start, element.end)))

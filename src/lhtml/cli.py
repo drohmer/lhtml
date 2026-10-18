@@ -90,7 +90,7 @@ def check(jobs, read=()):
     """The diagnostics that stop everything before a file is written;
     `read`: the other files the run reads (its macro files)."""
     problems, targets = [], {}
-    inputs = {_identity(f) for f in [f for f, _ in jobs] + list(read) if os.path.isfile(f)}
+    inputs = {_identity(f) for f in [f for f, _ in jobs if f != STDIN] + list(read) if os.path.isfile(f)}
     for f_in, out in jobs:
         if f_in != STDIN and not os.path.exists(f_in):
             problems.append(Diagnostic(f_in, 'error', 'file not found'))

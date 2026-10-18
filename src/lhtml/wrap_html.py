@@ -33,8 +33,10 @@ HTML_TEMPLATE = """\
 def _names(value, option):
     if isinstance(value, (str, os.PathLike)):
         return [value]
-    if isinstance(value, Iterable):
-        return list(value)
+    if isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray)):
+        names = list(value)
+        if all(isinstance(name, (str, os.PathLike)) for name in names):
+            return names
     raise TypeError(f'{option}: expected a file name or a list of them, got {type(value).__name__}')
 
 

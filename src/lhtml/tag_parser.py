@@ -153,7 +153,9 @@ class TagElement:
 def extract_bracket_elements(text, index_start, after_text=False):
     """The element whose `::` ends at `index_start`, a TagElement.
     `after_text`: read after text (a URL read already): a group then ends
-    the word, as a group after text does.
+    the word, as a group after text does. After a URL, a closing bracket
+    without its opening one ends it too: (see img::a.png) is text around
+    an image.
 
     A closing bracket without its opening one makes the whole element text
     (its groups are still listed, so that their content stays literal).
@@ -168,6 +170,7 @@ def extract_bracket_elements(text, index_start, after_text=False):
 
     word, groups = [], []
     seen_text, group_after_text, stray = after_text, False, False
+    url = after_text                    # a URL read: what follows it is not its
     i = index_start
     while i < len(text):
         ch = text[i]
@@ -175,7 +178,7 @@ def extract_bracket_elements(text, index_start, after_text=False):
             end = text.find('\x00', i + 1)
             if end > i:
                 word.append(text[i:end + 1])
-                seen_text = True
+                seen_text = url = True
                 i = end + 1
                 continue
         if ch.isspace() or ch == '\x00' or ch == '<' or ch == EVENT_CHAR:
@@ -190,7 +193,7 @@ def extract_bracket_elements(text, index_start, after_text=False):
             group_after_text = group_after_text or seen_text
             i = j
             continue
-        if group_after_text:
+        if group_after_text or (url and ch in ')]}'):
             break
         stray = stray or ch in ')]}'
         word.append(ch)

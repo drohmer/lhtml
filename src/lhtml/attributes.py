@@ -62,8 +62,13 @@ def _masked(text):
 # The Jinja statements that open a block (closed by its end...): an
 # attribute written in one depends on it
 _BLOCKS = {'if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'set', 'autoescape', 'raw', 'trans'}
-# the blocks whose attributes join the others with their block (_blocks)
-_FOLDED = ('if', 'for')
+# the statements of a block whose attributes join the others with it
+# (_blocks): those of the blocks that write what they hold where they are,
+# holding no other statement (not a {% set %}: a value folded would be read
+# before it, nor a {% macro %}, a {% block %}...)
+_FOLDED = {word for block in ('if', 'for', 'with', 'filter', 'autoescape', 'raw')
+           for word in (block, 'end' + block)} | {'elif', 'else'}
+_TRIM = re.compile(r'^(\{%)[-+]|[-+](%\})$')       # whitespace control: {%- and -%}
 _STATEMENT = re.compile(r'\{%[-+]?\s*(\w+)(.*?)[-+]?%\}', re.DOTALL)
 
 
@@ -239,9 +244,8 @@ class Attributes(MutableMapping):
 
     def __getitem__(self, name):
         if isinstance(name, str) and (name := key(name)) in self._names:
-            for entry in self._items:
-                if entry.name == name:
-                    return entry.value
+            entries = [entry for entry in self._items if entry.name == name]
+            return next((e for e in entries if not e.nested), entries[0]).value    # the one set first
         raise KeyError(name)
 
     def __setitem__(self, name, value):
@@ -334,23 +338,25 @@ class Attributes(MutableMapping):
     def _blocks(self, name):
         """The {% if %} and {% for %} blocks written among them (from the
         opening statement to its closing one) that hold an attribute `name`:
-        their items. Not the others: what a {% set %}, a {% macro %} or a
-        {% block %} holds is not written there as it is."""
-        blocks, block, depth = [], None, 0
+        their items; and {% with %}, {% filter %}, {% autoescape %},
+        {% raw %} ones. Not the others, nor one that holds another statement:
+        what a {% set %}, a {% macro %} or a {% block %} holds is not written
+        there as it is, and a value folded would be read before its {% set %}."""
+        blocks, block, depth = [], [], 0
         for entry in self._items:
             kind = _statement(entry.written) if entry.name is None else None
             if kind == 'open':
-                if depth == 0:
-                    block = [] if _STATEMENT.fullmatch(entry.written).group(1) in _FOLDED else None
                 depth += 1
-            if block is not None:
+            if depth:
                 block.append(entry)
             if kind == 'close' and depth:
                 depth -= 1
                 if depth == 0:
-                    if block is not None and any(e.name == name for e in block):
+                    words = [m.group(1) for e in block if e.name is None
+                             for m in [_STATEMENT.fullmatch(e.written or '')] if m]
+                    if all(word in _FOLDED for word in words) and any(e.name == name for e in block):
                         blocks.append(block)
-                    block = None
+                    block = []
         return blocks
 
     def folded(self, name: str, joiner: str = ' ') -> tuple[str, Attributes]:
@@ -363,14 +369,18 @@ class Attributes(MutableMapping):
             return '', self.copy()
         parts = []
         for block in blocks:
-            folded, value_before = [], False
-            loop = _STATEMENT.fullmatch(block[0].written).group(1) == 'for'    # each turn: its joiner
+            folded, value_before, opened = [], False, []
             for entry in block:
-                if entry.name is None and _statement(entry.written):
-                    folded.append(entry.written)
+                kind = _statement(entry.written) if entry.name is None else None
+                if kind:            # its whitespace control would take the joiners
+                    folded.append(_TRIM.sub(r'\1\2', entry.written))
                     value_before = False
-                elif entry.name == name and entry.value:
-                    folded.append((joiner if value_before or loop else '') + entry.value)
+                    if kind == 'open':
+                        opened.append(_STATEMENT.fullmatch(entry.written).group(1))
+                    elif kind == 'close':
+                        opened.pop()
+                elif entry.name == name and entry.value:     # in a loop: each turn its joiner
+                    folded.append((joiner if value_before or 'for' in opened else '') + entry.value)
                     value_before = True
             parts.append(''.join(folded))
         return joiner.join(parts), self._without_entries(self._in_blocks(name, blocks))

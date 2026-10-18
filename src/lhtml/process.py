@@ -137,6 +137,7 @@ class MarksOnLine:
             while (found := text.find(mark, self.at[mark], position)) != -1:
                 self.counts[mark] += 1
                 self.at[mark] = found + 2
+            self.at[mark] = max(self.at[mark], position - 1)    # read: not again (one may end there)
         return self.counts
 
 

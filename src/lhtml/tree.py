@@ -111,6 +111,8 @@ class _Parser:
         self.open, self.closed_early, self.next_close = [], [], 0   # the :: elements (elements)
         self._glued = None          # the word:: that may be meant as a closing :: (_glued_close)
         self.prepared = ''          # the source, its zones LHTML does not read hidden (parse)
+        self.read = []              # (span, Written) of each tag read where it is (lhtml.read_tags)
+        self._given = None          # the Written of the tag _open built last
 
     # -- positions --------------------------------------------------------
 
@@ -392,6 +394,8 @@ class _Parser:
                 if span:
                     node.span = (node.span[0], span[1])
             else:                       # the nodes its tag built, where it is
+                if span:
+                    self.read.append((span, self._given))
                 for built in (node if kind == 'leaf' else [node]):
                     for n in built.walk():
                         self.built.add(n)
@@ -525,6 +529,7 @@ class _Parser:
                         parentheses=element.parentheses, brackets=element.brackets, braces=element.braces,
                         label=None if element.label is None else tuple(element.label),
                         line=element.line, column=element.column, context=element.context)
+        self._given = given
         holds = self._call(name, 'container', element, tag.holds, given)
         built = self._call(name, 'build', element, lambda w: node_list(tag.build(w)), given)
         if holds and (len(built) != 1 or not isinstance(built[0], Element)):
@@ -813,8 +818,11 @@ def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
     LHTMLError raised holds those found before it in its `problems`. Each
     parse collects its own (threads and tasks included): no global state
     is changed."""
-    tags_of_run = registry(tags, macros)
-    lexers = checked_lexers(lexers)
+    return _parse(text, registry(tags, macros), checked_lexers(lexers), warn)[0]
+
+
+def _parse(text, tags_of_run, lexers, warn):
+    """parse: the document, and the (span, Written) of the tags it read."""
     collected = []
     token = PROBLEMS.set(collected)
     try:
@@ -828,13 +836,15 @@ def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
         if warn:
             _emit(_in_order(collected))
     given = _given_offsets(text, parser.source)
+    read = parser.read
     if given:
         for node in document.walk():
             node.span = (given(node.span[0]), given(node.span[1]))
+        read = [((given(a), given(b)), written) for (a, b), written in read]
     document.span = (0, len(text))
     document.problems = _in_order(collected)
     document.source = text
-    return document
+    return document, read
 
 
 def _in_order(problems):

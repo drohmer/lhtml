@@ -4,6 +4,7 @@ its HTML was compared with the text passes it replaced on this suite, the
 corpus and 80 000 fuzzed documents (docs/design.md of the generator, N5);
 the HTML of run is what the rest of the suite checks."""
 import re
+import time
 import warnings
 
 import pytest
@@ -1148,3 +1149,71 @@ class TestFourthReview:
             return time.perf_counter() - start
         small, large = duration(500), duration(2000)
         assert large < 8 * small + 0.02, (small, large)
+
+
+class TestFifthReview:
+
+    def test_read_tags_keeps_the_rules_of_each_tag(self):
+        text = 'link::u[span:: x] link::v[img::p.png]'
+        found = list(lhtml.read_tags(text))
+        assert [f.written.tag for f in found] == ['link', 'link', 'img']     # span:: is text in a label
+        label = found[1].written.label
+        assert label[0].name == 'img' and label[0].attributes['src'] == 'p.png'
+        assert [text[f.start:f.end] for f in found] == ['link::u[span:: x]', 'link::v[img::p.png]', 'img::p.png']
+
+    def test_read_tags_gives_the_opening_of_a_container(self):
+        text = 'div::(.c) a img::b.png ::'
+        assert [(f.written.tag, text[f.start:f.end]) for f in lhtml.read_tags(text)] == \
+            [('div', 'div::(.c)'), ('img', 'img::b.png')]
+
+    def test_a_block_with_another_statement_is_not_folded(self):
+        assert lhtml.run('div::(.base){{% if ok %}{% set c = "e" %}class="{{ c }}"{% endif %}} x ::') == \
+            '<div class="base" {% if ok %}{% set c = "e" %}class="{{ c }}"{% endif %}> x </div>'
+
+    def test_a_loop_in_a_block_separates_its_turns(self):
+        assert lhtml.run('div::(.base){{% if ok %}{% for c in l %}class="{{ c }}"{% endfor %}{% endif %}} x ::') == \
+            '<div class="base {% if ok %}{% for c in l %} {{ c }}{% endfor %}{% endif %}"> x </div>'
+
+    def test_blocks_that_write_in_place_are_folded(self):
+        assert lhtml.run('span::(.base){{% with %}class="z"{% endwith %}} t ::') == \
+            '<span class="base {% with %}z{% endwith %}"> t </span>'
+        assert lhtml.run('span::(.base){{%- for c in cs -%}class="{{ c }}"{%- endfor %}} t ::') == \
+            '<span class="base {% for c in cs %} {{ c }}{% endfor %}"> t </span>'
+
+    def test_an_attribute_set_is_read_back(self):
+        attributes = lhtml.Attributes.read('{% set y %}title="b"{% endset %}')
+        attributes['title'] = 'T'
+        assert attributes['title'] == 'T' and dict(attributes) == {'title': 'T'}
+
+    def test_wrap_refuses_bytes(self):
+        for value in (b'ab', bytearray(b'z'), ['a.css', 3]):
+            with pytest.raises(TypeError):
+                lhtml.wrap('x', css=value)
+
+    def test_a_stray_closing_bracket_ends_a_url(self):
+        assert lhtml.run('(see link::https://x.org) more') == '(see <a href="https://x.org">https://x.org</a>) more'
+        assert lhtml.run('(link::https://w.org/A_(b)) x') == '(<a href="https://w.org/A_(b)">https://w.org/A_(b)</a>) x'
+        assert [z.value for z in lhtml.zones('(see img::a.png) more') if z.kind == 'url'] == ['a.png']
+
+    def test_read_tag_reads_as_parse_where_parse_reads(self):
+        for text, start, expected in [('**includeadv::{a:1}** c', 2, 'includeadv::{a:1}'),
+                                      ('span::[c]**bold** text', 0, 'span::[c]'),
+                                      ('link::p.html[includeadv::a.txt] after', 13, 'includeadv::a.txt'),
+                                      ('**img::a.png**', 2, 'img::a.png')]:
+            found = lhtml.read_tag(text, start)
+            assert text[found.start:found.end] == expected
+        assert lhtml.read_tag('link::a.html[t][u] q', 0).written.brackets == 't u'
+        assert lhtml.read_tag('abc span::x', 5) is None
+        with pytest.raises(ValueError):
+            lhtml.read_tag('x', -3)
+
+    def test_read_tag_is_linear_on_one_line(self):
+        text = '**img::a.png** ' * 20000
+        started = time.perf_counter()
+        for m in re.finditer('img::', text):
+            lhtml.read_tag(text, m.start())
+        assert time.perf_counter() - started < 5
+
+    def test_zones_code_flags_are_its_own(self):
+        found = lhtml.zones('IMG::a.png ```A```', code=re.compile('```a```', re.I))
+        assert [z.kind for z in found] == ['code']

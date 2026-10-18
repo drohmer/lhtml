@@ -90,7 +90,9 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - `lhtml.zones(text)`, `lhtml.read_tags(text)` and `lhtml.read_tag(text,
   start)`: a source as LHTML reads it, for the tools around it (the zones
   it leaves as they are; each tag, where it is and what it writes, read by
-  parse itself), in place of `lhtml.patterns` and
+  parse itself, with the rules of each tag; `read_tag` at one place, as
+  parse reads it, or as syntax where parse reads none: a code block), in
+  place of `lhtml.patterns` and
   `extract_bracket_elements`.
 - The label of a link reads the elements that hold nothing:
   `link::page.html[img::thumb.png]` is an image as a link (it was the text
@@ -104,7 +106,11 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   (`**a` then `b**`: each is within its line).
 - A class or a style written in a Jinja block joins the others with its
   block: `img::x.png(.b){{% if x %}class="a"{% endif %}}` is
-  `class="b {% if x %}a{% endif %}"` (it was two `class`). Setting an
+  `class="b {% if x %}a{% endif %}"` (it was two `class`): a block that
+  writes what it holds where it is (`if`, `for`, `with`, `filter`,
+  `autoescape`, `raw`) and holds no other statement (a `{% set %}` in it:
+  it stays as written); each turn of a loop has its joiner, a space or a
+  `;`, and its `{%-` gives up its whitespace control there. Setting an
   attribute written in Jinja branches gives it always (it kept the first
   branch). Two `[...]` groups are one style, `a:1;b:2` (they were joined
   with a space). `Heading.written` is `Heading.parentheses`. `Attributes`
@@ -148,6 +154,9 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   quadratic).
 
 ### Changed
+- A closing bracket without its opening one ends a URL: `(see
+  link::https://x.org)` is a link in parentheses (its `)` was in the
+  `href`, with no warning); a URL's own pairs stay (`A_(b)`).
 - The attributes are read once and merged as `Attributes`, never written
   as text to be read again: `img::x.png(.a){class=""}` is `class="a"` (it
   was `class="a" class=""`), a variant of a macro is one class
