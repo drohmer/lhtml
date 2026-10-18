@@ -1355,3 +1355,29 @@ class TestAudit:
         attributes['title'] = 'c'
         assert attributes.html() == ' {% if x %}{% set q = 1 %}{% endif %} title="c"'
         assert lhtml.Attributes({'Title': 'x'}) == {'Title': 'x'}
+
+    def test_a_video_keeps_its_jinja(self):
+        import jinja2
+        html = lhtml.run("video::{{ url_for('static', filename='clip.mp4') }}\n")
+        jinja2.Template(html)           # a template still
+        assert 'type=' not in html      # its file is Jinja's: no type
+        assert 'type="video/mp4"' in lhtml.run('video::{{ base }}/clip.MP4?x=1')
+        assert 'type=' not in lhtml.run('video::dir.v/clip')
+
+    def test_wrap_keeps_jinja(self):
+        import jinja2
+        page = lhtml.wrap('x', title='{{ t }} <b>', css="{{ url_for('static', filename='s.css') }}")
+        jinja2.Template(page)
+        assert '<title>{{ t }} &lt;b&gt;</title>' in page
+
+    def test_line_breaks_of_a_block_tag_on_two_lines_and_of_jinja_in_text(self):
+        assert lhtml.run('div::[c:r;\nf:x]\nz\n::\n', line_breaks=True) == '<div style="c:r;\nf:x">\nz\n</div>\n'
+        assert lhtml.run('Hello {% if x %}!{% endif %}\nWorld\n', line_breaks=True) == \
+            'Hello {% if x %}!{% endif %}<br>\nWorld\n'
+        assert lhtml.run('a\n{% if x %}\nb\n{% endif %}\nc', line_breaks=True) == 'a\n{% if x %}\nb\n{% endif %}\nc'
+
+    def test_marks_in_zones_open_no_bold_before_a_url(self):
+        for text in (r'`**` img::a.png** b**', r'\(x**2\) img::a.png** b**', '<!-- ** --> img::a.png** b**'):
+            assert 'src="a.png**"' in lhtml.run(text)
+            assert [z.value for z in lhtml.zones(text) if z.kind == 'url'] == ['a.png**']
+        assert '<strong><img src="a.png"' in lhtml.run(r'`**` **img::a.png**')

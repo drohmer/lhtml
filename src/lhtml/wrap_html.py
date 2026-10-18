@@ -10,6 +10,8 @@ import os
 from collections.abc import Iterable
 from html import escape
 
+from .attributes import outside_jinja
+
 HTML_TEMPLATE = """\
 <!DOCTYPE html>
 
@@ -46,11 +48,11 @@ def wrap(html_in: str, *, title: str = 'Webpage', css: str | Iterable[str] = (),
     stylesheets `css` and scripts `js` it links (a name or a list)."""
     head_parts = []
     for name in _names(css, 'css'):
-        head_parts.append(f'\t<link rel="stylesheet" type="text/css" href="{escape(str(name))}">\n')
+        head_parts.append(f'\t<link rel="stylesheet" type="text/css" href="{outside_jinja(str(name), escape)}">\n')
     for name in _names(js, 'js'):
-        head_parts.append(f'\t<script src="{escape(str(name))}" defer></script>\n')
+        head_parts.append(f'\t<script src="{outside_jinja(str(name), escape)}" defer></script>\n')
     return HTML_TEMPLATE.format(
-        title=escape(str(title), quote=False),
+        title=outside_jinja(str(title), lambda text: escape(text, quote=False)),
         head_extras=''.join(head_parts),
         content=html_in,
     )

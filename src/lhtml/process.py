@@ -7,6 +7,7 @@ The kinds of stored content are listed in ProtectionStores; they become the
 opaque leaves of the tree (code, inline code, mathematics, raw HTML).
 """
 
+import bisect
 import re
 from dataclasses import dataclass, field
 
@@ -113,6 +114,13 @@ class MarksOnLine:
         self.text, self.checked, self.at = text, start, {'**': start, '__': start}
         self.counts = {'**': 0, '__': 0}
         self.line, self.line_start = line, start
+        self.zones = []                 # (start, end) of the zones read: their marks are none
+
+    def skip(self, start, end):
+        """A zone read (inline code, a comment...): the marks it holds are
+        no bold nor italic (`**` x img::a.png**). In order, left to right."""
+        if end > start:
+            self.zones.append((start, end))
 
     def _read(self, position):
         """Up to `position`: its line and where it starts."""
@@ -135,6 +143,10 @@ class MarksOnLine:
         self._read(position)
         for mark in self.counts:
             while (found := text.find(mark, self.at[mark], position)) != -1:
+                k = bisect.bisect_right(self.zones, (found, len(text))) - 1
+                if k >= 0 and self.zones[k][0] <= found < self.zones[k][1]:     # in a zone: none
+                    self.at[mark] = self.zones[k][1]
+                    continue
                 self.counts[mark] += 1
                 self.at[mark] = found + 2
             self.at[mark] = max(self.at[mark], position - 1)    # read: not again (one may end there)
@@ -161,8 +173,10 @@ def process_protect(text, stores, url_tags, lexers=None):
             language = code_language(m.group('header'))
             if not known_language(language, lexers):
                 warn(unknown_language_message(language, lexers), marks.place(m.start()), stacklevel=6)
+            marks.skip(m.start(), m.end())
             return stores.add('C', m.group(0))
         if m.group('icode') is not None:
+            marks.skip(m.start(), m.end())
             return stores.add('I', m.group(0))
         if m.group('url') is not None:
             url = m.group('url')
@@ -170,7 +184,9 @@ def process_protect(text, stores, url_tags, lexers=None):
                 url, after = url_and_closing_marks(url, marks.before(m.start()))
             else:
                 after = ''
+            marks.skip(m.start(), m.end() - len(after))
             return m.group('urltag') + stores.add('U', url) + after
+        marks.skip(m.start(), m.end())
         return stores.add('R', m.group(0))
     parts, prev = [], 0
     for m in zones_in(protected_blocks(tuple(url_tags)), text):

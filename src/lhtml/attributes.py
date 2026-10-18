@@ -147,16 +147,21 @@ def layered(*layers):
 _FRAGMENT = re.compile(JINJA_RE.pattern + r'|\S+')
 
 
+def outside_jinja(text, escape):
+    """The text, `escape` applied to what is not Jinja: its Jinja zones are
+    kept as written (rendered before the HTML is read)."""
+    parts, prev = [], 0
+    for m in JINJA_RE.finditer(text):
+        parts += [escape(text[prev:m.start()]), m.group(0)]
+        prev = m.end()
+    parts.append(escape(text[prev:]))
+    return ''.join(parts)
+
+
 def quoted(value):
     """A value inside double quotes: its double quotes escaped (Jinja zones
     kept as written, they are rendered before the HTML)."""
-    parts, prev = [], 0
-    for m in JINJA_RE.finditer(value):
-        parts.append(value[prev:m.start()].replace('"', '&quot;'))
-        parts.append(m.group(0))
-        prev = m.end()
-    parts.append(value[prev:].replace('"', '&quot;'))
-    return ''.join(parts)
+    return outside_jinja(value, lambda text: text.replace('"', '&quot;'))
 
 
 @dataclass(slots=True)

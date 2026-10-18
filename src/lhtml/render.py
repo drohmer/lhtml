@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from html import escape
 import re
 
-from .attributes import Attributes, quoted
+from .attributes import Attributes, outside_jinja, quoted
 from .code import checked_lexers, highlight
 from .nodes import Node, Code, Element, Emphasis, Heading, InlineCode, Item, List, Math, Raw, Strong, Text, Video
-from .patterns import BLOCK_RAW, BLOCK_TAGS, JINJA_LINE, LEADING_TAG, PREFORMATTED_TAG
+from .patterns import BLOCK_RAW, BLOCK_TAGS, JINJA_LINE, JINJA_RE, LEADING_TAG, PREFORMATTED_TAG
 
 _ZONES = (Code, InlineCode, Math, Raw)
 # media(src) -> [(url, mime type)]: the sources of a video
@@ -46,15 +46,17 @@ def render_inline_code(content):
 def _video(node, media):
     """<video> with its sources: those of the resolver `media`, or its src."""
     source = node.src
-    extension = source.rsplit('.', 1)[-1]
-    mime_extension = re.split(r'[?#]', extension, maxsplit=1)[0].lower()
+    # its type: the extension of its file, its Jinja, query and fragment aside (none: no type)
+    name = re.split(r'[?#]', JINJA_RE.sub('', source), maxsplit=1)[0].rsplit('/', 1)[-1]
+    extension = name.rsplit('.', 1)[1].lower() if '.' in name else ''
     sources = list(media(source) or []) if media is not None else []
     if not sources:
-        sources = [(source, f'video/{mime_extension}')]
+        sources = [(source, f'video/{extension}' if extension else None)]
     parts = [f'<{node.name}{_attributes(node)}>\n']
     for url, mime in sources:
-        parts.append(f'\t<source src="{quoted(url)}" type="{quoted(mime)}">\n')
-    parts.append(f'\t Cannot play video {escape(source)}\n')
+        typed = f' type="{quoted(mime)}"' if mime else ''
+        parts.append(f'\t<source src="{quoted(url)}"{typed}>\n')
+    parts.append(f'\t Cannot play video {outside_jinja(source, escape)}\n')
     parts.append(f'</{node.name}>')
     return ''.join(parts)
 
@@ -98,18 +100,26 @@ def _is_block(node):
     """Whether a node is a block at the edge of a line: a heading, a list,
     an item, a block element (div::, a macro of a block element), a code
     block; raw HTML that starts with a block tag, a comment, <script>,
-    <style>, display mathematics, a Jinja statement or comment (the raw
-    zones are read as written: they are the source)."""
+    <style>, display mathematics (the raw zones are read as written: they
+    are the source). A Jinja statement or a comment is none: alone on its
+    line, it makes it structure (_is_quiet)."""
     if isinstance(node, (Heading, List, Item, Code)):
         return True
     if isinstance(node, Element):
         return node.name.lower() in BLOCK_TAGS
     if isinstance(node, (Raw, Math)):
-        if BLOCK_RAW.match(node.text) or JINJA_LINE.fullmatch(node.text):
+        if _is_quiet(node):
+            return False
+        if BLOCK_RAW.match(node.text):
             return True
         m = LEADING_TAG.match(node.text)
         return bool(m) and m.group(1).lower() in BLOCK_TAGS
     return False
+
+
+def _is_quiet(node):
+    """A Jinja statement or comment, an HTML comment: it writes no text."""
+    return isinstance(node, Raw) and bool(JINJA_LINE.fullmatch(node.text) or node.text.lstrip().startswith('<!--'))
 
 
 def _preformatted(node, closing=False):
@@ -138,6 +148,7 @@ class _Piece:
     block: bool = False
     preformatted: int = 0
     whole: bool = False
+    quiet: bool = False             # a Jinja statement or a comment: a line of its own is structure
 
 
 def _link(node):
@@ -169,7 +180,8 @@ def _pieces(root, media, lexers):
         if isinstance(node, Text):
             piece = _Piece(node.value, 'text')
         elif isinstance(node, _ZONES):
-            piece = _Piece(_zone(node, lexers), 'zone', _is_block(node), _preformatted(node), True)
+            piece = _Piece(_zone(node, lexers), 'zone', _is_block(node), _preformatted(node), True,
+                           _is_quiet(node))
         elif (html := _leaf(node, media)) is not None:
             piece = _Piece(html, 'markup', _is_block(node), 0, True)
         else:
@@ -209,13 +221,15 @@ def _with_line_breaks(tokens):
                 ends.append(token.kind)
                 lines.append([])
                 changes.append(0)
-            if piece:                   # a tag on several lines (a style on two lines) is a block
-                lines[-1].append((piece, block and k == 0, block and ends_here and k == last))
+            if piece:                   # a tag on several lines (a style on two lines) is a block on each
+                lines[-1].append((piece, block and (k == 0 or token.kind == 'markup'),
+                                  block and ends_here and k == last, token.quiet))
     texts = [''.join(piece for piece, *_ in line) for line in lines]
     structure, depth = [], 0
     for line, change in zip(lines, changes):
-        edges = [(starts, ends_) for piece, starts, ends_ in line if piece.strip()]
-        structure.append(depth > 0 or change != 0 or bool(edges) and (edges[0][0] or edges[-1][1]))
+        edges = [(starts, ends_, quiet) for piece, starts, ends_, quiet in line if piece.strip()]
+        alone = bool(edges) and all(quiet for *_, quiet in edges)     # {% if x %} on its line
+        structure.append(depth > 0 or change != 0 or alone or bool(edges) and (edges[0][0] or edges[-1][1]))
         depth = max(0, depth + change)
     blank = [not text.strip() for text in texts]
     start = 0

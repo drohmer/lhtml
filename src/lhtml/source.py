@@ -90,6 +90,7 @@ def zones(text: str, *, url_tags: Iterable[str] = URL_TAGS, code: re.Pattern | N
             found.append(Zone(m.start(), m.end() - len(after), kind, m.group('urltag')[:-2], url))
         else:
             found.append(Zone(m.start(), m.end(), kind))
+        marks.skip(found[-1].start, found[-1].end)      # its marks are no bold nor italic
     return found
 
 
