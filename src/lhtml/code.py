@@ -12,6 +12,7 @@ from pygments.util import ClassNotFound
 from pygments.formatters import HtmlFormatter
 from pygments.lexer import words, inherit
 import functools
+from collections.abc import Mapping
 
 import pygments.lexers
 
@@ -57,12 +58,24 @@ LEXER_OPTIONS = dict(stripall=False, stripnl=True, ensurenl=True, tabsize=2, enc
 # Public API
 # ---------------------------------------------------------------------------
 
-def _lexer(language):
-    """The lexer of a language name, None if neither LEXERS nor Pygments know it."""
+def checked_lexers(lexers):
+    """The lexers of a call, {name: lexer class}, checked (TypeError)."""
+    if lexers is None:
+        return {}
+    if not isinstance(lexers, Mapping) or not all(isinstance(name, str) and callable(lexer)
+                                                  for name, lexer in lexers.items()):
+        raise TypeError(f'lexers: expected a mapping of names to lexer classes, got {lexers!r}')
+    return lexers
+
+
+def _lexer(language, lexers=None):
+    """The lexer of a language name: those of the call (`lexers`), then
+    LEXERS, then Pygments; None if none knows it."""
     language = (language or '').strip()
-    lexer_class = LEXERS.get(language) or LEXERS.get(language.lower())
-    if lexer_class is not None:
-        return lexer_class()
+    for table in (lexers or {}, LEXERS):
+        lexer_class = table.get(language) or table.get(language.lower())
+        if lexer_class is not None:
+            return lexer_class()
     if not language:
         return TextLexer(**LEXER_OPTIONS)
     lexer_class = _pygments_lexer(language)
@@ -79,13 +92,14 @@ def _pygments_lexer(language):
         return None
 
 
-def known_language(language):
-    return _lexer(language) is not None
+def known_language(language, lexers=None):
+    return _lexer(language, lexers) is not None
 
 
-def unknown_language_message(language):
+def unknown_language_message(language, lexers=None):
     language = language.strip()
-    return f'code::[{language}]: unknown language, shown as plain text{_closest(language.lower(), frozenset(LEXERS))}'
+    known = frozenset(LEXERS) | frozenset(lexers or ())
+    return f'code::[{language}]: unknown language, shown as plain text{_closest(language.lower(), known)}'
 
 
 @functools.lru_cache(maxsize=256)
@@ -100,9 +114,9 @@ def _pygments_names():
     return frozenset(alias for _, aliases, _, _ in pygments.lexers.get_all_lexers() for alias in aliases)
 
 
-def highlight(code: str, language: str) -> str:
+def highlight(code: str, language: str, *, lexers: Mapping[str, type] | None = None) -> str:
     """The HTML of a code block, `<div class="code"><pre>...`, highlighted by
-    Pygments (lhtml.LEXERS first). An unknown language is plain text (parse
-    warns where the block is)."""
-    lexer = _lexer(language) or TextLexer(**LEXER_OPTIONS)
+    Pygments (`lexers` {name: lexer class} first, then lhtml.LEXERS). An
+    unknown language is plain text (parse warns where the block is)."""
+    lexer = _lexer(language, checked_lexers(lexers)) or TextLexer(**LEXER_OPTIONS)
     return pygments.highlight(code, lexer, HtmlFormatter(linenos=False, cssclass='code'))

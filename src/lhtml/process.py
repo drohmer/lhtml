@@ -139,7 +139,7 @@ class _MarksOnLine:
         return self.counts
 
 
-def process_protect(text, stores, url_tags):
+def process_protect(text, stores, url_tags, lexers=None):
     """Replace zones that LHTML must not transform with placeholders.
 
     Protected (the leftmost zone wins): HTML comments, <script>/<style>
@@ -157,8 +157,8 @@ def process_protect(text, stores, url_tags):
             # the text is the source here: an offset in it is a place
             _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
             language = code_language(m.group('header'))
-            if not known_language(language):
-                warn(unknown_language_message(language), marks.place(m.start()), stacklevel=6)
+            if not known_language(language, lexers):
+                warn(unknown_language_message(language, lexers), marks.place(m.start()), stacklevel=6)
             return stores.add('C', m.group(0))
         if m.group('icode') is not None:
             return stores.add('I', m.group(0))
@@ -239,12 +239,12 @@ def _refuse_include(text, locate):
         *locate(m.start()))
 
 
-def process_prepare(text, stores, url_tags):
+def process_prepare(text, stores, url_tags, lexers=None):
     """Replace code blocks and protected zones (HTML, inline code,
     URLs, math, attributes) by placeholders; `url_tags`: the tags whose
     URL is kept as written. Raises LHTMLParseError on
     an include:: directive (removed in 3.0)."""
-    text = process_protect(text, stores, url_tags)
+    text = process_protect(text, stores, url_tags, lexers)
     text = process_protect_attributes(text, stores)
     _refuse_include(text, lambda offset: stores.locate(text, offset))
     _refuse_removed(text, stores)   # after the groups are hidden: '::#' in an attribute is text

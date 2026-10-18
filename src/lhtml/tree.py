@@ -55,6 +55,7 @@ from .nodes import (
 from .patterns import (
     BOLD, CODE_BLOCK, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
+from .code import checked_lexers
 from .process import ProtectionStores, code_language, normalize_input, process_prepare
 from .tag_parser import (
     adjust_bare_tag, extract_bracket_elements, is_closing_tag, is_tag_boundary, refuse_explicit_closing,
@@ -97,9 +98,10 @@ class _Text:
 
 class _Parser:
 
-    def __init__(self, text, tags):
+    def __init__(self, text, tags, lexers=None):
         self.source = normalize_input(text)
         self.tags = tags
+        self.lexers = lexers        # the lexers of the call: a language they know is known
         self.stores = ProtectionStores()
         self.events = []            # (what, node): 'open', 'close', 'leaf' (a list of nodes)
         self.parsed = {}            # an element -> (its element dict, the container it is opened in)
@@ -158,7 +160,7 @@ class _Parser:
 
     def parse(self):
         url_tags = tuple(sorted(name for name, tag in self.tags.items() if tag.url))
-        prepared = process_prepare(self.source, self.stores, url_tags)
+        prepared = process_prepare(self.source, self.stores, url_tags, self.lexers)
         self.offsets = self._offsets(prepared)
         self.prepared = prepared
         text = _Text(prepared, list(range(len(prepared))))
@@ -774,11 +776,13 @@ def _given_offsets(given, normalized):
 
 
 def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
-          tags: Mapping[str, Tag] | None = None, warn: bool = True) -> Document:
+          tags: Mapping[str, Tag] | None = None, lexers: Mapping[str, type] | None = None,
+          warn: bool = True) -> Document:
     """The document tree of an LHTML text. `macros`: the definitions of the
     macros, a mapping (lhtml.load_macros reads them from files); `tags`:
     {name: Tag}, added to the built-in TAGS and the macros (a tag given
-    wins). Reads no file.
+    wins); `lexers`: {name: Pygments lexer class}, languages of its code
+    blocks, before lhtml.LEXERS (render is given them too). Reads no file.
 
     The problems found are kept in document.problems (LHTMLWarning, in
     source order), and emitted as warnings unless `warn` is False; an
@@ -786,10 +790,11 @@ def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
     parse collects its own (threads and tasks included): no global state
     is changed."""
     registry = _registry(tags, macros)
+    lexers = checked_lexers(lexers)
     collected = []
     token = PROBLEMS.set(collected)
     try:
-        parser = _Parser(text, registry)
+        parser = _Parser(text, registry, lexers)
         document = parser.parse()
     except LHTMLError as error:
         error.problems = _in_order(collected)

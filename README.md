@@ -615,7 +615,7 @@ Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in
 ## Python API Reference
 
 ```python
-lhtml.run(text, *, macros=None, tags=None, line_breaks=False, media=None)  # -> HTML
+lhtml.run(text, *, macros=None, tags=None, line_breaks=False, media=None, lexers=None)  # -> HTML
 lhtml.wrap(html, *, title='Webpage', css=(), js=())    # -> an HTML5 document
 lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a list of them
 ```
@@ -626,6 +626,7 @@ lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a 
 | `tags` | mapping | Tags written in Python, `{name: lhtml.Tag}` ([docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)) |
 | `line_breaks` | boolean | Render source line breaks as `<br>` |
 | `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
+| `lexers` | mapping | `{name: Pygments lexer class}`, languages of the code blocks of this call ([docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)) |
 | `title`, `css`, `js` | of `wrap` | The title, the stylesheets and the scripts (a name or a list) |
 
 An argument spelled otherwise is a `TypeError`. LHTML reads no file:

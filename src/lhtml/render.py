@@ -9,7 +9,7 @@ from html import escape
 import re
 
 from .attributes import Attributes, quoted
-from .code import highlight
+from .code import checked_lexers, highlight
 from .nodes import Node, Code, Element, Emphasis, Heading, InlineCode, Item, List, Math, Raw, Strong, Text, Video
 from .patterns import BLOCK_RAW, BLOCK_TAGS, JINJA_LINE, LEADING_TAG, PREFORMATTED_TAG
 
@@ -59,9 +59,9 @@ def _video(node, media):
     return ''.join(parts)
 
 
-def _zone(node):
+def _zone(node, lexers):
     if isinstance(node, Code):
-        return highlight(node.body, node.language)     # an unknown language: warned by parse
+        return highlight(node.body, node.language, lexers=lexers)     # an unknown language: warned by parse
     if isinstance(node, InlineCode):
         return render_inline_code(escape_inline_code(node.text))
     return node.text                    # Math, Raw
@@ -144,7 +144,7 @@ def _link(node):
     return isinstance(node, Element) and node.name.lower() == 'a'
 
 
-def _pieces(root, media):
+def _pieces(root, media, lexers):
     """The pieces of the HTML of a tree, in order, in one walk with its own
     stack (no recursion: a document may nest deeper than Python's
     recursion limit). Each node is opened, its children visited, then it is
@@ -164,7 +164,7 @@ def _pieces(root, media):
             if isinstance(node, Text):
                 out.append(_Piece(node.value, 'markup'))
             elif isinstance(node, _ZONES):
-                out.append(_Piece(_zone(node), 'markup'))
+                out.append(_Piece(_zone(node, lexers), 'markup'))
             elif (html := _leaf(node, media)) is not None:
                 out.append(_Piece(html, 'markup'))
             else:
@@ -175,7 +175,7 @@ def _pieces(root, media):
         if isinstance(node, Text):
             out.append(_Piece(node.value, 'text'))
         elif isinstance(node, _ZONES):
-            out.append(_Piece(_zone(node), 'zone', _is_block(node), _preformatted(node), True))
+            out.append(_Piece(_zone(node, lexers), 'zone', _is_block(node), _preformatted(node), True))
         elif (html := _leaf(node, media)) is not None:
             out.append(_Piece(html, 'markup', _is_block(node), 0, True))
         else:
@@ -243,14 +243,16 @@ def _with_line_breaks(tokens):
     return '\n'.join(texts)
 
 
-def render(document: Node, *, line_breaks: bool = False, media: Media | None = None) -> str:
+def render(document: Node, *, line_breaks: bool = False, media: Media | None = None,
+           lexers: Mapping[str, type] | None = None) -> str:
     """The HTML of a document tree (or of any node). `line_breaks`: the line
     breaks of the source are rendered as <br>; `media`: the resolver of the
     sources of a video, media(src) -> [(url, mime type)] (none: the source
-    as written)."""
+    as written); `lexers`: {name: Pygments lexer class}, languages of the
+    code blocks, before lhtml.LEXERS."""
     if media is not None and not callable(media):
         raise TypeError(f'"media" must be callable, got {type(media).__name__}')
-    pieces = _pieces(document, media)
+    pieces = _pieces(document, media, checked_lexers(lexers))
     if not line_breaks:
         return ''.join(piece.html for piece in pieces)
     return _with_line_breaks(pieces)

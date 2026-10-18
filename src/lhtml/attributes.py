@@ -357,7 +357,7 @@ class Attributes(MutableMapping):
         blocks = self._blocks(name)
         if not blocks:
             return '', self.copy()
-        parts, dropped = [], set()
+        parts = []
         for block in blocks:
             folded, value_before = [], False
             for entry in block:

@@ -144,15 +144,21 @@ limit, whatever its nodes.
 
 ### Custom Code Lexers
 
-`lhtml.LEXERS` maps a language name to a Pygments lexer class, looked up
-before the lexers of Pygments:
+A call may name its own languages, `{name: Pygments lexer class}`, looked
+up before `lhtml.LEXERS`, then the lexers of Pygments; no other call sees
+them:
 
 ```python
 import lhtml
 from pygments.lexers import PythonLexer
 
-lhtml.LEXERS['mypython'] = PythonLexer
+html = lhtml.run(text, lexers={'mypython': PythonLexer})
+document = lhtml.parse(text, lexers=lexers)            # a language they know is no warning
+html = lhtml.render(document, lexers=lexers)           # and it is highlighted with them
 ```
+
+`lhtml.LEXERS` is the table of every call (`c++`: C++ with the types of
+the CGP library); adding to it changes all the calls of the process.
 
 
 ## Layout of the code

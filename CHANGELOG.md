@@ -87,6 +87,23 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - `Attributes.add_class(*names)`. `load_macros` checks each definition, as
   `registry_with_macros` did (a wrong name or field was accepted until the
   tags were made); a file's error names its path.
+- `lexers=` on `run`, `parse`, `render` and `highlight`: the languages of
+  a call, before `lhtml.LEXERS` (a global table).
+- Warned: a heading written with `[...]` or `{...}` (it stays text: a
+  heading takes `(.class #id)` only), a bold or an italic across lines
+  (`**a` then `b**`: each is within its line).
+- A class or a style written in a Jinja block joins the others with its
+  block: `img::x.png(.b){{% if x %}class="a"{% endif %}}` is
+  `class="b {% if x %}a{% endif %}"` (it was two `class`). Setting an
+  attribute written in Jinja branches gives it always (it kept the first
+  branch). Two `[...]` groups are one style, `a:1;b:2` (they were joined
+  with a space). `Heading.written` is `Heading.parentheses`. `Attributes`
+  are equal by their entries, Jinja fragments and blocks; equal to a
+  mapping only when they are its names and values, once each.
+- An indented `code::[-]` adds no line of spaces to its block. The excerpt
+  of a diagnostic is cut by columns as shown (an escaped `\xe9` is four).
+  A `<pre>` never closed keeps the rest of the page preformatted
+  (`line_breaks`).
 - A link without a label shows its URL (`link::https://a.org`: it was an
   empty `<a>`).
 - Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the

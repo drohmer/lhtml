@@ -997,3 +997,22 @@ class TestDesignGroup5:
                                             lhtml.Element('pre', children=[lhtml.Text('x\ny')], end_tag=False),
                                             lhtml.Text('\nc\nd')])
         assert lhtml.render(document, line_breaks=True) == 'a<br>\nb\n<pre>x\ny\nc\nd'
+
+
+class TestLexersOfACall:
+
+    def test_lexers_of_a_call(self):
+        from pygments.lexers import PythonLexer
+        text = 'code::[mypy]\nimport x\ncode::[-]\n'
+        document = lhtml.parse(text, lexers={'mypy': PythonLexer}, warn=False)
+        assert document.problems == []
+        assert 'class="kn"' in lhtml.render(document, lexers={'mypy': PythonLexer})
+        assert 'class="kn"' in lhtml.run(text, lexers={'mypy': PythonLexer})
+        assert 'class="kn"' in lhtml.highlight('import x\n', 'mypy', lexers={'mypy': PythonLexer})
+        assert 'mypy' not in lhtml.LEXERS                                  # no other call changes
+        assert lhtml.parse(text, warn=False).problems                      # unknown without them
+
+    def test_lexers_are_checked(self):
+        for wrong in (['a'], {'a': 1}, {1: str}):
+            with pytest.raises(TypeError, match='lexers'):
+                lhtml.run('x', lexers=wrong)
