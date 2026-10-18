@@ -24,7 +24,7 @@ from .errors import (
 )
 
 from .code import LEXERS, highlight
-from .export_html import TAGS, Tag
+from .tags import TAGS, Tag
 from .macros import describe_macro, load_macros, registry_with_macros
 from .pipeline import run
 from .attributes import Attributes

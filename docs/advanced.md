@@ -169,13 +169,13 @@ src/lhtml/
   attributes.py        # The attributes: one reader, Attributes, one rule of priority
   diagnostics.py       # The problems as the command shows them
   macros.py            # Macros: custom :: tags declared in YAML
-  process.py           # The protected zones, the tag decisions
+  process.py           # The protected zones (placeholders), the syntax removed in 3.0
   patterns.py          # Centralized regex patterns and utilities
-  tag_parser.py        # extract_bracket_elements(): the parser of a :: tag element
-  export_html.py       # Tag, TAGS: the built-in tags build their nodes
+  tag_parser.py        # The parser of a :: tag element, and whether a :: is a tag
+  tags.py              # Tag, TAGS: the built-in tags build their nodes
   code.py              # Code syntax highlighting (Pygments)
   wrap_html.py         # HTML document wrapping
-  errors.py            # Structured error types
+  errors.py            # The errors, the warnings, how a parse collects its problems
 test/                  # pytest suite and .l.html / -out.html reference pairs
 examples/              # Example sources (see examples/README.md)
 ```

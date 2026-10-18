@@ -914,7 +914,8 @@ class TestInputNormalization:
     def test_source_read_as_utf8_without_bom(self, tmp_path, monkeypatch):
         (tmp_path / 'a.l.html').write_bytes('\ufeffé ” ü\r\n'.encode('utf-8'))
         monkeypatch.setattr('locale.getpreferredencoding', lambda *a, **k: 'cp1252')
-        assert lhtml.process.read_source(str(tmp_path / 'a.l.html')) == 'é ” ü\n'
+        from lhtml.cli import read_source
+        assert read_source(str(tmp_path / 'a.l.html')) == 'é ” ü\n'
 
     def test_non_string_current_directory(self):
         r = lhtml.run('---\ncurrent_directory: 5\n---\nvideo::a.mp4\n')

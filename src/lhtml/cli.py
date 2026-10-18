@@ -33,7 +33,7 @@ from .errors import LHTMLError
 from .macros import load_macros, registry_with_macros
 from .render import render
 from .tree import parse
-from .process import read_source
+from .process import normalize_input
 from .wrap_html import wrap
 
 
@@ -118,6 +118,12 @@ def check(jobs, read=()):
             continue
         targets.update((key, f_in) for key in keys)
     return problems
+
+
+def read_source(filename):
+    """Read an LHTML source file (UTF-8, with or without BOM), normalized."""
+    with open(filename, 'r', encoding='utf-8-sig') as fid:
+        return normalize_input(fid.read())
 
 
 def convert(source, macros, line_breaks, wrapped):

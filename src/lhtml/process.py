@@ -1,24 +1,22 @@
 """What the parser of the tree (tree.py) reads with: the zones LHTML never
 transforms, replaced by placeholders (ProtectionStores), the refusals of the
-syntax removed in 3.0, and the rules that decide whether a `::` is a tag
-(the line breaks option is in render.py: it reads the nodes).
+syntax removed in 3.0 (whether a `::` is a tag: tag_parser.py; the line
+breaks option: render.py, it reads the nodes).
 
 The kinds of stored content are listed in ProtectionStores; they become the
 opaque leaves of the tree (code, inline code, mathematics, raw HTML).
 """
 
-import contextvars
 import re
-import warnings
 from dataclasses import dataclass, field
 
-from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
+from .tag_parser import extract_bracket_elements, is_tag_boundary, tag_name_before
 from .code import known_language, unknown_language_message
-from .errors import LHTMLParseError, LHTMLWarning, suggestion
+from .errors import LHTMLParseError, quote, warn
 from .patterns import (
     protected_blocks,
     HEADING,
-    INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER, SPACER,
+    INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER,
     PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR,
     make_placeholder,
 )
@@ -64,26 +62,6 @@ def position(before):
     return before.count('\n') + 1, len(before) - before.rfind('\n')
 
 
-# The problems of the parse running in this context (a thread, a task): each
-# parse has its own list, no global state is changed (warnings.catch_warnings is)
-PROBLEMS = contextvars.ContextVar('lhtml_problems', default=None)
-
-
-def _warn(message, place, stacklevel=3):
-    """A problem at `place`: (line, column), or an element (or Written) with
-    them. Kept by the parse running (PROBLEMS), a warning outside one."""
-    if isinstance(place, dict):
-        place = place.get('line'), place.get('column')
-    elif hasattr(place, 'line'):
-        place = place.line, place.column
-    problem = LHTMLWarning(message, *(place or (None, None)))
-    problems = PROBLEMS.get()
-    if problems is None:
-        warnings.warn(problem, stacklevel=stacklevel)
-    else:
-        problems.append(problem)
-
-
 # ---------------------------------------------------------------------------
 # Input normalization
 # ---------------------------------------------------------------------------
@@ -100,13 +78,7 @@ def normalize_input(text):
     return text
 
 
-def read_source(filename):
-    """Read an LHTML source file (UTF-8, with or without BOM), normalized."""
-    with open(filename, 'r', encoding='utf-8-sig') as fid:
-        return normalize_input(fid.read())
-
-
-def _code_language(header):
+def code_language(header):
     m = re.search(r'\[([^\[\]\n]*)\]', header)
     return m.group(1) if m else ''
 
@@ -114,16 +86,6 @@ def _code_language(header):
 # ---------------------------------------------------------------------------
 # Protected zones (raw HTML, inline code, URLs, math)
 # ---------------------------------------------------------------------------
-
-def escape_inline_code(content):
-    """Escape < and > in inline code (& is kept so that entities written
-    by hand, such as &lt;, still work)."""
-    return content.replace('<', '&lt;').replace('>', '&gt;')
-
-
-def render_inline_code(content):
-    return f'<code class="code-inline">{content}</code>'
-
 
 def _url_and_closing_marks(url, marks):
     """A URL ends before a final `**` or `__` that closes a bold or an
@@ -194,9 +156,9 @@ def process_protect(text, stores, url_tags):
         if m.group('code') is not None:
             # the text is the source here: an offset in it is a place
             _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
-            language = _code_language(m.group('header'))
+            language = code_language(m.group('header'))
             if not known_language(language):
-                _warn(unknown_language_message(language), marks.place(m.start()), stacklevel=6)
+                warn(unknown_language_message(language), marks.place(m.start()), stacklevel=6)
             return stores.add('C', m.group(0))
         if m.group('icode') is not None:
             return stores.add('I', m.group(0))
@@ -223,10 +185,9 @@ def process_protect_attributes(text, stores):
     for m in TAG_MARKER.finditer(text):
         if m.start() < prev:
             continue
-        found = _TAG_NAME_BEFORE.search(text, max(0, m.start() - _MAX_TAG_NAME), m.start())
-        tag = found.group() if found else ''
+        tag = tag_name_before(text, m.start())
         # a :: glued to a word is no tag: decided before its element is read (a::a::a...: linear)
-        if tag in ('include', 'code') or not _is_tag_boundary(text, m.start() - len(tag), tag):
+        if tag in ('include', 'code') or not is_tag_boundary(text, m.start() - len(tag), tag):
             continue
         try:
             element = extract_bracket_elements(text, m.end())
@@ -252,7 +213,7 @@ def _refuse_removed(text, stores):
     m = REMOVED_COMMENT.search(text)
     if m is not None:
         raise LHTMLParseError(f'::# comments were removed in LHTML 3.0: use a Jinja comment '
-                              f'{{# ... #}} or an HTML comment <!-- ... --> (near {_context(text, m.start(), m.end() + 30)!r})',
+                              f'{{# ... #}} or an HTML comment <!-- ... --> (near {quote(text, m.start(), m.end() + 30)!r})',
                               *stores.locate(text, m.start()))
     for m in REMOVED_VERBATIM.finditer(text):
         if m.group(1) is None or stores.written['A'][int(m.group(1))] == '':     # verbatim::[] (not verbatim::[abc])
@@ -290,78 +251,3 @@ def process_prepare(text, stores, url_tags):
     return text
 
 
-# ---------------------------------------------------------------------------
-# Tag elements (the :: system)
-# ---------------------------------------------------------------------------
-
-def check_is_closing_tag(element):
-    """A bare :: (empty tag, span of exactly 2) is a closing tag."""
-    return element['tag'] == '' and element['index_end'] - element['index_start'] == 2
-
-
-def _refuse_explicit_closing(element):
-    """::[-] and ::name[-] were removed in LHTML 3.0: a tag is closed by ::.
-    On a named tag, x::[-] is a style '-' (as in LHTML 2): kept, with a
-    warning, since it was most likely meant as a closing tag."""
-    context = element.get('context', '')
-    if element['tag'] == '':
-        raise LHTMLParseError(f'::[-] was removed in LHTML 3.0; close a tag with :: (near {context!r})',
-                              element.get('line'), element.get('column'))
-    element['warned'] = True            # what follows from it is not warned again
-    if element['tag'] == 'code':
-        _warn(f'code::[-] closes no code block; a block opens with code::[language] '
-              f'(near {context!r})', element, stacklevel=5)
-        return
-    _warn(f"{element['tag']}::[-]: [-] is a style here, not a closing tag; close a tag with :: "
-          f'(near {context!r})', element, stacklevel=5)
-
-
-def _context(text, start, end, max_len=40):
-    """Short excerpt of the source around a tag, for warning messages."""
-    excerpt = PLACEHOLDER.sub('…', text[start:min(end, start + max_len)])
-    return excerpt.split('\n')[0]
-
-
-def _is_tag_boundary(text, index, tag, last_tag_end=-1):
-    """True if a tag (named, or bare :: when tag is '') may start at `index`.
-
-    A tag name must not be glued to a preceding word (x.link::, std::a::).
-    A bare :: must not follow an opening bracket or a word character, which
-    leaves constructs like a[::2] or 2::3 untouched. A tag may always
-    directly follow the previous tag.
-    """
-    if index == 0 or index == last_tag_end:
-        return True
-    ch = text[index - 1]
-    if ch.isalnum() or ch in '_:':
-        return False
-    if tag:
-        return ch not in '-.'
-    return ch not in '[({'
-
-
-def _adjust_bare_tag(text, m, element):
-    """Adjust the extent of a bare :: tag. Returns False if it is not a tag.
-
-    - '::nl' followed by other characters is a spacer ending after 'nl'.
-    - '::' followed by punctuation (e.g. '::,' or '::**') is a closing tag.
-    - A '::' between two protected zones (e.g. <span>::</span> in
-      pre-highlighted C++), or glued after one and followed by a word,
-      is not a tag.
-    """
-    after_placeholder = m.start() > 0 and text[m.start() - 1] == PLACEHOLDER_CHAR
-    if after_placeholder and text[m.end():m.end() + 1] == PLACEHOLDER_CHAR:
-        return False
-
-    word = element['text']
-    if SPACER.match(word):
-        if element['index_end'] != m.end() + 2:
-            element.update({'text': 'nl', '[]': '', '()': '', '{}': '',
-                            'index_end': m.end() + 2})
-        return True
-    if after_placeholder and word[:1].isalnum():
-        return False
-    following = text[m.end():m.end() + 1]
-    if following and not (following.isalnum() or following.isspace() or following in '[({'):
-        element.update({'text': '', '[]': '', '()': '', '{}': '', 'index_end': m.end()})
-    return True

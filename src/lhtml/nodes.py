@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field, fields
 
-from .attributes import Attributes
+from .attributes import Attributes, element_attributes
 
 
 @dataclass(eq=False, repr=False)
@@ -86,7 +86,6 @@ class Written:
 
     @property
     def attributes(self):
-        from .export_html import element_attributes
         return element_attributes(self)
 
 

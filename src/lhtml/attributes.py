@@ -287,3 +287,88 @@ class Attributes(MutableMapping):
     def html(self) -> str:
         """The attributes as HTML: ` name="value"` each."""
         return ''.join(entry.html() for entry in self._items)
+
+
+# ---------------------------------------------------------------------------
+# The attributes of an element: (.class #id) [style] {attributes}
+# ---------------------------------------------------------------------------
+
+def words(text, pattern=r'\S+'):
+    """The matches of `pattern` in the text, a Jinja zone one piece of a
+    word (.{{ c }}, a {{ b }})."""
+    zones = []
+
+    def hide(m):
+        zones.append(m.group(0))
+        return f'\x00{len(zones) - 1}\x00'
+    show = lambda part: re.sub('\x00(\\d+)\x00', lambda m: zones[int(m.group(1))], part)
+    return [show(word) for word in re.findall(pattern, JINJA_RE.sub(hide, text or ''))]
+
+
+def classes_and_ids(text):
+    """The classes and ids of '.class1 .class2 #id' (or '.class1.class2#id')."""
+    classes, ids = [], []
+    for token in words(text):
+        if not token.startswith(('.', '#')):
+            continue
+        for part in words(token, r'[.#][^.#]+'):
+            (classes if part[0] == '.' else ids).append(part[1:])
+    return classes, ids
+
+
+def join_styles(*styles):
+    """Styles one after the other, a `;` between them."""
+    joined = ''
+    for style in styles:
+        if style:
+            joined = f'{joined};{style}' if joined and not joined.rstrip().endswith(';') else joined + style
+    return joined
+
+
+def class_and_id(text):
+    """The attributes class and id of '.class1 .class2 #id'."""
+    classes, ids = classes_and_ids(text)
+    return assemble(classes, ids, '', Attributes())[0]
+
+
+def assemble(classes, ids, style, rest, empty=()):
+    """(class and id, style, the attributes left), as Attributes, from the
+    classes and ids of (...), the style of [...] and the attributes `rest`
+    (changed): the classes and styles of `rest` join those of (...) and
+    [...] when both are given, or when `rest` gives one twice (the defaults
+    of a macro, then the page); otherwise they stay where they are. An
+    empty one is given too: (.a){class=""} is class="a", {class=""} alone
+    class="" (and so when `empty` names it: written empty elsewhere). One
+    written inside a Jinja block ({% if x %}class="a"{% endif %}) stays
+    there. An id of `rest` replaces the one of (#id)."""
+    head, styled = Attributes(), Attributes()
+    written = rest.values_of('class', nested=False)     # one in a Jinja block stays there
+    if written and (classes or len(written) > 1):
+        classes = classes + [word for value in written if value for word in words(value)]
+        rest = rest.without({'class'}, nested=False)
+        head['class'] = ''
+    written = rest.values_of('style', nested=False)
+    if written and (style or len(written) > 1):
+        style = join_styles(style, *(value for value in written if value))
+        rest = rest.without({'style'}, nested=False)
+        styled['style'] = ''
+    for name, given in (('class', head), ('style', styled)):     # written empty elsewhere: given
+        if name in empty and name not in given and not rest.values_of(name, nested=False):
+            given[name] = ''
+    if classes:
+        head['class'] = ' '.join(dict.fromkeys(classes))
+    if ids and 'id' not in rest:
+        head['id'] = ' '.join(ids)
+    if style:
+        styled['style'] = style
+    return head, styled, rest
+
+
+def element_attributes(written):
+    """The attributes of a Written: its classes and id (.a #b), its style
+    [...] (not for link::, whose [...] is its label), then those written
+    {...}."""
+    classes, ids = classes_and_ids(written.parentheses)
+    style = '' if written.tag == 'link' else written.brackets
+    head, styled, rest = assemble(classes, ids, style, Attributes.read(written.braces))
+    return head.extend(styled).extend(rest)

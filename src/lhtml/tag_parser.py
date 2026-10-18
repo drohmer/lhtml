@@ -14,12 +14,18 @@ import bisect
 import functools
 import re
 
-from .errors import LHTMLParseError
-from .patterns import EVENT_CHAR
+from .errors import LHTMLParseError, warn
+from .patterns import EVENT_CHAR, PLACEHOLDER_CHAR, SPACER
 
 PAIRS = {'(': ')', '[': ']', '{': '}'}
 _TAG_NAME_BEFORE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*\Z')
 _MAX_TAG_NAME = 64
+
+
+def tag_name_before(text, end):
+    """The tag name written just before `end` (a ::), '' if none."""
+    found = _TAG_NAME_BEFORE.search(text, max(0, end - _MAX_TAG_NAME), end)
+    return found.group() if found else ''
 
 
 class _Quotes:
@@ -154,3 +160,74 @@ def extract_bracket_elements(text, index_start):
     for kind, start, end in groups:
         element[kind] += (' ' if element[kind] else '') + text[start:end]
     return element
+
+
+# ---------------------------------------------------------------------------
+# Whether a :: is a tag
+# ---------------------------------------------------------------------------
+
+def is_closing_tag(element):
+    """A bare :: (empty tag, span of exactly 2) is a closing tag."""
+    return element['tag'] == '' and element['index_end'] - element['index_start'] == 2
+
+
+def refuse_explicit_closing(element):
+    """::[-] and ::name[-] were removed in LHTML 3.0: a tag is closed by ::.
+    On a named tag, x::[-] is a style '-' (as in LHTML 2): kept, with a
+    warning, since it was most likely meant as a closing tag."""
+    context = element.get('context', '')
+    if element['tag'] == '':
+        raise LHTMLParseError(f'::[-] was removed in LHTML 3.0; close a tag with :: (near {context!r})',
+                              element.get('line'), element.get('column'))
+    element['warned'] = True            # what follows from it is not warned again
+    if element['tag'] == 'code':
+        warn(f'code::[-] closes no code block; a block opens with code::[language] '
+              f'(near {context!r})', element, stacklevel=5)
+        return
+    warn(f"{element['tag']}::[-]: [-] is a style here, not a closing tag; close a tag with :: "
+          f'(near {context!r})', element, stacklevel=5)
+
+
+def is_tag_boundary(text, index, tag, last_tag_end=-1):
+    """True if a tag (named, or bare :: when tag is '') may start at `index`.
+
+    A tag name must not be glued to a preceding word (x.link::, std::a::).
+    A bare :: must not follow an opening bracket or a word character, which
+    leaves constructs like a[::2] or 2::3 untouched. A tag may always
+    directly follow the previous tag.
+    """
+    if index == 0 or index == last_tag_end:
+        return True
+    ch = text[index - 1]
+    if ch.isalnum() or ch in '_:':
+        return False
+    if tag:
+        return ch not in '-.'
+    return ch not in '[({'
+
+
+def adjust_bare_tag(text, m, element):
+    """Adjust the extent of a bare :: tag. Returns False if it is not a tag.
+
+    - '::nl' followed by other characters is a spacer ending after 'nl'.
+    - '::' followed by punctuation (e.g. '::,' or '::**') is a closing tag.
+    - A '::' between two protected zones (e.g. <span>::</span> in
+      pre-highlighted C++), or glued after one and followed by a word,
+      is not a tag.
+    """
+    after_placeholder = m.start() > 0 and text[m.start() - 1] == PLACEHOLDER_CHAR
+    if after_placeholder and text[m.end():m.end() + 1] == PLACEHOLDER_CHAR:
+        return False
+
+    word = element['text']
+    if SPACER.match(word):
+        if element['index_end'] != m.end() + 2:
+            element.update({'text': 'nl', '[]': '', '()': '', '{}': '',
+                            'index_end': m.end() + 2})
+        return True
+    if after_placeholder and word[:1].isalnum():
+        return False
+    following = text[m.end():m.end() + 1]
+    if following and not (following.isalnum() or following.isspace() or following in '[({'):
+        element.update({'text': '', '[]': '', '()': '', '{}': '', 'index_end': m.end()})
+    return True

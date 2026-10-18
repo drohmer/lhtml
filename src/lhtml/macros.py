@@ -37,13 +37,11 @@ import os
 import re
 from collections.abc import Iterable, Mapping
 
-from .errors import LHTMLMacroError
 from . import attributes
-from .attributes import Attributes, quoted
-from .export_html import TAGS, Tag, _class_and_id, _words, assemble, join_styles
+from .attributes import Attributes, assemble, classes_and_ids, join_styles, quoted, words
+from .errors import LHTMLMacroError, suggestion, warn
 from .nodes import Element, Text, Written
-from .errors import suggestion
-from .process import _warn
+from .tags import TAGS, Tag
 
 
 NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
@@ -115,7 +113,7 @@ def macro_tag(name, spec):
     default = spec.get('default')
     # its attrs, read once: their classes and styles come before those of the page
     given = Attributes.read((spec.get('attrs') or '').strip())
-    attrs_classes = [word for value in given.values_of('class', nested=False) if value for word in _words(value)]
+    attrs_classes = [word for value in given.values_of('class', nested=False) if value for word in words(value)]
     styles = [value for value in given.values_of('style', nested=False) if value]
     given_empty = {name for name in ('class', 'style') if given.values_of(name, nested=False)}    # class="": kept
     given = given.without({'class', 'style'}, nested=False)     # one in a Jinja block stays there
@@ -128,7 +126,7 @@ def macro_tag(name, spec):
             if value:
                 if value not in [str(v) for v in variant]:
                     names = [str(v) for v in variant]
-                    _warn(f'{name}::{value}: unknown variant, expected one of {", ".join(names)}'
+                    warn(f'{name}::{value}: unknown variant, expected one of {", ".join(names)}'
                           f'{suggestion(value, names)}', written, stacklevel=5)
                 variant_class = [f'{classes[0]}-{value}']
             word = ''
@@ -138,7 +136,7 @@ def macro_tag(name, spec):
             if value or url not in given:     # demo:: keeps the src of the macro
                 url_attribute = Attributes.read(f'{url}="{quoted(value)}"')
             word = ''
-        page_classes, ids = _class_and_id(written.parentheses)
+        page_classes, ids = classes_and_ids(written.parentheses)
         # the macro, then its url, then the page: a later one replaces an attribute;
         # an id of the page (#id) replaces the macro's
         defaults, url_attribute, page = attributes.layered(

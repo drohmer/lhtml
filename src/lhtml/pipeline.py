@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .export_html import Tag
+from .tags import Tag
 from .render import Media, render
 from .tree import parse
 

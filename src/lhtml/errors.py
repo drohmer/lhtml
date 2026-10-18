@@ -8,7 +8,11 @@ A message reads `subject: problem[; what to do] (near 'source')`, the
 source quoted when the subject does not show it.
 """
 
+import contextvars
 import difflib
+import warnings
+
+from .patterns import PLACEHOLDER
 
 
 def suggestion(word, candidates):
@@ -39,3 +43,29 @@ class LHTMLMacroError(LHTMLError):
 
 class LHTMLWarning(_Located, UserWarning):
     """Category of the warnings emitted while processing LHTML markup."""
+
+
+# The problems of the parse running in this context (a thread, a task): each
+# parse has its own list, no global state is changed (warnings.catch_warnings is)
+PROBLEMS = contextvars.ContextVar('lhtml_problems', default=None)
+
+
+def warn(message, place, stacklevel=3):
+    """A problem at `place`: (line, column), or an element (or Written) with
+    them. Kept by the parse running (PROBLEMS), a warning outside one."""
+    if isinstance(place, dict):
+        place = place.get('line'), place.get('column')
+    elif hasattr(place, 'line'):
+        place = place.line, place.column
+    problem = LHTMLWarning(message, *(place or (None, None)))
+    problems = PROBLEMS.get()
+    if problems is None:
+        warnings.warn(problem, stacklevel=stacklevel)
+    else:
+        problems.append(problem)
+
+
+def quote(text, start, end, max_len=40):
+    """Short excerpt of the source around a tag, for warning messages."""
+    excerpt = PLACEHOLDER.sub('…', text[start:min(end, start + max_len)])
+    return excerpt.split('\n')[0]

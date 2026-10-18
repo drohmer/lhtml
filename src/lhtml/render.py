@@ -12,7 +12,6 @@ from .attributes import Attributes, quoted
 from .code import highlight
 from .nodes import Node, Code, Element, Emphasis, Heading, InlineCode, Item, List, Math, Raw, Strong, Text, Video
 from .patterns import BLOCK_RAW, BLOCK_TAGS, JINJA_LINE, LEADING_TAG, PREFORMATTED_TAG
-from .process import escape_inline_code, render_inline_code
 
 _ZONES = (Code, InlineCode, Math, Raw)
 # media(src) -> [(url, mime type)]: the sources of a video
@@ -32,6 +31,16 @@ def _attributes(node):
                             f'got {type(attributes).__name__}')
         attributes = Attributes(attributes)
     return attributes.html()
+
+
+def escape_inline_code(content):
+    """Escape < and > in inline code (& is kept so that entities written
+    by hand, such as &lt;, still work)."""
+    return content.replace('<', '&lt;').replace('>', '&gt;')
+
+
+def render_inline_code(content):
+    return f'<code class="code-inline">{content}</code>'
 
 
 def _video(node, media):
