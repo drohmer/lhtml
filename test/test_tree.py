@@ -1251,3 +1251,11 @@ class TestSeventhReview:
         text = 'link::u[img::p.png]'
         next(lhtml.read_tags(text)).written.label[0].attributes['src'] = 'changed.png'
         assert next(lhtml.read_tags(text)).written.label[0].attributes['src'] == 'p.png'
+
+
+class TestEighthReview:
+
+    def test_read_tag_joins_the_labels_of_a_link(self):
+        for text in ('link::a.html[t][u]', 'link::a.html[t](.c)[u] q'):
+            assert lhtml.read_tag(text, 0).written.brackets == next(lhtml.read_tags(text)).written.brackets == 't u'
+        assert lhtml.read_tag('span::[a:1][b:2]', 0).written.brackets == 'a:1;b:2'

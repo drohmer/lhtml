@@ -160,7 +160,10 @@ def read_tag(text: str, start: int, *, url_tags: Iterable[str] = URL_TAGS) -> So
     element = extract_bracket_elements(text, after, after_text=url is not None)
     word = (url or '') + element.text
     inline = word.endswith('::')
+    brackets = element.brackets
+    if name == 'link' and not element.stray:    # its labels, joined by a space as in parse (not a style)
+        brackets = ' '.join(text[a:b] for kind, a, b in element.groups if kind == '[]')
     return SourceTag(start, element.end, Written(
         tag=name, text=word[:-2] if inline else word, inline=inline,
-        parentheses=element.parentheses, brackets=element.brackets, braces=element.braces,
+        parentheses=element.parentheses, brackets=brackets, braces=element.braces,
         line=line, column=start - lines[line - 1] + 1, context=quote(text, start, element.end)))
