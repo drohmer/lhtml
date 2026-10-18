@@ -127,19 +127,56 @@ def render_inline_code(content):
     return f'<code class="code-inline">{content}</code>'
 
 
-def _url_and_closing_marks(url, before):
+def _url_and_closing_marks(url, marks):
     """A URL ends before a final `**` or `__` that closes a bold or an
     italic opened before its tag on its line (`**img::a.png**`); otherwise
-    they are part of it (`link::...#object.__init__`)."""
-    after = ''
+    they are part of it (`link::...#object.__init__`). `marks`: the number
+    of each written before the tag on its line."""
+    after, marks = '', dict(marks)
     while True:                         # __**img::a.png**__: each closing pair in turn
         for mark in ('**', '__'):
-            if url.endswith(mark) and len(url) > 2 and before.count(mark) % 2 == 1:
+            if url.endswith(mark) and len(url) > 2 and marks[mark] % 2 == 1:
                 url, after = url[:-2], mark + after
-                before = before.replace(mark, '', 1)     # this one is closed now
+                marks[mark] -= 1        # this one is closed now
                 break
         else:
             return url, after
+
+
+class _MarksOnLine:
+    """The line of a place, and the number of `**` and of `__` on its line
+    before it, counted as the text is read left to right: each character
+    once (a long line of URLs, many code blocks: linear)."""
+
+    def __init__(self, text):
+        self.text, self.checked, self.at = text, 0, {'**': 0, '__': 0}
+        self.counts = {'**': 0, '__': 0}
+        self.line, self.line_start = 1, 0
+
+    def _read(self, position):
+        """Up to `position`: its line and where it starts."""
+        text = self.text
+        newline = text.rfind('\n', self.checked, position)
+        if newline != -1:               # a new line: counted from its start
+            self.line += text.count('\n', self.checked, position)
+            self.line_start = newline + 1
+            self.at = {'**': newline + 1, '__': newline + 1}
+            self.counts = {'**': 0, '__': 0}
+        self.checked = position
+
+    def place(self, position):
+        """(line, column), 1-based, of a place."""
+        self._read(position)
+        return self.line, position - self.line_start + 1
+
+    def before(self, position):
+        text = self.text
+        self._read(position)
+        for mark in self.counts:
+            while (found := text.find(mark, self.at[mark], position)) != -1:
+                self.counts[mark] += 1
+                self.at[mark] = found + 2
+        return self.counts
 
 
 def process_protect(text, stores, blocks=False, url_tags=None):
@@ -153,22 +190,22 @@ def process_protect(text, stores, blocks=False, url_tags=None):
     expressions, statements and comments are opaque. With `blocks`, code
     blocks participate in the same left-to-right scan.
     """
+    marks = _MarksOnLine(text)
+
     def _protect(m):
         if blocks and m.group('code') is not None:
             # the text is the source here: an offset in it is a place
             _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
             language = _code_language(m.group('header'))
             if not known_language(language):
-                start = m.start()           # counted in place: a page may hold many blocks
-                _warn(unknown_language_message(language),
-                      (text.count('\n', 0, start) + 1, start - text.rfind('\n', 0, start)), stacklevel=6)
+                _warn(unknown_language_message(language), marks.place(m.start()), stacklevel=6)
             return stores.add('C', (m.group('header'), m.group('body')), m.group(0))
         if m.group('icode') is not None:
             return stores.add('I', escape_inline_code(m.group('icode')), m.group(0))
         if m.group('url') is not None:
             url = m.group('url')
-            if url.endswith(('**', '__')):      # the line before it, read only then (linear time)
-                url, after = _url_and_closing_marks(url, text[text.rfind('\n', 0, m.start()) + 1:m.start()])
+            if url.endswith(('**', '__')):      # the marks before it on its line, counted only then
+                url, after = _url_and_closing_marks(url, marks.before(m.start()))
             else:
                 after = ''
             return m.group('urltag') + stores.add('U', url) + after

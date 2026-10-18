@@ -865,3 +865,33 @@ class TestMessages:
     def test_a_link_without_label_shows_its_url(self):
         assert lhtml.run('link::https://a.org and') == '<a href="https://a.org">https://a.org</a> and'
         assert lhtml.run('link::u[l]') == '<a href="u">l</a>'
+
+
+@pytest.mark.parametrize('make', [
+    lambda n: '**img::a.png** ' * n,                                                # URLs on one line
+    lambda n: 'div:: ' * n + '\n' + ''.join(f'* a{k}\n\nx\n\n' for k in range(n)),     # lists, divs open
+    lambda n: 'code::[zz]\nx\ncode::[-]\n' * n,                                     # unknown languages
+], ids=['urls-on-a-line', 'lists-in-open-divs', 'unknown-languages'])
+def test_long_texts_stay_linear(make):
+    import time
+
+    def duration(n):
+        times = []
+        for _ in range(2):
+            start = time.perf_counter()
+            lhtml.parse(make(n), warn=False)
+            times.append(time.perf_counter() - start)
+        return min(times)
+    small, large = duration(500), duration(2000)
+    assert large < 8 * small + 0.02, (small, large)
+
+
+def test_attributes_of_many_names_stay_linear():
+    import time
+
+    def duration(n):
+        start = time.perf_counter()
+        lhtml.Attributes({f'a{k}': 'v' for k in range(n)})
+        return time.perf_counter() - start
+    small, large = duration(2000), duration(8000)
+    assert large < 8 * small + 0.02, (small, large)

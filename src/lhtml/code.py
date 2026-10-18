@@ -65,8 +65,16 @@ def _lexer(language):
         return lexer_class()
     if not language:
         return TextLexer(**LEXER_OPTIONS)
+    lexer_class = _pygments_lexer(language)
+    return lexer_class(**LEXER_OPTIONS) if lexer_class is not None else None
+
+
+@functools.lru_cache(maxsize=256)
+def _pygments_lexer(language):
+    """The lexer class Pygments has for a name, None if it has none (looked
+    up once per name: Pygments reads every lexer to say it has none)."""
     try:
-        return get_lexer_by_name(language, **LEXER_OPTIONS)
+        return type(get_lexer_by_name(language))
     except ClassNotFound:
         return None
 
@@ -77,8 +85,13 @@ def known_language(language):
 
 def unknown_language_message(language):
     language = language.strip()
-    return (f'code::[{language}]: unknown language, shown as plain text'
-            f'{suggestion(language.lower(), set(LEXERS) | _pygments_names())}')
+    return f'code::[{language}]: unknown language, shown as plain text{_closest(language.lower(), frozenset(LEXERS))}'
+
+
+@functools.lru_cache(maxsize=256)
+def _closest(language, lexers):
+    """The suggestion for an unknown language, sought once per name."""
+    return suggestion(language, lexers | _pygments_names())
 
 
 @functools.cache

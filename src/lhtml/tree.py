@@ -526,10 +526,14 @@ class _Parser:
     def _glued_close(self, node):
         """'; ... is no closing ::' when a word:: after the element was
         meant to close it (span::[c] text word::)."""
-        for m in _GLUED_CLOSE.finditer(self.source, node.span[0]):
-            if m.group(1) not in self.tags:
-                return f"; {m.group(1)}:: is no closing ::, write '{m.group(1)} ::'"
-        return ''
+        if not hasattr(self, '_glued'):     # read once: many elements may never be closed
+            self._glued = [(m.start(), m.group(1)) for m in _GLUED_CLOSE.finditer(self.source)
+                           if m.group(1) not in self.tags]
+        k = bisect.bisect_left(self._glued, (node.span[0], ''))
+        if k == len(self._glued):
+            return ''
+        word = self._glued[k][1]
+        return f"; {word}:: is no closing ::, write '{word} ::'"
 
     def _close_tag(self, element, container):
         """A `::`: it closes the last open element if they are in the same
@@ -559,6 +563,7 @@ class _Parser:
     def build(self, text):
         document = Document(span=(0, len(self.source)))
         stack = [document]
+        below = [0]                     # for each node of the stack, the last one that is no Element
         buffer, buffer_origins = [], []
         done = set()
 
@@ -581,20 +586,20 @@ class _Parser:
             what, node = self.events[event]
             if what == 'open':
                 if isinstance(node, List):      # the elements open in the text of its item end here
-                    k = len(stack) - 1
-                    while isinstance(stack[k], Element):
-                        k -= 1
+                    k = below[-1]
                     if isinstance(stack[k], Item):
-                        while len(stack) > k + 1:
-                            stack.pop()
+                        del stack[k + 1:], below[k + 1:]
                 stack[-1].children.append(node)
                 stack.append(node)
+                below.append(below[-1] if isinstance(node, Element) else len(stack) - 1)
             elif what == 'leaf':
                 stack[-1].children.extend(node if isinstance(node, list) else [node])
             else:                       # the elements still open in it end with it (warned)
                 while stack[-1] is not node:
                     stack.pop()
+                    below.pop()
                 stack.pop()
+                below.pop()
         flush()
         for node in stack[1:]:          # elements never closed: no closing tag
             node.end_tag = False

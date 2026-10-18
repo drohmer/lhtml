@@ -175,9 +175,19 @@ class Attributes(MutableMapping):
     (its quotes, the spaces before it) until it is set."""
 
     def __init__(self, values=None):
-        self._items = []
+        self._items, self._names = [], {}   # its entries; how many there are of each name
         for name, value in (values or {}).items():
             self[name] = value
+
+    def _append(self, entry):
+        self._items.append(entry)
+        if entry.name is not None:
+            self._names[entry.name] = self._names.get(entry.name, 0) + 1
+
+    def _replace(self, entries):
+        self._items, self._names = [], {}
+        for entry in entries:
+            self._append(entry)
 
     @classmethod
     def read(cls, text: str | None) -> Attributes:
@@ -190,8 +200,8 @@ class Attributes(MutableMapping):
             while k < len(depths) and depths[k][0] <= a.start:     # both in order: one walk
                 depth = depths[k][1]
                 k += 1
-            attributes._items.append(_Entry(a.name, a.value, text[a.start:a.end],
-                                            attributes._space(text, position, a.start), depth > 0))
+            attributes._append(_Entry(a.name, a.value, text[a.start:a.end],
+                                      attributes._space(text, position, a.start), depth > 0))
             position = a.end
         attributes._fragments(text, position, len(text))
         return attributes
@@ -203,13 +213,12 @@ class Attributes(MutableMapping):
     def _fragments(self, text, start, end):
         """What is not an attribute: its pieces (a Jinja zone is one piece)."""
         for m in _FRAGMENT.finditer(text, start, end):
-            self._items.append(_Entry(None, None, m.group(0), self._space(text, start, m.start())))
+            self._append(_Entry(None, None, m.group(0), self._space(text, start, m.start())))
             start = m.end()
         return start
 
     def __getitem__(self, name):
-        if isinstance(name, str):
-            name = key(name)
+        if isinstance(name, str) and (name := key(name)) in self._names:
             for entry in self._items:
                 if entry.name == name:
                     return entry.value
@@ -219,33 +228,34 @@ class Attributes(MutableMapping):
         if not isinstance(name, str) or not (value is None or isinstance(value, str)):
             raise TypeError(f'an attribute is a str name and a str value or None, got {name!r}: {value!r}')
         name = key(name)
-        found = next((entry for entry in self._items if entry.name == name), None)
-        if found is None:
-            self._items.append(_Entry(name, value))
-        else:                           # in its place, written once
-            found.value, found.written = value, None
-            self._items = [entry for entry in self._items if entry.name != name or entry is found]
+        if name not in self._names:
+            self._append(_Entry(name, value))
+            return
+        found = next(entry for entry in self._items if entry.name == name)
+        found.value, found.written = value, None    # in its place, written once
+        if self._names[name] > 1:
+            self._replace([entry for entry in self._items if entry.name != name or entry is found])
 
     def __delitem__(self, name):
         if name not in self:
             raise KeyError(name)
-        self._items = self.without({key(name)})._items
+        self._replace(self.without({key(name)})._items)
 
     def __contains__(self, name):
-        return isinstance(name, str) and any(entry.name == key(name) for entry in self._items)
+        return isinstance(name, str) and key(name) in self._names
 
     def __iter__(self):
         return iter(dict.fromkeys(entry.name for entry in self._items if entry.name is not None))
 
     def __len__(self):
-        return len(set(entry.name for entry in self._items if entry.name is not None))
+        return len(self._names)
 
     def __repr__(self):
         return f'Attributes({self.html().strip()!r})'
 
     def copy(self) -> Attributes:
         copied = Attributes()
-        copied._items = [_Entry(e.name, e.value, e.written, e.space, e.nested) for e in self._items]
+        copied._replace(_Entry(e.name, e.value, e.written, e.space, e.nested) for e in self._items)
         return copied
 
     def without(self, names: Iterable[str], *, nested: bool = True) -> Attributes:
@@ -259,13 +269,14 @@ class Attributes(MutableMapping):
                     space, cut = entry.space, True
                 continue
             entry = _Entry(entry.name, entry.value, entry.written, space if cut else entry.space, entry.nested)
-            copied._items.append(entry)
+            copied._append(entry)
             cut = False
         return copied
 
     def extend(self, other: Attributes) -> Attributes:
         """The attributes of `other` added after these, as they are."""
-        self._items += other.copy()._items
+        for entry in other.copy()._items:
+            self._append(entry)
         return self
 
     def values_of(self, name: str, *, nested: bool = True) -> list[str | None]:
