@@ -11,7 +11,11 @@ from pygments.lexers import get_lexer_by_name, TextLexer
 from pygments.util import ClassNotFound
 from pygments.formatters import HtmlFormatter
 from pygments.lexer import words, inherit
+import functools
+
 import pygments.lexers
+
+from .errors import suggestion
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +76,15 @@ def known_language(language):
 
 
 def unknown_language_message(language):
-    return f'Unknown language {language.strip()!r} for code::[...] block, rendered as plain text'
+    language = language.strip()
+    return (f'code::[{language}]: unknown language, shown as plain text'
+            f'{suggestion(language.lower(), set(LEXERS) | _pygments_names())}')
+
+
+@functools.cache
+def _pygments_names():
+    """The names of the languages Pygments knows (its aliases)."""
+    return frozenset(alias for _, aliases, _, _ in pygments.lexers.get_all_lexers() for alias in aliases)
 
 
 def highlight(code: str, language: str) -> str:

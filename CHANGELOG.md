@@ -73,6 +73,16 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   an `LHTMLError` holds those found before it (`problems`) and its `path`.
   A warning emitted names the place of the caller, not of LHTML.
 - `lhtml.highlight(code, language)`: the HTML of a code block.
+- Messages for the mistakes authors make: `code::[python]` never closed
+  (its lines were read as LHTML, silently), a `code::[-]` that closes no
+  block (it was told it is a style), a name followed by a group that is no
+  tag (`bxo::(.c)`), a `word::` written for a closing `word ::`. A name
+  close to a known one is suggested (a language, a variant, a tag). One
+  mistake gives one warning: an old closer `span::[-]` no longer also
+  warns the element it was meant to close and the `::` after it. Every
+  message reads `subject: problem; what to do (near 'source')`.
+- A link without a label shows its URL (`link::https://a.org`: it was an
+  empty `<a>`).
 - Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
   modules inside the package may change in any release (README,
   Stability).

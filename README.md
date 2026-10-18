@@ -111,6 +111,11 @@ page.l.html:3:1: warning: div:: is never closed
 
 Without a terminal (a log, an editor), the same problem is one line, its
 quote included: `page.l.html:3:1: warning: div:: is never closed (near 'div::(.note)')`.
+A message reads `subject: problem; what to do (near 'source')`; a name close
+to a known one is suggested (`code::[pyhton]: unknown language, shown as
+plain text; did you mean 'python'?`), and one mistake gives one warning (an
+old closer `span::[-]` does not also warn the element it was meant to
+close).
 
 With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`, no CSS or JS from the command line). From Python, `lhtml.wrap(html, title='My Page', css=['style.css'], js=['app.js'])` gives:
 
@@ -327,7 +332,7 @@ was most likely meant as a closing tag.
 
 ### Links
 
-The URL of `link::`, `img::`, `video::` and `videoplay::` is never modified (`__`, `**`, `$` are kept), but for a final `**` or `__` that closes a bold or an italic opened before it on its line: `**img::a.png**` is an image in bold. Parentheses that are part of the URL are kept (`Mercury_(planet)`, `fig(1).png`), while a group starting with `.` or `#` is a class/id group. The URL may contain Jinja expressions (`img::{{ base }}/photo.jpg`, `link::{{ url_for('page') }}[Home]`), which are kept unchanged.
+The URL of `link::`, `img::`, `video::` and `videoplay::` is never modified (`__`, `**`, `$` are kept), but for a final `**` or `__` that closes a bold or an italic opened before it on its line: `**img::a.png**` is an image in bold. Parentheses that are part of the URL are kept (`Mercury_(planet)`, `fig(1).png`), while a group starting with `.` or `#` is a class/id group. The URL may contain Jinja expressions (`img::{{ base }}/photo.jpg`, `link::{{ url_for('page') }}[Home]`), which are kept unchanged. A link without a label shows its URL (`link::https://example.org` is `<a href="https://example.org">https://example.org</a>`), as an image without `alt` gets its source.
 
 ```
 link::https://example.com[Click here]

@@ -42,6 +42,7 @@ from . import attributes
 from .attributes import Attributes, quoted
 from .export_html import TAGS, Tag, _class_and_id, _words, assemble, join_styles
 from .nodes import Element, Text, Written
+from .errors import suggestion
 from .process import _warn
 
 
@@ -127,9 +128,9 @@ def macro_tag(name, spec):
             value = word.strip() or (str(default) if default is not None else '')
             if value:
                 if value not in [str(v) for v in variant]:
-                    _warn(f'{name}::{value}: unknown variant (expected one of '
-                          f'{", ".join(str(v) for v in variant)}) near {written.context!r}',
-                          written, stacklevel=5)
+                    names = [str(v) for v in variant]
+                    _warn(f'{name}::{value}: unknown variant, expected one of {", ".join(names)}'
+                          f'{suggestion(value, names)}', written, stacklevel=5)
                 variant_class = [f'{classes[0]}-{value}']
             word = ''
         url_attribute = Attributes()

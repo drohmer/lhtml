@@ -137,7 +137,8 @@ def _link(written):
     attributes = written.attributes
     if 'href' not in attributes:
         attributes['href'] = written.text
-    return Element('a', attributes, children=list(written.label or []))
+    label = list(written.label or []) or [Text(written.text)]     # no label: its URL shows
+    return Element('a', attributes, children=label)
 
 
 def _img(written):

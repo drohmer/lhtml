@@ -45,7 +45,7 @@ import warnings
 from collections.abc import Mapping
 
 from . import attributes
-from .errors import LHTMLError, LHTMLParseError, LHTMLWarning
+from .errors import LHTMLError, LHTMLParseError, LHTMLWarning, suggestion
 from .export_html import SPACER, TAGS, Tag, class_and_id, node_list
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
 from .nodes import (
@@ -288,7 +288,7 @@ class _Parser:
             try:
                 element = extract_bracket_elements(flat, m.end())
             except LHTMLParseError as e:
-                _warn(f'{e} near {self._quote(text, tag_start, m.end() + 30)!r}',
+                _warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
                       (line, column - len(tag) if column else None))
                 continue
             element.update({'tag': tag, 'index_start': tag_start})
@@ -354,7 +354,9 @@ class _Parser:
         self._end_containers(closes, len(flat) + 1)
         for node in self.open:
             element = self.parsed[node][0]
-            _warn(f"{_label(node)} is never closed (near {element['context']!r})", element)
+            if not element.get('warned'):
+                _warn(f"{_label(node)} is never closed{self._glued_close(node)} "
+                      f"(near {element['context']!r})", element)
         chars.append(text.chars[prev:])
         origins.extend(text.origins[prev:])
         return _Text(''.join(chars), origins)
@@ -436,9 +438,10 @@ class _Parser:
             while self.open and self.parsed[self.open[-1]][1] is container:
                 node = self.open.pop()
                 element = self.parsed[node][0]
-                _warn(f'{_label(node)} is closed at the end of the {_KINDS[type(container)]} it is '
-                      f"opened in: its :: is elsewhere, or missing (near {element['context']!r})",
-                      element)
+                if not element.get('warned'):
+                    _warn(f'{_label(node)} is closed at the end of the {_KINDS[type(container)]} it is '
+                          f"opened in: its :: is elsewhere, or missing (near {element['context']!r})",
+                          element)
                 self.closed_early.append(node)
 
     def _place_of(self, text, position):
@@ -453,7 +456,10 @@ class _Parser:
         tag = element['tag']
         if element['[]'] == '-' and tag != 'link':
             _refuse_explicit_closing(element)
+            if self.open:               # the element it was meant to close: warned with it
+                self.parsed[self.open[-1]][0]['warned'] = True
         if tag and tag not in self.tags:
+            self._not_a_tag(element)
             return None
         if element.get('stray'):
             _warn(f'{tag}:: has a closing bracket without its opening one: its groups are left as text '
@@ -502,6 +508,29 @@ class _Parser:
             return 'open', built[0]
         return 'leaf', built
 
+    def _not_a_tag(self, element):
+        """A name that is no tag stays as text (std::vector): warned when a
+        group follows its :: at once (code::[python] never closed, bx::(.c)
+        for box::(.c))."""
+        tag, groups = element['tag'], element['groups']
+        after = element['index_start'] + len(tag) + 2     # just after its ::
+        if element.get('warned') or not groups or groups[0][1] != after + 1:
+            return
+        if tag == 'code' and groups[0][0] == '[]':
+            _warn(f"code::[{element['[]']}] is never closed (its code::[-] is missing): what follows "
+                  f"is read as LHTML", element)
+        else:
+            _warn(f'{tag}:: is no tag, it is left as text{suggestion(tag, self.tags)} '
+                  f"(near {element['context']!r})", element)
+
+    def _glued_close(self, node):
+        """'; ... is no closing ::' when a word:: after the element was
+        meant to close it (span::[c] text word::)."""
+        for m in _GLUED_CLOSE.finditer(self.source, node.span[0]):
+            if m.group(1) not in self.tags:
+                return f"; {m.group(1)}:: is no closing ::, write '{m.group(1)} ::'"
+        return ''
+
     def _close_tag(self, element, container):
         """A `::`: it closes the last open element if they are in the same
         container; otherwise it closes nothing, and stays as text."""
@@ -512,6 +541,8 @@ class _Parser:
         start = lambda node: self.parsed[node][0]['index_start']
         if early is not None and (top is None or start(early) > start(top)):
             self.closed_early.pop()
+            if self.parsed[early][0].get('warned'):     # the :: of an element warned already
+                return None
             _warn(f'this :: closes nothing: {_label(early)} was closed at the end of the '
                   f"{_KINDS[type(self.parsed[early][1])]} it is opened in "
                   f"(near {self.parsed[early][0]['context']!r})", element)
@@ -677,6 +708,9 @@ class _Parser:
 # ---------------------------------------------------------------------------
 # The public functions
 # ---------------------------------------------------------------------------
+
+# a word glued to a :: that ends its line or is followed by a space: a closing :: meant
+_GLUED_CLOSE = re.compile(r'(?<![\w:-])([A-Za-z][\w-]*)::(?=[ \t]*(?:\n|$))', re.MULTILINE)
 
 _KINDS = {Heading: 'heading', List: 'list', Item: 'list item', Strong: 'bold', Emphasis: 'italic'}
 

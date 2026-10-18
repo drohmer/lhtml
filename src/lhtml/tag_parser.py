@@ -131,7 +131,7 @@ def extract_bracket_elements(text, index_start):
             close = PAIRS[ch]
             j = _matches(text).get(i)
             if j is None:
-                raise LHTMLParseError(f'Unclosed bracket {ch!r} (expected {close!r})')
+                raise LHTMLParseError(f'{ch!r} has no closing {close!r}')
             j += 1
             groups.append((ch + close, i + 1, j - 1))
             group_after_text = group_after_text or seen_text

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from .tag_parser import extract_bracket_elements, _TAG_NAME_BEFORE, _MAX_TAG_NAME
 from .code import known_language, unknown_language_message
-from .errors import LHTMLParseError, LHTMLWarning
+from .errors import LHTMLParseError, LHTMLWarning, suggestion
 from .patterns import (
     PROTECTED, PROTECTED_BLOCKS, protected_blocks,
     HEADING,
@@ -272,9 +272,15 @@ def _refuse_explicit_closing(element):
     warning, since it was most likely meant as a closing tag."""
     context = element.get('context', '')
     if element['tag'] == '':
-        raise LHTMLParseError(f'{context}: ::name[-] and ::[-] were removed in LHTML 3.0: '
-                              f'close a tag with ::', element.get('line'), element.get('column'))
-    _warn(f'{context}: [-] is a style here, not a closing tag (close a tag with ::)', element, stacklevel=5)
+        raise LHTMLParseError(f'::[-] was removed in LHTML 3.0; close a tag with :: (near {context!r})',
+                              element.get('line'), element.get('column'))
+    element['warned'] = True            # what follows from it is not warned again
+    if element['tag'] == 'code':
+        _warn(f'code::[-] closes no code block; a block opens with code::[language] '
+              f'(near {context!r})', element, stacklevel=5)
+        return
+    _warn(f"{element['tag']}::[-]: [-] is a style here, not a closing tag; close a tag with :: "
+          f'(near {context!r})', element, stacklevel=5)
 
 
 def _context(text, start, end, max_len=40):

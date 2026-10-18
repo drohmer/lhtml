@@ -3,7 +3,18 @@
 Both carry `line` and `column` (1-based) of the problem in the text given to
 `run`, or None where it is not known (a macros file, a text without one),
 and `path`: the file it is in when LHTML read one (a macros file), else None.
+
+A message reads `subject: problem[; what to do] (near 'source')`, the
+source quoted when the subject does not show it.
 """
+
+import difflib
+
+
+def suggestion(word, candidates):
+    """'; did you mean 'x'?' for the closest of `candidates`, or ''."""
+    found = difflib.get_close_matches(word, list(candidates), n=1, cutoff=0.6)
+    return f'; did you mean {found[0]!r}?' if found else ''
 
 
 class _Located:

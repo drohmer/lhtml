@@ -170,8 +170,9 @@ class TestPlaces:
         assert [(l, c) for l, c, _ in said] == sorted((l, c) for l, c, _ in said)
 
     def test_an_unknown_name_is_one_text(self):
-        document = lhtml.parse('foo::(.x) y\n')
+        document = lhtml.parse('foo::(.x) y\n', warn=False)
         assert [(n.kind, getattr(n, 'value', None)) for n in document.children] == [('Text', 'foo::(.x) y\n')]
+        assert [str(p) for p in document.problems] == ["foo:: is no tag, it is left as text (near 'foo::(.x)')"]
 
 
 class TestDepth:
@@ -204,7 +205,7 @@ class TestTags:
     def test_a_macro_is_a_tag_and_warns_where_it_is(self):
         macros = {'gap': {'class': 'gap', 'variant': ['s', 'l'], 'empty': True}}
         document, said = quiet(lhtml.parse, 'x\ngap::zz\n', macros=macros)
-        assert said == ["gap::zz: unknown variant (expected one of s, l) near 'gap::zz'"]
+        assert said == ["gap::zz: unknown variant, expected one of s, l"]
         assert (document.problems[0].line, document.problems[0].column) == (2, 1)
 
     def test_an_unknown_name_is_text(self):
@@ -271,7 +272,7 @@ class TestStages:
 
     def test_an_unclosed_bracket_quotes_the_source(self):
         [(line, column, said)] = problems('= a link::u[x\n')
-        assert (line, column) == (1, 5) and said.endswith("near 'link::u[x'")
+        assert (line, column) == (1, 5) and said.endswith("(near 'link::u[x')")
 
 
 class TestLineBreaks:
@@ -817,3 +818,50 @@ class TestProblems:
         with ThreadPoolExecutor(8) as pool:
             results = list(pool.map(problems, range(2000)))
         assert all(count == k % 3 for k, count in results)
+
+
+class TestMessages:
+    """What an author reads: one format, `subject: problem[; what to do] (near 'source')`,
+    one warning for one mistake, a suggestion when a name is close to a known one."""
+
+    def said(self, text, **options):
+        return [str(p) for p in lhtml.parse(text, warn=False, **options).problems]
+
+    def test_a_code_block_never_closed(self):
+        assert self.said('code::[python]\nx = a**b**c\n') == [
+            'code::[python] is never closed (its code::[-] is missing): what follows is read as LHTML']
+
+    def test_a_code_closer_without_its_block(self):
+        assert self.said('x\ncode::[-]\n') == [
+            "code::[-] closes no code block; a block opens with code::[language] (near 'code::[-]')"]
+
+    def test_one_warning_for_an_old_closer(self):
+        said = self.said('* a span::[c] b span::[-]\n* d ::\n')
+        assert said == ["span::[-]: [-] is a style here, not a closing tag; close a tag with :: "
+                        "(near 'span::[-]')"]
+
+    def test_a_language_close_to_a_known_one(self):
+        assert self.said('code::[pyhton]\nx\ncode::[-]\n') == [
+            "code::[pyhton]: unknown language, shown as plain text; did you mean 'python'?"]
+
+    def test_a_variant_close_to_a_known_one(self):
+        macros = {'gap': {'class': 'gap', 'variant': ['small', 'large'], 'empty': True}}
+        assert self.said('gap::smal', macros=macros) == [
+            "gap::smal: unknown variant, expected one of small, large; did you mean 'small'?"]
+
+    def test_a_name_followed_by_a_group_is_no_tag(self):
+        assert self.said('bxo::(.good) x', macros={'box': {}}) == [
+            "bxo:: is no tag, it is left as text; did you mean 'box'? (near 'bxo::(.good)')"]
+        assert self.said('std::vector<int> cgp::mesh(x)') == []      # C++ in the text
+
+    def test_a_word_glued_to_its_closing(self):
+        assert self.said('span::[c] word::\nx') == [
+            "span:: is never closed; word:: is no closing ::, write 'word ::' (near 'span::[c]')"]
+
+    def test_an_unclosed_bracket(self):
+        assert self.said('a link::u[x and') == [
+            "link:: '[' has no closing ']': it is left as text (near 'link::u[x and')"]
+
+    def test_a_link_without_label_shows_its_url(self):
+        assert lhtml.run('link::https://a.org and') == '<a href="https://a.org">https://a.org</a> and'
+        assert lhtml.run('link::u[l]') == '<a href="u">l</a>'
