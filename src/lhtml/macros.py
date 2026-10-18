@@ -44,7 +44,7 @@ from .nodes import Element, Text, Written
 from .tags import TAGS, Tag
 
 
-NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*$')
+NAME_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]*\Z')
 FIELDS = {'tag', 'class', 'attrs', 'empty', 'url', 'variant', 'default', 'doc'}
 # HTML elements without closing tag (a macro using them is always empty)
 VOID_TAGS = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
@@ -88,14 +88,20 @@ def _check(name, spec):
     if isinstance(variant, list) and any(not isinstance(v, (str, int)) or isinstance(v, bool)
                                          for v in variant):
         raise LHTMLMacroError(f'macro {name!r}: the variants must be names')
-    if spec.get('default') is not None and not isinstance(spec['default'], (str, int)):
+    if spec.get('default') is not None and (not isinstance(spec['default'], (str, int))
+                                            or isinstance(spec['default'], bool)):
         raise LHTMLMacroError(f'macro {name!r}: default must be a name')
     if isinstance(variant, list) and spec.get('default') is not None \
             and str(spec['default']) not in [str(v) for v in variant]:
         raise LHTMLMacroError(f'macro {name!r}: default {spec["default"]!r} is not one of the variants')
+    if spec.get('default') is not None and not variant:
+        raise LHTMLMacroError(f'macro {name!r}: default needs variant (it is one of the variants)')
+    if attributes.unclosed(spec.get('attrs')):
+        raise LHTMLMacroError(f'macro {name!r}: attrs has a value without its closing quote: '
+                              f'{spec["attrs"]!r}')
     if variant and spec.get('url'):
         raise LHTMLMacroError(f'macro {name!r}: variant and url cannot be combined')
-    if variant and not str(spec.get('class', '')).split():
+    if variant and not words(str(spec.get('class') or '')):
         raise LHTMLMacroError(f'macro {name!r}: a variant needs a class')
     return spec
 
@@ -106,17 +112,19 @@ def macro_tag(name, spec):
     spec = _check(name, spec)
     tag = spec.get('tag') or 'div'
     void = tag.lower() in VOID_TAGS
-    classes = (spec.get('class') or '').split()
+    classes = words(spec.get('class') or '')       # {{ a }} b: two
     empty = bool(spec.get('empty', False))
     url = spec.get('url')
     variant = spec.get('variant')
     default = spec.get('default')
-    # its attrs, read once: their classes and styles come before those of the page
+    # its attrs, read once: their classes and styles come before those of the page,
+    # those of its Jinja blocks too (joined where it is safe: Attributes._joined)
     given = Attributes.read((spec.get('attrs') or '').strip())
-    attrs_classes = [word for value in given.values_of('class', nested=False) if value for word in words(value)]
-    styles = [value for value in given.values_of('style', nested=False) if value]
     given_empty = {name for name in ('class', 'style') if given.values_of(name, nested=False)}    # class="": kept
-    given = given.without({'class', 'style'}, nested=False)     # one in a Jinja block stays there
+    values, given, _ = given._joined('class')
+    attrs_classes = [word for value, folded in values if value for word in ([value] if folded else words(value))]
+    values, given, _ = given._joined('style', ';')
+    styles = [value for value, _ in values if value]
 
     def build(written):
         word = written.text
@@ -143,7 +151,7 @@ def macro_tag(name, spec):
             given.without({'id'}) if ids else given, url_attribute, Attributes.read(written.braces))
         head, styled, rest = assemble(classes + variant_class + attrs_classes + page_classes, ids,
                                       join_styles(*styles, written.brackets),
-                                      url_attribute.extend(defaults).extend(page), given_empty)
+                                      url_attribute.extend(defaults).extend(page), given_empty, place=written)
         node = Element(tag, head.extend(styled).extend(rest), void=void)
         if void:                        # the word after it is text
             return [node] + ([Text(word)] if word else [])
@@ -167,8 +175,8 @@ def describe_macro(name: str, spec: Mapping | None) -> dict:
         del attributes[url]             # the url given in the page
     variant = spec.get('variant')
     if variant and spec.get('default') is not None:     # its classes without the default variant
-        attributes['class'] = ' '.join(c for c in attributes['class'].split()
-                                       if c != f'{spec["class"].split()[0]}-{spec["default"]}')
+        attributes['class'] = ' '.join(c for c in words(attributes['class'])
+                                       if c != f'{words(spec["class"])[0]}-{spec["default"]}')
     return {'html': f'<{tag}{attributes.html()}>',
             'url': url,
             'empty': bool(spec.get('empty')) or tag.lower() in VOID_TAGS,

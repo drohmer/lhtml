@@ -70,7 +70,7 @@ def _video(defaults):
         page = Attributes.read(written.braces)
         given = defaults.without(set(page))
         classes, ids = classes_and_ids(written.parentheses)
-        head, styled, rest = assemble(classes, ids, written.brackets, page)
+        head, styled, rest = assemble(classes, ids, written.brackets, page, place=written)
         return Video(attributes=rest.extend(given).extend(head).extend(styled), src=written.text)
     return build
 

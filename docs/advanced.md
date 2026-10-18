@@ -111,7 +111,8 @@ made visible (raw HTML `<a>` is text: its line breaks are).
 
 `attributes` is an `lhtml.Attributes` (a dict given is made one), a
 mapping name -> value in order: a value as in HTML source (a `"` in a
-value set is written `&quot;`), None for an attribute without value
+value set is written `&quot;`, but in its Jinja, written as it is for the
+template: a value from outside must hold no Jinja), None for an attribute without value
 (`autoplay`); a name is read in any case, its Jinja as written
 (`data-{{ K }}` is not `data-{{ k }}`); a Jinja fragment written among them
 (`{% if x %}alt="y"{% endif %}`) stays in its place, and an expression is
@@ -123,7 +124,13 @@ class, once each. The classes of an element and its style
 add up, a macro's first (`(.a){class="b"}`: `class="a b"`; an empty one
 joins the others, `(.a){class=""}` is `class="a"`, and alone it is kept,
 in the page as in the `attrs` of a macro); one written inside a Jinja block
-(`{% if x %}class="a"{% endif %}`) stays in it, as written;
+joins them with its block, in the order written
+(`(.b){{% if x %}class="a"{% endif %}}`: `class="b {% if x %}a{% endif %}"`)
+when it is safe: its block is an `if`, `for`, `with`, `filter`,
+`autoescape` or `raw` one, its value quoted, and no other statement is
+written among the attributes (a `{% set %}`: a value moved would be read
+before it). Otherwise it stays where it is, as written, and a class or a
+style then written twice is warned (the browser keeps the first);
 any other attribute is given once, by the last of the tag, the macro, its
 `url`, the page (an id written `{id=...}` replaces the one of `(#id)`).
 

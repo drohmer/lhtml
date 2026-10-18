@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 
 from . import jinja_blocks
+from .errors import warn
 from .patterns import JINJA_RE, PLACEHOLDER
 
 # A name, then its value: quoted, or unquoted up to the next space (`a=b=c`
@@ -42,19 +43,54 @@ class Attribute:
 _PART = '\x01'                     # a Jinja expression, part of a name or a value
 
 
+def _unglue_unmatched(zones, glued, word):
+    """The statements of a word that open, divide or close a block not both
+    opened and closed in the word: no part of it (glued[k] False)."""
+    stack, branches = [], {}
+    for k in word:
+        kind = jinja_blocks.statement(zones[k].group(0))
+        if kind == 'open':
+            stack.append(k)
+            branches[k] = []
+        elif kind == 'branch' and stack:
+            branches[stack[-1]].append(k)
+        elif kind == 'close' and stack:
+            branches.pop(stack.pop())
+        else:                           # a branch, a close of a block opened before the word
+            glued[k] = False
+    for k in stack:                     # opened, not closed in the word
+        glued[k] = False
+        for branch in branches[k]:
+            glued[branch] = False
+
+
 def _masked(text):
     """The text with its Jinja at its place: an expression as a part of a
     name or a value (data-{{ k }}="v", title={{ x }}), a statement or a
     comment as spaces (between attributes: {% if x %}alt="y"{% endif %}),
     unless it is glued to a name or an unquoted value (title=a{% if x %}b{%
-    endif %}): a part of it; the placeholders as spaces."""
-    parts, prev = [], 0
-    for m in JINJA_RE.finditer(text):
-        parts.append(text[prev:m.start()])
-        before = parts[-1][-1:] if parts[-1] else (parts[-2][-1:] if len(parts) > 1 else '')
-        glued = m.group(0).startswith('{{') or before == _PART or \
+    endif %}): a part of it - a block the word opens and closes; a statement
+    of a block opened or closed outside the word is no part of it ({% if h
+    %}hidden{% else %}alt="b"{% endif %}: hidden, then alt); the placeholders
+    as spaces."""
+    zones = list(JINJA_RE.finditer(text))
+    glued, prev, word = [], 0, []      # word: the statements glued in the word read, by their index
+    for k, m in enumerate(zones):
+        between = text[prev:m.start()]
+        before = between[-1:] or (('\x01' if glued[-1] else ' ') if glued else '')
+        is_glued = m.group(0).startswith('{{') or before == '\x01' or \
             (before and not before.isspace() and before not in '"\'')
-        parts.append((_PART if glued else ' ') * len(m.group(0)))
+        if not is_glued or any(ch.isspace() for ch in between):
+            _unglue_unmatched(zones, glued, word)       # a word ends
+            word = []
+        glued.append(is_glued)
+        if is_glued and jinja_blocks.statement(m.group(0)):
+            word.append(k)
+        prev = m.end()
+    _unglue_unmatched(zones, glued, word)
+    parts, prev = [], 0
+    for m, is_glued in zip(zones, glued):
+        parts += [text[prev:m.start()], (_PART if is_glued else ' ') * len(m.group(0))]
         prev = m.end()
     parts.append(text[prev:])
     return PLACEHOLDER.sub(lambda m: ' ' * len(m.group(0)), ''.join(parts))
@@ -142,6 +178,15 @@ class _Entry:
         return (' ' if self.space is None else self.space) + written
 
 
+def _quoted(entry):
+    """Whether an attribute's value is written quoted (or set: written so)."""
+    return entry.written is None or entry.written[-1:] in '"\'' and '=' in entry.written
+
+
+def _has_jinja(value):
+    return bool(value) and ('{{' in value or '{%' in value)
+
+
 class Attributes(MutableMapping):
     """The attributes of an element, in order: name -> value, a str as in
     HTML source (entities as written; a `"` in a value set here is written
@@ -212,7 +257,8 @@ class Attributes(MutableMapping):
         # set, it is given always: the others go, those of Jinja blocks too
         found = next((entry for entry in self._items if entry.name == name and not entry.nested), None)
         dropped = jinja_blocks.entries_in(name, jinja_blocks.blocks(self._items, name))  # those folded
-        dropped.update(id(e) for e in self._items if e.name == name and e is not found and not e.nested)
+        hidden = jinja_blocks.not_written(self._items)     # in a {% set %}...{% endset %}: no attribute
+        dropped.update(id(e) for e in self._items if e.name == name and e is not found and id(e) not in hidden)
         if found is not None:
             found.value, found.written = value, None    # in its place, written once
         if dropped:
@@ -249,7 +295,8 @@ class Attributes(MutableMapping):
         if isinstance(other, Mapping):
             plain = all(e.name is not None and not e.nested for e in self._items) and \
                 len(self._items) == len(self._names)
-            return plain and dict(self) == dict(other)
+            return plain and all(isinstance(name, str) for name in other) and \
+                dict(self) == {key(name): value for name, value in other.items()} and len(other) == len(self)
         return NotImplemented
 
     __hash__ = None
@@ -281,17 +328,31 @@ class Attributes(MutableMapping):
         self['class'] = ' '.join(dict.fromkeys(words(current) + added))
         return self
 
-    def folded(self, name: str, joiner: str = ' ') -> tuple[str, Attributes]:
-        """The values of `name` written in Jinja blocks, as one value that
-        keeps their blocks ({% if x %}class="a"{% else %}class="c"{% endif %}:
-        '{% if x %}a{% else %}c{% endif %}'), and a copy without them (a block
-        left with statements only goes too). ('', a copy): none. The blocks
-        folded and how: lhtml.jinja_blocks."""
-        found = jinja_blocks.blocks(self._items, name)
-        if not found:
-            return '', self.copy()
-        value = joiner.join(jinja_blocks.fold(block, name, joiner) for block in found)
-        return value, self._without_entries(jinja_blocks.entries_in(name, found))
+    def _joined(self, name, joiner=' '):
+        """The values of `name` that may join others, in their written order,
+        each (value, folded): written as it is, or the values of a Jinja block
+        as one value that keeps the block ({% if x %}class="a"{% else
+        %}class="c"{% endif %}: '{% if x %}a{% else %}c{% endif %}'); a copy
+        without them (a block left with statements only goes too); whether
+        one stays where it is. Only when it is safe: every statement among
+        them of an if, for, with, filter, autoescape or raw block
+        (jinja_blocks.foldable), a value in a block quoted; otherwise a block
+        stays, and so does a value written with Jinja (it may depend on a
+        {% set %} written before it)."""
+        safe = jinja_blocks.foldable(self._items)
+        found = [block for block in (jinja_blocks.blocks(self._items, name) if safe else [])
+                 if all(_quoted(e) for e in block if e.name == name)]
+        first = {id(block[0]): block for block in found}
+        values, used = [], set()
+        for entry in self._items:
+            if id(entry) in first:
+                values.append((jinja_blocks.fold(first[id(entry)], name, joiner), True))
+            elif entry.name == name and not entry.nested and (safe or not _has_jinja(entry.value)):
+                values.append((entry.value, False))
+                used.add(id(entry))
+        used |= jinja_blocks.entries_in(name, found)
+        without = self._without_entries(used)
+        return values, without, name in without._names
 
     def _without_entries(self, dropped):
         """A copy without the entries whose id is in `dropped`."""
@@ -307,6 +368,9 @@ class Attributes(MutableMapping):
                 if not cut:
                     space, cut = entry.space, True
                 continue
+            if cut and not space and not entry.space and entry.name is not None \
+                    and copied._items and copied._items[-1].name is not None:
+                space = None            # two attributes glued to what is cut between them: apart
             copied._append(_Entry(entry.name, entry.value, entry.written, space if cut else entry.space,
                                   entry.nested))
             cut = False
@@ -364,7 +428,7 @@ def class_and_id(text):
     return assemble(classes, ids, '', Attributes())[0]
 
 
-def assemble(classes, ids, style, rest, empty=()):
+def assemble(classes, ids, style, rest, empty=(), place=None):
     """(class and id, style, the attributes left), as Attributes, from the
     classes and ids of (...), the style of [...] and the attributes `rest`
     (changed): the classes and styles of `rest` join those of (...) and
@@ -373,21 +437,21 @@ def assemble(classes, ids, style, rest, empty=()):
     empty one is given too: (.a){class=""} is class="a", {class=""} alone
     class="" (and so when `empty` names it: written empty elsewhere). One
     written inside a Jinja block keeps it: (.b){{% if x %}class="a"{% endif %}}
-    is class="b {% if x %}a{% endif %}" (alone, it stays where it is). An id
-    of `rest` replaces the one of (#id)."""
+    is class="b {% if x %}a{% endif %}" (alone, it stays where it is), in
+    the order written - when it is safe (Attributes._joined); one left
+    where it is beside another is warned at `place` (the browser keeps the
+    first). An id of `rest` replaces the one of (#id)."""
     head, styled = Attributes(), Attributes()
-    written = rest.values_of('class', nested=False)
-    conditional, without = rest.folded('class')
-    if (written or conditional) and (classes or len(written) + bool(conditional) > 1):
-        classes = classes + [word for value in written if value for word in words(value)]
-        classes += [conditional] if conditional else []
-        rest = without.without({'class'}, nested=False)
+    values, without, _ = rest._joined('class')
+    if values and (classes or len(values) > 1):
+        classes = classes + [word for value, folded in values if value
+                             for word in ([value] if folded else words(value))]
+        rest = without
         head['class'] = ''
-    written = rest.values_of('style', nested=False)
-    conditional, without = rest.folded('style', ';')
-    if (written or conditional) and (style or len(written) + bool(conditional) > 1):
-        style = join_styles(style, *(value for value in written if value), conditional)
-        rest = without.without({'style'}, nested=False)
+    values, without, _ = rest._joined('style', ';')
+    if values and (style or len(values) > 1):
+        style = join_styles(style, *(value for value, _ in values if value))
+        rest = without
         styled['style'] = ''
     for name, given in (('class', head), ('style', styled)):     # written empty elsewhere: given
         if name in empty and name not in given and not rest.values_of(name, nested=False):
@@ -398,6 +462,15 @@ def assemble(classes, ids, style, rest, empty=()):
         head['id'] = ' '.join(ids)
     if style:
         styled['style'] = style
+    for name, given in (('class', head), ('style', styled)):    # (in the branches of one block: one)
+        hidden = jinja_blocks.not_written(rest._items)
+        top = len(rest.values_of(name, nested=False))
+        written = sum(1 for e in rest._items if e.name == name and id(e) not in hidden)
+        if written and (name in given or top > 1 or 0 < top < written):
+            warn(f'{name} is written twice: LHTML leaves one where it is, in Jinja that a {{% set %}} or '
+                 f'another statement, or an unquoted value, keeps from joining the other; the browser '
+                 f'keeps the first' + (f' (near {place.context!r})' if getattr(place, 'context', '') else ''),
+                 place, stacklevel=5)
     return head, styled, rest
 
 
@@ -407,5 +480,5 @@ def element_attributes(written):
     {...}."""
     classes, ids = classes_and_ids(written.parentheses)
     style = '' if written.tag == 'link' else written.brackets
-    head, styled, rest = assemble(classes, ids, style, Attributes.read(written.braces))
+    head, styled, rest = assemble(classes, ids, style, Attributes.read(written.braces), place=written)
     return head.extend(styled).extend(rest)

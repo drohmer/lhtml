@@ -757,7 +757,7 @@ class TestAttributesReview:
             '<span class="b {% if x %}a{% endif %}" {% if x %}title="t"{% endif %} id="i"> x </span>'
         macros = {'box': {'class': 'b', 'attrs': '{% if x %}style="m:1"{% endif %}'}}
         assert lhtml.run('box::[z:1] x ::', macros=macros) == \
-            '<div class="b" style="z:1;{% if x %}m:1{% endif %}"> x </div>'
+            '<div class="b" style="{% if x %}m:1{% endif %};z:1"> x </div>'     # the page after: it wins
         # {% set x = 1 %} opens no block
         assert lhtml.run('img::x.png(.b){{% set k = 1 %} class="a"}').startswith('<img class="b a"')
 
@@ -1168,8 +1168,9 @@ class TestFifthReview:
             [('div', 'div::(.c)'), ('img', 'img::b.png')]
 
     def test_a_block_with_another_statement_is_not_folded(self):
-        assert lhtml.run('div::(.base){{% if ok %}{% set c = "e" %}class="{{ c }}"{% endif %}} x ::') == \
-            '<div class="base" {% if ok %}{% set c = "e" %}class="{{ c }}"{% endif %}> x </div>'
+        with pytest.warns(lhtml.LHTMLWarning, match='class is written twice'):
+            assert lhtml.run('div::(.base){{% if ok %}{% set c = "e" %}class="{{ c }}"{% endif %}} x ::') == \
+                '<div class="base" {% if ok %}{% set c = "e" %}class="{{ c }}"{% endif %}> x </div>'
 
     def test_a_loop_in_a_block_separates_its_turns(self):
         assert lhtml.run('div::(.base){{% if ok %}{% for c in l %}class="{{ c }}"{% endfor %}{% endif %}} x ::') == \
@@ -1309,3 +1310,48 @@ class TestAudit:
         for problem in lhtml.parse(source, warn=False).problems:
             reporter.report(Diagnostic('f', 'warning', str(problem), problem.line, problem.column), source)
         assert time.perf_counter() - started < 3
+
+    def test_a_statement_glued_belongs_to_a_word_for_a_block_it_opens_and_closes(self):
+        read = lambda text: list(lhtml.Attributes.read(text).items())
+        assert read('{% if h %}hidden{% else %}alt="b"{% endif %}') == [('hidden', None), ('alt', 'b')]
+        assert read('{% if x %}class=b{% endif %}') == [('class', 'b')]
+        assert read('title=a{% if x %}b{% else %}c{% endif %} alt=z') == \
+            [('title', 'a{% if x %}b{% else %}c{% endif %}'), ('alt', 'z')]
+        assert read('{% for i in L %}data-i={{ i }}{% if loop.first %} class="first"{% endif %}{% endfor %}') == \
+            [('data-i', '{{ i }}'), ('class', 'first')]
+
+    def test_jinja_classes_and_styles_join_only_where_it_is_safe(self):
+        import jinja2
+        env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        html = lhtml.run('div::(.a){{% for i in L %}data-i={{ i }}{% if loop.first %} class="first"{% endif %}'
+                         '{% endfor %}} x ::')
+        assert 'class="a  first"' in env.from_string(html).render(L=[1, 2])
+        html = lhtml.run('div::[left:0]{{% if x %}title=t{% else %}id=i style="top:1px"{% endif %}} x ::')
+        assert 'top:1px' not in env.from_string(html).render(x=1)
+        assert 'top:1px' in env.from_string(html).render(x=0)
+        assert lhtml.run('div::{{% if x %}style="color:blue"{% endif %} style="color:green"} x ::') == \
+            '<div style="{% if x %}color:blue{% endif %};color:green"> x </div>'     # in the order written
+        with pytest.warns(lhtml.LHTMLWarning, match='class is written twice'):
+            html = lhtml.run('div::(.a){{% set c = "z" %} class="{{ c }}"} t ::')
+        assert html == '<div class="a" {% set c = "z" %} class="{{ c }}"> t </div>'     # after its set
+
+    def test_a_macro_s_jinja_style_comes_before_the_page(self):
+        macros = {'hi': {'attrs': '{% if x %}style="color:blue"{% endif %}'}}
+        assert lhtml.run('hi::[color:red] t ::', macros=macros) == \
+            '<div style="{% if x %}color:blue{% endif %};color:red"> t </div>'
+
+    def test_macro_definitions_checked(self):
+        assert lhtml.run('m:: t ::', macros={'m': {'class': '{{ a }} {{ b }}'}}) == \
+            '<div class="{{ a }} {{ b }}"> t </div>'
+        for spec in ({'attrs': 'title="a'}, {'class': 'c', 'default': 'x'},
+                     {'class': 'c', 'variant': ['s'], 'default': True}):
+            with pytest.raises(lhtml.LHTMLMacroError):
+                lhtml.run('m:: t ::', macros={'m': spec})
+        with pytest.raises(lhtml.LHTMLMacroError):
+            lhtml.run('x', macros={'m\n': {}})
+
+    def test_setting_an_attribute_removes_it_from_any_block_that_writes_it(self):
+        attributes = lhtml.Attributes.read('{% if x %}{% set q = 1 %}title="a"{% endif %}')
+        attributes['title'] = 'c'
+        assert attributes.html() == ' {% if x %}{% set q = 1 %}{% endif %} title="c"'
+        assert lhtml.Attributes({'Title': 'x'}) == {'Title': 'x'}

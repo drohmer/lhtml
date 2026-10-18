@@ -66,6 +66,30 @@ def _words(block):
     return [m.group(1) for e in block if e.name is None for m in [_STATEMENT.fullmatch(e.written or '')] if m]
 
 
+def foldable(entries):
+    """Whether the blocks among `entries` may join their attributes to the
+    others: each statement written there is one of a block that writes what
+    it holds where it is (no {% set %}, {% macro %}... anywhere: a value
+    moved would be read before or after what it depends on)."""
+    return all(word in _FOLDED for word in _words(entries))
+
+
+def not_written(entries):
+    """The ids of the entries a block keeps from being written where they
+    are: in a {% set %}...{% endset %} (a variable), a {% macro %} or a
+    {% call %} (written where it is called)."""
+    found, opened = set(), []
+    for entry in entries:
+        kind = statement(entry.written) if entry.name is None else None
+        if kind == 'open':
+            opened.append(_STATEMENT.fullmatch(entry.written).group(1))
+        elif kind == 'close' and opened:
+            opened.pop()
+        elif any(word in ('set', 'macro', 'call') for word in opened):
+            found.add(id(entry))
+    return found
+
+
 def blocks(entries, name):
     """The blocks written among `entries` (from the opening statement to
     its closing one) that hold an attribute `name` and write what they hold

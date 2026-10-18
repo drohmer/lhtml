@@ -108,9 +108,14 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   block: `img::x.png(.b){{% if x %}class="a"{% endif %}}` is
   `class="b {% if x %}a{% endif %}"` (it was two `class`): a block that
   writes what it holds where it is (`if`, `for`, `with`, `filter`,
-  `autoescape`, `raw`) and holds no other statement (a `{% set %}` in it:
-  it stays as written); each turn of a loop has its joiner, a space or a
-  `;`, and its `{%-` gives up its whitespace control there. Setting an
+  `autoescape`, `raw`), quoted, in the order written (a macro's before the
+  page's: the page wins), when no other statement is written among the
+  attributes (a `{% set %}`: it stays as written, and a class or a style
+  then written twice is warned); each turn of a loop has its joiner, a
+  space or a `;`, and its `{%-` gives up its whitespace control there. A
+  statement glued to a name or an unquoted value is part of it only for a
+  block it opens and closes (`{% if h %}hidden{% else %}...`: `hidden`,
+  then the else branch). Setting an
   attribute written in Jinja branches gives it always (it kept the first
   branch). Two `[...]` groups are one style, `a:1;b:2` (they were joined
   with a space). `Heading.written` is `Heading.parentheses`. `Attributes`
