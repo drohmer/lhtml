@@ -138,6 +138,19 @@ class _InText:
         return self.m.span(name)
 
 
+def zone_search(pattern, text):
+    """search(position): the next match of a pattern of zones in a text from
+    a position (None: none), in linear time whatever its unclosed openers."""
+    masked = closable(text)
+    if masked is text:
+        return lambda position: pattern.search(text, position)
+
+    def search(position):
+        m = pattern.search(masked, position)
+        return None if m is None else _InText(m, text)
+    return search
+
+
 def zones_in(pattern, text, start=0):
     """The matches of a pattern of zones in a text, from `start`, in linear
     time whatever its unclosed openers (closable)."""

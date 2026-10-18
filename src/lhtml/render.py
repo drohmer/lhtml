@@ -155,6 +155,9 @@ def _link(node):
     return isinstance(node, Element) and node.name.lower() == 'a'
 
 
+_END = object()                     # the end of the children of a node
+
+
 def _markup(piece):
     """A piece in the label of a link: markup, no block, no line of its own."""
     return _Piece(piece.html, 'markup')
@@ -169,14 +172,16 @@ def _pieces(root, media, lexers):
     out, stack, links = [], [(iter([root]), None, False)], 0
     while stack:
         children, closing, link = stack[-1]
-        node = next(children, None)
-        if node is None:
+        node = next(children, _END)
+        if node is _END:
             stack.pop()
             links -= link
             if closing is not None:
                 out.append(closing)
             continue
         opens_link = False
+        if not isinstance(node, Node):
+            raise TypeError(f'a child of a node is an lhtml node (Element, Text...), got {type(node).__name__}')
         if isinstance(node, Text):
             piece = _Piece(node.value, 'text')
         elif isinstance(node, _ZONES):

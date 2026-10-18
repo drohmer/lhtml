@@ -533,12 +533,13 @@ class _Parser:
         """(event, node, written) of an element (_open, _close_tag); None
         when it is not a tag (its source stays)."""
         tag = element.tag
-        if element.brackets == '-' and tag != 'link':
-            refuse_explicit_closing(element)
-            if self.open:               # the element it was meant to close: warned with it
+        if element.brackets == '-' and tag != 'link' and (not tag or tag in self.tags or tag == 'code'):
+            refuse_explicit_closing(element)        # ::[-] raises; code::[-] closes no block
+            if tag and self.open and self.open[-1].written.tag == tag:     # meant to close it: warned with it
                 self.parsed[self.open[-1]][0].warned = True
         if tag and tag not in self.tags:
-            self._not_a_tag(element)
+            if not (tag == 'code' and element.brackets == '-'):
+                self._not_a_tag(element)
             return None
         if element.stray:
             warn(f'{tag}:: has a closing bracket without its opening one: its groups are left as text '
@@ -846,7 +847,8 @@ def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
     macros, a mapping (lhtml.load_macros reads them from files); `tags`:
     {name: Tag}, added to the built-in TAGS and the macros (a tag given
     wins); `lexers`: {name: Pygments lexer class}, languages of its code
-    blocks, before lhtml.LEXERS (render is given them too). Reads no file.
+    blocks, before lhtml.LEXERS (render is given them too). Reads no file
+    (but Pygments, for a language it does not know: its plugins).
 
     The problems found are kept in document.problems (LHTMLWarning, in
     source order), and emitted as warnings unless `warn` is False; an

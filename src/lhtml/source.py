@@ -26,7 +26,7 @@ from typing import NamedTuple
 
 from .errors import quote
 from .nodes import Written
-from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones, zones_in
+from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones, zone_search, zones_in
 from .process import MarksOnLine, url_and_closing_marks
 from .tag_parser import extract_bracket_elements
 from .tags import Tag
@@ -59,14 +59,34 @@ class Zone:
     value: str | None = None
 
 
-def _pattern(url_tags, code):
+@functools.lru_cache(maxsize=32)
+def _without_code(url_tags):
+    return re.compile(protected_zones(url_tags), re.DOTALL)
+
+
+def _matches(text, url_tags, code, start):
+    """(whether a code block, its match): the zones of a text from `start`,
+    left to right, the leftmost first
+    (a code block first at the same place): LHTML's code::[...] blocks, or
+    the matches of `code`, read alone (its flags, groups and backreferences
+    its own)."""
+    url_tags = tuple(sorted(url_tags))
     if code is None:
-        return protected_blocks(tuple(sorted(url_tags)))
-    flags = 's' + ''.join(letter for letter, flag in (('a', re.A), ('i', re.I), ('m', re.M), ('x', re.X))
-                          if code.flags & flag)    # its own, not those of the other zones
-    end = '\n' if code.flags & re.X else ''        # (re.X: a # comment ends with its line)
-    return re.compile(f'(?P<code>(?{flags}:{code.pattern}{end}))|' + protected_zones(tuple(sorted(url_tags))),
-                      re.DOTALL)
+        for m in zones_in(protected_blocks(url_tags), text, start):
+            yield m.group('code') is not None, m
+        return
+    search, position, block, zone = zone_search(_without_code(url_tags), text), start, None, None
+    while position <= len(text):
+        if block is None or block.start() < position:
+            block = code.search(text, position)
+        if zone is None or zone.start() < position:
+            zone = search(position)
+        if block is None and zone is None:
+            return
+        is_block = block is not None and (zone is None or block.start() <= zone.start())
+        found = block if is_block else zone
+        yield is_block, found
+        position = max(found.end(), found.start() + 1)     # an empty match: on
 
 
 def zones(text: str, *, url_tags: Iterable[str] = URL_TAGS, code: re.Pattern | None = None,
@@ -78,9 +98,8 @@ def zones(text: str, *, url_tags: Iterable[str] = URL_TAGS, code: re.Pattern | N
     them all); `code`: the pattern of the code blocks of another markup (the
     fenced ``` blocks of Markdown), in place of LHTML's code::[...]."""
     found, marks = [], MarksOnLine(text)
-    for m in zones_in(_pattern(url_tags, code), text, start):
-        group = next(g for g in _KINDS if m.group(g) is not None)
-        kind = _KINDS[group]
+    for is_block, m in _matches(text, url_tags, code, start):
+        kind = 'code' if is_block else _KINDS[next(g for g in _KINDS if g != 'code' and m.group(g) is not None)]
         if kind == 'jinja' and m.group(0).startswith('{#'):
             kind = 'comment'            # a Jinja comment writes nothing, as an HTML one
         if kind == 'url':               # as parse reads it: **img::a.png** ends before its **
@@ -117,10 +136,9 @@ def read_tags(text: str, names: Iterable[str] | None = None, *, tags: Mapping[st
     A syntax removed in 3.0, or an error of a tag, raises as in parse."""
     run = registry(tags, macros)
     wanted = set(run) if names is None else set(names)
-    _, read = _parse(text, run, checked_lexers(None), False)
-    for (start, end), written in sorted(read, key=lambda pair: pair[0]):
-        if written.tag in wanted:
-            yield SourceTag(start, end, written)
+    _, read = _parse(text, run, checked_lexers(None), False)     # read now: an error raises at the call
+    return iter([SourceTag(start, end, written) for (start, end), written in sorted(read, key=lambda pair: pair[0])
+                 if written.tag in wanted])
 
 
 @functools.lru_cache(maxsize=8)

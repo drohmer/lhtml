@@ -636,7 +636,9 @@ lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a 
 | `title`, `css`, `js` | of `wrap` | The title, the stylesheets and the scripts (a name or a list) |
 
 An argument spelled otherwise is a `TypeError`. LHTML reads no file:
-`lhtml.load_macros` is the caller reading its macro files.
+`lhtml.load_macros` is the caller reading its macro files (Pygments may: a
+code block in a language it does not know makes it look for its plugins,
+once per name).
 
 The problems of a text are `LHTMLWarning` warnings, each with its `line`
 and `column`. A caller that collects them parses and renders itself:

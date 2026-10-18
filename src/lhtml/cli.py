@@ -95,7 +95,7 @@ def check(jobs, read=()):
         if f_in != STDIN and not os.path.exists(f_in):
             problems.append(Diagnostic(f_in, 'error', 'file not found'))
             continue
-        if f_in != STDIN and not os.path.isfile(f_in):
+        if f_in != STDIN and os.path.isdir(f_in):     # a pipe is read: lhtml <(...)
             problems.append(Diagnostic(f_in, 'error', 'not a file'))
             continue
         if out is None:
@@ -129,6 +129,8 @@ def read_source(filename):
     """Read an LHTML source file (UTF-8, with or without BOM), normalized;
     `-`: the standard input."""
     if filename == STDIN:
+        if sys.stdin is None:
+            raise OSError('the standard input is closed')
         return normalize_input(sys.stdin.buffer.read().decode('utf-8-sig'))
     with open(filename, 'r', encoding='utf-8-sig') as fid:
         return normalize_input(fid.read())

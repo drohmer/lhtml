@@ -1381,3 +1381,40 @@ class TestAudit:
             assert 'src="a.png**"' in lhtml.run(text)
             assert [z.value for z in lhtml.zones(text) if z.kind == 'url'] == ['a.png**']
         assert '<strong><img src="a.png"' in lhtml.run(r'`**` **img::a.png**')
+
+    def test_zones_reads_the_code_pattern_alone(self):
+        fence = re.compile(r'^(`{3,})[^\n]*\n.*?^\1\s*$', re.M | re.S)
+        text = 'a `**` b\n```py\nx <b>\n```\nimg::c.png'
+        assert [z.kind for z in lhtml.zones(text, code=fence)] == ['inline_code', 'code', 'url']
+        assert [(z.start, z.end) for z in lhtml.zones('~`` ~`~', code=re.compile(r'(~)(`)\2'))] == [(0, 3)]
+        assert lhtml.zones('```a``` x', code=re.compile(r'(?P<code>```).*?```'))[0].kind == 'code'
+
+    def test_read_tags_raises_when_called(self):
+        with pytest.raises(lhtml.LHTMLParseError):
+            lhtml.read_tags('::[-]')
+
+    def test_api_names_and_children_checked(self):
+        with pytest.raises(ValueError):
+            lhtml.Element('div x="1"')
+        with pytest.raises(ValueError):
+            lhtml.Attributes({'x onclick': 'y'})
+        for child in (None, 'a'):
+            with pytest.raises(TypeError):
+                lhtml.render(lhtml.Element('div', children=[child, lhtml.Text('b')]))
+
+    def test_lexers_alike(self):
+        from pygments.lexers import PythonLexer
+        assert '\t' in lhtml.highlight('{\n\tx;\n}\n', 'cpp') and '\t' in lhtml.highlight('{\n\tx;\n}\n', 'c++')
+        assert lhtml.parse('code::[mypy]\nx=1\ncode::[-]\n', lexers={'MyPy': PythonLexer}, warn=False).problems == []
+        with pytest.raises(TypeError):
+            lhtml.run('x', lexers={'a': lambda: 5})
+
+    def test_warned_code_groups_empty_urls_and_names_closed(self):
+        problems = lambda text: [str(p) for p in lhtml.parse(text, warn=False).problems]
+        assert 'is ignored' in problems('code::[python](.big)\nx\ncode::[-]\n')[0]
+        for text in ('see the link:: below', 'img::', 'video::'):
+            assert 'has no URL' in problems(text)[0]
+        assert problems('link::{href="a"}[x]') == []
+        assert any('never closed' in p for p in problems('div:: a\nfoo::[-]'))
+        assert any('never closed' in p for p in problems('div:: a\ncode::[-]'))
+        assert not any('never closed' in p for p in problems('div:: a\ndiv::[-]'))

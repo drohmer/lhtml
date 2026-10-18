@@ -10,10 +10,13 @@ made by the caller, or by a tag, may have no place (line None).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field, fields
 
 from .attributes import Attributes, element_attributes
+
+_ELEMENT_NAME = re.compile(r'[A-Za-z][\w:.-]*')
 
 
 @dataclass(eq=False, repr=False)
@@ -28,6 +31,10 @@ class Node:
         return type(self).__name__
 
     def __post_init__(self):
+        name = getattr(self, 'name', None)
+        if name is not None and not (isinstance(name, str) and _ELEMENT_NAME.fullmatch(name)):
+            raise ValueError(f'{self.kind}: invalid element name {name!r} (a letter, then letters, digits, '
+                             f'-, _, : or .)')
         if not hasattr(self, 'attributes') or isinstance(self.attributes, Attributes):
             return
         if self.attributes is None:
@@ -103,7 +110,7 @@ class Text(Node):
 @dataclass(eq=False, repr=False)
 class Heading(Node):
     level: int = 1
-    attributes: Attributes = field(default_factory=Attributes)
+    attributes: Attributes | Mapping[str, str | None] = field(default_factory=Attributes)    # a dict: made one
     parentheses: str = ''           # its (.class #id) as written in the source (information)
 
 
@@ -139,7 +146,7 @@ class Element(Node):
     caller made, or one a tag made inside the nodes it returns):
     information on the source, render does not read it."""
     name: str
-    attributes: Attributes = field(default_factory=Attributes)
+    attributes: Attributes | Mapping[str, str | None] = field(default_factory=Attributes)    # a dict: made one
     void: bool = False
     end_tag: bool = True
     written: Written | None = field(default=None, kw_only=True)
@@ -150,7 +157,7 @@ class Video(Element):
     """<video attributes> with its sources: those the `media` resolver of
     render gives for `src`, or `src` itself: Video('clip.mp4')."""
     name: str = field(default='video', kw_only=True)
-    attributes: Attributes = field(default_factory=Attributes, kw_only=True)
+    attributes: Attributes | Mapping[str, str | None] = field(default_factory=Attributes, kw_only=True)
     void: bool = field(default=False, kw_only=True)
     end_tag: bool = field(default=True, kw_only=True)
     src: str = ''

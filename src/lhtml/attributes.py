@@ -29,6 +29,7 @@ from .patterns import JINJA_RE, PLACEHOLDER
 # A name, then its value: quoted, or unquoted up to the next space (`a=b=c`
 # is one attribute). No leading \s*: finditer skips what is not a name.
 _ATTRIBUTE = re.compile(r'([^\s"\'=<>/{}%]+)(?:[ \t]*=[ \t]*("[^"]*"|\'[^\']*\'|[^\s"\'`]+))?')
+_NOT_IN_NAME = re.compile(r'[\s"\'<>/=]')
 ADDED = ('class', 'style')          # these add up, the others are replaced
 
 
@@ -255,6 +256,8 @@ class Attributes(MutableMapping):
     def __setitem__(self, name, value):
         if not isinstance(name, str) or not (value is None or isinstance(value, str)):
             raise TypeError(f'an attribute is a str name and a str value or None, got {name!r}: {value!r}')
+        if not name or _NOT_IN_NAME.search(JINJA_RE.sub('', name)):
+            raise ValueError(f'invalid attribute name {name!r} (no space, quote, <, >, / or = but in its Jinja)')
         name = key(name)
         if name not in self._names:
             self._append(_Entry(name, value))

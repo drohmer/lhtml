@@ -51,7 +51,8 @@ LEXERS = {
     'c++': CppCgpLexer,
 }
 
-LEXER_OPTIONS = dict(stripall=False, stripnl=True, ensurenl=True, tabsize=2, encoding='utf-8')
+# the same for every lexer; a tab kept (the code of a block is written as it is)
+LEXER_OPTIONS = dict(stripall=False, stripnl=True, ensurenl=True, encoding='utf-8')
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +63,8 @@ def checked_lexers(lexers):
     """The lexers of a call, {name: lexer class}, checked (TypeError)."""
     if lexers is None:
         return {}
-    if not isinstance(lexers, Mapping) or not all(isinstance(name, str) and callable(lexer)
+    if not isinstance(lexers, Mapping) or not all(isinstance(name, str) and isinstance(lexer, type)
+                                                  and issubclass(lexer, pygments.lexer.Lexer)
                                                   for name, lexer in lexers.items()):
         raise TypeError(f'lexers: expected a mapping of names to lexer classes, got {lexers!r}')
     return lexers
@@ -73,9 +75,10 @@ def _lexer(language, lexers=None):
     LEXERS, then Pygments; None if none knows it."""
     language = (language or '').strip()
     for table in (lexers or {}, LEXERS):
-        lexer_class = table.get(language) or table.get(language.lower())
-        if lexer_class is not None:
-            return lexer_class()
+        lexer_class = table.get(language) or next(
+            (lexer for name, lexer in table.items() if name.lower() == language.lower()), None)
+        if lexer_class is not None:            # any case: MyPy is mypy
+            return lexer_class(**LEXER_OPTIONS)
     if not language:
         return TextLexer(**LEXER_OPTIONS)
     lexer_class = _pygments_lexer(language)

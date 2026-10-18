@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from .attributes import Attributes, assemble, classes_and_ids
+from .errors import warn
 from .nodes import Element, Node, Text, Video, Written
 
 
@@ -26,7 +27,7 @@ class Tag:
     follows until its `::`. `container`: a bool, or a function of the
     Written; written `name::text::`, it holds nothing either way. `url`:
     its text is a URL, kept as written (img::a__b.png)."""
-    build: Callable[[Written], Node | list[Node]]
+    build: Callable[[Written], Node | Sequence[Node]]
     container: bool | Callable[[Written], bool] = False
     url: bool = False
 
@@ -46,8 +47,17 @@ def generic(name):
     return Tag(build, container=True)
 
 
+def _no_url(written, given, example):
+    """A tag written without its URL, and no attribute giving it: warned
+    (link:: below: an empty href)."""
+    if not written.text.strip() and given not in written.attributes:
+        warn(f'{written.tag}:: has no URL: write it after its :: ({written.tag}::{example}) '
+             f'(near {written.context!r})', written, stacklevel=6)
+
+
 def _link(written):
     attributes = written.attributes
+    _no_url(written, 'href', 'page.html')
     if 'href' not in attributes:
         attributes['href'] = written.text
     label = list(written.label or []) or [Text(written.text)]     # no label: its URL shows
@@ -57,6 +67,7 @@ def _link(written):
 def _img(written):
     """<img src alt>: an alt or a src written replaces the default."""
     attributes = written.attributes
+    _no_url(written, 'src', 'image.png')
     for name in ('src', 'alt'):
         if name not in attributes:
             attributes[name] = written.text
@@ -68,6 +79,9 @@ def _video(defaults):
 
     def build(written):
         page = Attributes.read(written.braces)
+        if not written.text.strip():
+            warn(f'{written.tag}:: has no URL: write it after its :: ({written.tag}::clip.mp4) '
+                 f'(near {written.context!r})', written, stacklevel=6)
         given = defaults.without(set(page))
         classes, ids = classes_and_ids(written.parentheses)
         head, styled, rest = assemble(classes, ids, written.brackets, page, place=written)

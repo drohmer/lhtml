@@ -170,9 +170,14 @@ def process_protect(text, stores, url_tags, lexers=None):
         if m.group('code') is not None:
             # the text is the source here: an offset in it is a place
             _refuse_include(m.group('body'), lambda k: position(text[:m.start('body') + k]))
-            language = code_language(m.group('header'))
+            header = m.group('header')
+            language = code_language(header)
             if not known_language(language, lexers):
                 warn(unknown_language_message(language, lexers), marks.place(m.start()), stacklevel=6)
+            groups = header[header.index(']') + 1:]
+            if groups.strip():              # (.big)[color:red]: a code block has none
+                warn(f'code::[{language}]{groups}: a code block takes its language only, {groups} is ignored',
+                     marks.place(m.start()), stacklevel=6)
             marks.skip(m.start(), m.end())
             return stores.add('C', m.group(0))
         if m.group('icode') is not None:

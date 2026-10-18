@@ -159,6 +159,48 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   quadratic).
 
 ### Changed
+- A bare `::` is decided by what follows it (`::` then a punctuation: a
+  closing `::`; `::nl`: a spacer) before its word is read, and the groups
+  LHTML keeps literal are those of the elements as parse reads them: a
+  link after `::nl{...}(` or in `::)(see link::...)` is a link (it was
+  text), with no misleading "closing bracket" warning. A bold, an italic
+  or a list from a group of a link's label to the next leaves the link as
+  text, warned (it raised `ValueError`). Linear time for runs of glued
+  `::`, deep lists on one line, links of many labels, many unclosed
+  `<!--`, `{#`, `\(`, `\[`, `<script>`, `<style>` or `code::[...]`, many
+  diagnostics in a terminal.
+- The `**` and `__` of a zone before a URL on its line (inline code,
+  math, a comment, Jinja, another URL) open no bold where the URL ends
+  (`` `**` img::a.png** `` keeps `a.png**`).
+- A video's type is the extension of its file, its Jinja, query and
+  fragment aside; none known, no `type` (`video::dir.v/clip` gave
+  `video/v/clip`). Its text, and the title, css and js of `wrap`, keep
+  their Jinja (they were escaped: an invalid template).
+- With `line_breaks`, each line of a block tag written on several lines
+  is structure; a Jinja statement or a comment makes its line structure
+  only alone on it (`Hello {% if x %}!{% endif %}` keeps its `<br>`).
+- Every lexer has the same options, a tab kept in each (`cpp` and the
+  Pygments languages turned a tab into two spaces, `c++` kept it); a name
+  of `lexers=` or `LEXERS` is found in any case; a lexer is a Pygments
+  lexer class (`TypeError`).
+- Warned: a code block's groups (`code::[python](.big)`: ignored), a
+  `link::`, `img::` or `video::` without its URL, `foo::[-]` when `foo` is
+  no tag (as a name that is no tag; `x::[-]` silences the never-closed
+  warning of an open `x::` only).
+- `zones(code=)` reads the pattern of the code blocks alone: its flags,
+  groups and backreferences its own (a fence `^(`{3,}).*?^\1` raised).
+  `read_tags` reads when it is called (an error raises there).
+- An element's name and an attribute's name set through the API are
+  checked (`Element('div x="1"')`, `{'x onclick': ...}`: `ValueError`); a
+  child that is no node is a `TypeError` (a `None` child dropped the
+  others). `Element`, `Heading` and `Tag` are typed for a dict of
+  attributes and a sequence of nodes. A closed standard input is an
+  error of the command, a pipe an input (`lhtml <(...)`).
+- A macro definition is refused when its `attrs` holds a value without
+  its closing quote, its `default` comes without `variant` or is a
+  boolean, its name ends with a new line; its `class` is read with its
+  Jinja (`{{ a }} {{ b }}`: two). `Attributes` equal a dict whatever the
+  case of its names.
 - A closing bracket without its opening one ends a URL: `(see
   link::https://x.org)` is a link in parentheses (its `)` was in the
   `href`, with no warning); a URL's own pairs stay (`A_(b)`).
