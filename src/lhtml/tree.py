@@ -403,8 +403,12 @@ class _Parser:
             crossing = quote(self.source[span[0]:span[1]], 0, span[1] - span[0])
         if tag == 'link' and not crossing and not element.stray and not in_label:     # its label: nodes
             label = [(a, b) for kind, a, b in element.groups if kind == '[]']
-            element.label = self._label_nodes(text, label)
-            element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
+            if any(self._crosses(text.origins[a:b]) for a, b in label):   # a bold from a group to the next
+                span = self.source_of(text.origins[tag_start:element.end])
+                crossing = quote(self.source[span[0]:span[1]], 0, span[1] - span[0])
+            else:
+                element.label = self._label_nodes(text, label)
+                element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
         what = self._decide(element, containers[tag_start], crossing) \
             if not (in_label and (tag == 'link' or is_closing_tag(element))) else None
         if in_label and what is not None and what[0] == 'open':     # it would hold the rest of the label
@@ -488,7 +492,10 @@ class _Parser:
                         closes.append((i, stack[-1]))
                     stack.append(node)
                 elif what == 'close':
-                    stack.remove(node)  # the last one: the containers nest (inline refuses a crossing)
+                    if stack[-1] is node:   # the last one: the containers nest (inline refuses a crossing)
+                        stack.pop()
+                    else:
+                        stack.remove(node)
                     closes.append((i, node))
             at.append(stack[-1])
         at.append(stack[-1])

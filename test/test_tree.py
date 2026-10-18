@@ -1259,3 +1259,18 @@ class TestEighthReview:
         for text in ('link::a.html[t][u]', 'link::a.html[t](.c)[u] q'):
             assert lhtml.read_tag(text, 0).written.brackets == next(lhtml.read_tags(text)).written.brackets == 't u'
         assert lhtml.read_tag('span::[a:1][b:2]', 0).written.brackets == 'a:1;b:2'
+
+
+class TestAudit:
+
+    def test_a_bold_from_a_label_group_to_the_next_leaves_the_link_as_text(self):
+        for text in ('link::u[**a][b**]', 'link::u[__a][b__] x', 'link::u[\n* a][\n* b\n]'):
+            document = lhtml.parse(text, warn=False)
+            assert 'would cross' in str(document.problems[0])
+            assert list(lhtml.read_tags(text)) == []
+        assert lhtml.run('link::u[**a**][b]') == '<a href="u"><strong>a</strong> b</a>'
+
+    def test_a_list_nested_deep_is_linear(self):
+        started = time.perf_counter()
+        lhtml.run('*' * 20000 + ' x')
+        assert time.perf_counter() - started < 2
