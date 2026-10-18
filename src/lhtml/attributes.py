@@ -309,16 +309,8 @@ class Attributes(MutableMapping):
         """A copy without the attributes named in `names` (keys); the item
         after one removed takes its spaces (as if it was cut out of the
         text). `nested=False`: those written inside a Jinja block stay."""
-        copied, space, cut = Attributes(), None, False
-        for entry in self._items:
-            if entry.name is not None and entry.name in names and (nested or not entry.nested):
-                if not cut:
-                    space, cut = entry.space, True
-                continue
-            entry = _Entry(entry.name, entry.value, entry.written, space if cut else entry.space, entry.nested)
-            copied._append(entry)
-            cut = False
-        return copied
+        return self._cut(lambda entry: entry.name is not None and entry.name in names
+                         and (nested or not entry.nested))
 
     def extend(self, other: Attributes) -> Attributes:
         """The attributes of `other` added after these, as they are."""
@@ -403,11 +395,16 @@ class Attributes(MutableMapping):
         return dropped
 
     def _without_entries(self, dropped):
-        """A copy without the entries whose id is in `dropped`; the item
-        after one cut takes its spaces (as if it was cut out of the text)."""
+        """A copy without the entries whose id is in `dropped`."""
+        return self._cut(lambda entry: id(entry) in dropped)
+
+    def _cut(self, cut_out):
+        """A copy without the entries `cut_out` is true of; the item after
+        those cut takes the spaces of the first (as if they were cut out of
+        the text)."""
         copied, space, cut = Attributes(), None, False
         for entry in self._items:
-            if id(entry) in dropped:
+            if cut_out(entry):
                 if not cut:
                     space, cut = entry.space, True
                 continue
