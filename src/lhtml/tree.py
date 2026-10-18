@@ -108,19 +108,18 @@ class _Parser:
 
     # -- positions --------------------------------------------------------
 
-    def _prepared_offsets(self, prepared):
-        """The offset in the source of each character of the prepared text."""
-        offsets, s, i = [], 0, 0
-        while i < len(prepared):
-            m = PLACEHOLDER.match(prepared, i)
-            if m:
-                width = len(self.stores.original(m.group(0)))
-                offsets.extend([s] * len(m.group(0)))
-                s, i = s + width, m.end()
-            else:
-                offsets.append(s)
-                s, i = s + 1, i + 1
-        offsets.append(s)
+    def _offsets(self, text, start=0):
+        """The offset in the source of each character of a text whose source
+        starts at `start`, and the offset after it: a placeholder's
+        characters are all where what it hides starts."""
+        offsets, s, prev = [], start, 0
+        for m in PLACEHOLDER.finditer(text):
+            offsets.extend(range(s, s + m.start() - prev))
+            s += m.start() - prev
+            offsets.extend([s] * len(m.group(0)))
+            s += len(self.stores.original(m.group(0)))
+            prev = m.end()
+        offsets.extend(range(s, s + len(text) - prev + 1))
         return offsets
 
     def place(self, offset):
@@ -128,11 +127,13 @@ class _Parser:
         return line, offset - self.lines[line - 1] + 1
 
     def source_of(self, origins):
-        """The span in the source of characters by their origins."""
-        kept = [o for o in origins if o >= 0]
-        if not kept:
+        """The span in the source of characters by their origins (in the
+        order of the source: from the first to the last that is no event)."""
+        first = next((o for o in origins if o >= 0), None)
+        if first is None:
             return None
-        return min(self.offsets[o] for o in kept), max(self.offsets[o + 1] for o in kept)
+        last = next(o for o in reversed(origins) if o >= 0)
+        return self.offsets[first], self.offsets[last + 1]
 
     def event(self, what, node):
         self.events.append((what, node))
@@ -154,7 +155,7 @@ class _Parser:
     def parse(self):
         url_tags = tuple(sorted(name for name, tag in self.tags.items() if tag.url))
         prepared = process_prepare(self.source, self.stores, url_tags)
-        self.offsets = self._prepared_offsets(prepared)
+        self.offsets = self._offsets(prepared)
         text = _Text(prepared, list(range(len(prepared))))
         text = self.headings(text)
         text = self.lists(text)
@@ -646,16 +647,8 @@ class _Parser:
         """Origins for a text hidden by a placeholder whose source starts at
         `start`: new ones, added after the offsets of the prepared text (each
         character followed by the offset after it, as there)."""
-        first, s, i = len(self.offsets), start, 0
-        while i < len(text):
-            m = PLACEHOLDER.match(text, i)
-            if m:
-                self.offsets.extend([s] * len(m.group(0)))
-                s, i = s + len(self.stores.original(m.group(0))), m.end()
-            else:
-                self.offsets.append(s)
-                s, i = s + 1, i + 1
-        self.offsets.append(s)          # where the text ends
+        first = len(self.offsets)
+        self.offsets.extend(self._offsets(text, start))     # and where the text ends
         return list(range(first, first + len(text)))
 
     def _text_nodes(self, raw, origins, parent):
