@@ -895,3 +895,30 @@ def test_attributes_of_many_names_stay_linear():
         return time.perf_counter() - start
     small, large = duration(2000), duration(8000)
     assert large < 8 * small + 0.02, (small, large)
+
+
+@pytest.mark.parametrize('make', [
+    lambda n: 'div:: ' * n + '\n' + ''.join(f'* a{k}\n\nx\n\n' for k in range(n)),     # lists in open divs
+    lambda n: 'code::[zz]\nx\ncode::[-]\n' * n,                                        # unknown languages
+    lambda n: '**img::a.png** ' * n,                                                   # URLs on one line
+], ids=['lists', 'languages', 'urls'])
+def test_long_inputs_stay_linear(make):
+    import time
+
+    def duration(n):
+        start = time.perf_counter()
+        quiet(lhtml.parse, make(n))
+        return time.perf_counter() - start
+    small, large = duration(500), duration(2000)
+    assert large < 8 * small + 0.02, (small, large)
+
+
+def test_attributes_of_a_dict_stay_linear():
+    import time
+
+    def duration(n):
+        start = time.perf_counter()
+        lhtml.Attributes({f'a{k}': 'v' for k in range(n)})
+        return time.perf_counter() - start
+    small, large = duration(1000), duration(4000)
+    assert large < 8 * small + 0.02, (small, large)
