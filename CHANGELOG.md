@@ -87,6 +87,11 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - `Attributes.add_class(*names)`. `load_macros` checks each definition, as
   `registry_with_macros` did (a wrong name or field was accepted until the
   tags were made); a file's error names its path.
+- The label of a link reads the elements that hold nothing:
+  `link::page.html[img::thumb.png]` is an image as a link (it was the text
+  `img::thumb.png`; raw HTML `<a>` was written around `img::` by hand). An
+  element that would hold what follows, or a link, stays text there, with
+  a warning.
 - `lexers=` on `run`, `parse`, `render` and `highlight`: the languages of
   a call, before `lhtml.LEXERS` (a global table).
 - Warned: a heading written with `[...]` or `{...}` (it stays text: a

@@ -298,13 +298,17 @@ class _Parser:
             return [self.event('open', node), (m.start(1), m.end(1)), self.event('close', node)]
         return text.transform(pattern, pieces)
 
-    def elements(self, text):
+    def elements(self, text, in_label=False):
         """The `::` elements, decided on the text the stages wrote, recorded
         as events: an element's source becomes one event, and its `::`
         another. The open elements are kept with the container each is
         opened in (a heading, a list item, a bold, an italic, or the
         document): a `::` closes the last one when it is in that container,
-        and an element is closed at the end of its container."""
+        and an element is closed at the end of its container.
+
+        `in_label`: the text of a link's label, where only an element that
+        holds nothing is read (a link, an element that holds what follows,
+        a closing :: stay text)."""
         chars, origins = [], []
         prev, last_tag_end = 0, -1
         flat = text.chars               # the text, each node read by a stage one EVENT_CHAR
@@ -365,7 +369,16 @@ class _Parser:
                 label = [(a, b) for kind, a, b in element.groups if kind == '[]']
                 element.label = self._label_nodes(text, label)
                 element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
-            what = self._decide(element, containers[tag_start], crossing)
+            what = self._decide(element, containers[tag_start], crossing) \
+                if not (in_label and (tag == 'link' or is_closing_tag(element))) else None
+            if in_label and what is not None and what[0] == 'open':     # it would hold the rest of the label
+                self.open.pop()
+                del self.parsed[what[1]]
+                warn(f'{tag}:: holds what follows: in the label of a link it is left as text '
+                     f'(near {element.context!r})', element)
+                what = None
+            if in_label and tag == 'link':
+                warn(f'link:: in the label of a link is left as text (near {element.context!r})', element)
             if what is None:            # not a tag: its text stays, and is not read again
                 chars.append(text.chars[prev:element.end])
                 origins.extend(text.origins[prev:element.end])
@@ -406,7 +419,8 @@ class _Parser:
 
     def _label_nodes(self, text, ranges):
         """The nodes of the label of a link (its [...] groups, joined by a
-        space): its text, bold, italic, zones."""
+        space): its text, bold, italic, zones, and the elements that hold
+        nothing (img::, video::, an empty macro: a thumbnail as a link)."""
         root = Node()
         for k, (start, end) in enumerate(ranges):
             if k:                       # the groups joined by a space, where the first one closes
@@ -416,8 +430,18 @@ class _Parser:
                     space.span = (joint[0], joint[0])
                     space.line, space.column = self.place(joint[0])
                 root.children.append(space)
-            self._replay(text.chars[start:end], text.origins[start:end], root)
+            label = self._in_label(_Text(text.chars[start:end], text.origins[start:end]))
+            self._replay(label.chars, label.origins, root)
         return root.children
+
+    def _in_label(self, text):
+        """The elements of a label read (elements(), its own open elements
+        kept apart from those of the page)."""
+        state = self.open, self.closed_early, self.next_close
+        try:
+            return self.elements(text, in_label=True)
+        finally:
+            self.open, self.closed_early, self.next_close = state
 
     def _quote(self, text, start, end):
         """What a message quotes of the text between two positions: its

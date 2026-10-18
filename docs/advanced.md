@@ -42,7 +42,8 @@ alert::[background:yellow; padding:10px;] Warning message ::
 without the final `::` of `name::text::`), `inline` (written
 `name::text::`), `parentheses`, `brackets`, `braces` (the groups `(...)`,
 `[...]`, `{...}` as written), `label` (the nodes of the `[...]` of a
-`link::`, else None), `line`, `column`, `context` (what a message quotes).
+`link::`: its text, bold, italic, and the elements that hold nothing, an
+`img::` among them; else None), `line`, `column`, `context` (what a message quotes).
 `written.attributes` is a new `Attributes` each time: those the groups
 write, class and id, style (not for `link::`, whose `[...]` is its label),
 then `{...}`.

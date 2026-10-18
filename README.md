@@ -336,6 +336,12 @@ was most likely meant as a closing tag.
 
 The URL of `link::`, `img::`, `video::` and `videoplay::` is never modified (`__`, `**`, `$` are kept), but for a final `**` or `__` that closes a bold or an italic opened before it on its line: `**img::a.png**` is an image in bold. Parentheses that are part of the URL are kept (`Mercury_(planet)`, `fig(1).png`), while a group starting with `.` or `#` is a class/id group. The URL may contain Jinja expressions (`img::{{ base }}/photo.jpg`, `link::{{ url_for('page') }}[Home]`), which are kept unchanged. A link without a label shows its URL (`link::https://example.org` is `<a href="https://example.org">https://example.org</a>`), as an image without `alt` gets its source.
 
+A label holds text, bold, italic, inline code, and the elements that hold
+nothing: an image as a link is `link::page.html[img::thumb.png]`
+(`<a href="page.html"><img src="thumb.png" alt="thumb.png"></a>`), as are a
+`video::`, an empty macro or `span::word::`. An element that would hold what
+follows (`div::`) or another link stays text in a label, with a warning.
+
 ```
 link::https://example.com[Click here]
 link::page.html(.nav)[Back to home]
@@ -662,7 +668,7 @@ modules inside the package (`lhtml.patterns`, `lhtml.process`,
 ## Design Principles
 
 - **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed: HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`\(...\)`, `\[...\]`, so that `\(x**2\)` reaches MathJax/KaTeX intact; since 3.0 a `$` is text, as in a price). Text between HTML tags is still processed.
-- **Attributes stay literal**: styles, classes/IDs and HTML attributes in LHTML tag groups and headings are preserved without inline formatting (`div::(.my__class__)` keeps `my__class__`). Link labels still support formatting.
+- **Attributes stay literal**: styles, classes/IDs and HTML attributes in LHTML tag groups and headings are preserved without inline formatting (`div::(.my__class__)` keeps `my__class__`). Link labels still support formatting, and the elements that hold nothing (`link::u[img::a.png]`).
 - **Template-friendly**: Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.
 - **Minimal**: A few symbols (`::`, `=`, `*`, `**`, `__`, `` ` ``) cover most needs. No complex configuration required.

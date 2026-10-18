@@ -1016,3 +1016,36 @@ class TestLexersOfACall:
         for wrong in (['a'], {'a': 1}, {1: str}):
             with pytest.raises(TypeError, match='lexers'):
                 lhtml.run('x', lexers=wrong)
+
+
+class TestTagsInALabel:
+    """The label of a link reads the elements that hold nothing: a thumbnail
+    as a link, without raw HTML."""
+
+    def said(self, text):
+        return [str(p) for p in lhtml.parse(text, warn=False).problems]
+
+    def html(self, text):
+        return lhtml.render(lhtml.parse(text, warn=False))
+
+    def test_an_image_as_a_link(self):
+        assert lhtml.run('link::a.html[img::b.png]') == '<a href="a.html"><img src="b.png" alt="b.png"></a>'
+        assert lhtml.run('link::a.html[img::b.png Voir **la** suite]') == \
+            '<a href="a.html"><img src="b.png" alt="b.png"> Voir <strong>la</strong> suite</a>'
+        macros = {'gap': {'class': 'g', 'variant': ['l'], 'empty': True}}
+        assert lhtml.run('link::u[gap::l]', macros=macros) == '<a href="u"><div class="g g-l"></div></a>'
+
+    def test_the_image_is_a_node_of_the_label(self):
+        document = lhtml.parse('x link::a.html[img::b.png]')
+        link = next(n for n in document.walk() if n.kind == 'Element' and n.name == 'a')
+        image = link.children[0]
+        assert (image.name, image.written.tag, image.line, image.column) == ('img', 'img', 1, 16)
+
+    def test_what_would_hold_the_label_stays_text(self):
+        assert self.html('link::a.html[div::(.c) x]') == '<a href="a.html">div::(.c) x</a>'
+        assert self.said('link::a.html[div::(.c) x]') == [
+            "div:: holds what follows: in the label of a link it is left as text (near 'div::(.c)')"]
+        assert self.html('link::a[link::b[x]]') == '<a href="a">link::b[x]</a>'
+        assert self.said('link::a[link::b[x]]') == [
+            "link:: in the label of a link is left as text (near 'link::b[x]')"]
+        assert lhtml.run('link::u[cgp::mesh a::b a :: b]') == '<a href="u">cgp::mesh a::b a :: b</a>'
