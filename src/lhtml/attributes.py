@@ -283,6 +283,15 @@ class Attributes(MutableMapping):
             self._append(entry)
         return self
 
+    def add_class(self, *names: str) -> Attributes:
+        """The classes `names` added to its class, once each (a name may hold
+        several, separated by spaces); a class after the others when it has
+        none."""
+        current = self.get('class') or ''
+        added = [word for name in names for word in words(name)]
+        self['class'] = ' '.join(dict.fromkeys(words(current) + added))
+        return self
+
     def values_of(self, name: str, *, nested: bool = True) -> list[str | None]:
         """Every value written for `name` (an attribute written twice);
         `nested=False`: not those written inside a Jinja block."""

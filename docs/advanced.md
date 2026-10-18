@@ -26,8 +26,7 @@ as any other:
 import lhtml
 
 def alert(written):
-    attributes = written.attributes                     # (.c) [style] {attrs}
-    attributes['class'] = ' '.join(['alert', attributes.get('class') or '']).strip()
+    attributes = written.attributes.add_class('alert')     # (.c) [style] {attrs}, and the class alert
     return lhtml.Element('div', attributes, children=[lhtml.Text(written.text)])
 
 html = lhtml.run(text, tags={'alert': lhtml.Tag(alert, container=True)})
@@ -118,7 +117,8 @@ value set is written `&quot;`), None for an attribute without value
 part of a name or a value (`data-{{ k }}="v"`, `title={{ x }}`). Read from
 the source, an attribute is written back as written until it is set.
 `copy()`, `without(names)` and `extend(other)` give or change Attributes
-without touching the other one. The classes of an element and its style
+without touching the other one; `add_class('a b', 'c')` adds classes to its
+class, once each. The classes of an element and its style
 add up, a macro's first (`(.a){class="b"}`: `class="a b"`; an empty one
 joins the others, `(.a){class=""}` is `class="a"`, and alone it is kept,
 in the page as in the `attrs` of a macro); one written inside a Jinja block

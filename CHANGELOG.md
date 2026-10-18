@@ -81,6 +81,12 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
   mistake gives one warning: an old closer `span::[-]` no longer also
   warns the element it was meant to close and the `::` after it. Every
   message reads `subject: problem; what to do (near 'source')`.
+- The command reads the standard input (`lhtml -`, alone); `--title`,
+  `--css` and `--js` give the document of `-w` its title, stylesheets and
+  scripts (and imply it); `--help` says the exit status, with examples.
+- `Attributes.add_class(*names)`. `load_macros` checks each definition, as
+  `registry_with_macros` did (a wrong name or field was accepted until the
+  tags were made); a file's error names its path.
 - A link without a label shows its URL (`link::https://a.org`: it was an
   empty `<a>`).
 - Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the

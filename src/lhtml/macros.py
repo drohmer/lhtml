@@ -181,7 +181,8 @@ def load_macros(source: Mapping | str | os.PathLike | Iterable | None) -> dict[s
     """Macro definitions from a dict, a YAML file name, or a list of them
     (later definitions replace earlier ones, and a definition null removes
     the macro). A dict or file holds the definitions, directly or as its
-    only key 'macros'."""
+    only key 'macros'. Each definition is checked (LHTMLMacroError, with the
+    path of its file)."""
     return {name: spec for name, spec in _load_macros(source).items() if spec is not None}
 
 
@@ -212,7 +213,25 @@ def _load_macros(source):
             problem = ' '.join(str(getattr(e, 'problem', None) or e).split())
             raise _file_error(source, f'invalid YAML in the macros file: {problem}',
                               *((mark.line + 1, mark.column + 1) if mark else ())) from e
-        source = data
+        try:
+            return _checked(_definitions(data))
+        except LHTMLMacroError as e:
+            if e.path is not None:
+                raise
+            raise _file_error(source, str(e), e.line, e.column) from e
+    return _checked(_definitions(source))
+
+
+def _checked(definitions):
+    """The definitions, each checked (None: it removes a macro)."""
+    for name, spec in definitions.items():
+        if spec is not None:
+            _check(name, spec)
+    return definitions
+
+
+def _definitions(source):
+    """The definitions of a dict, directly or under its only key 'macros'."""
     if not isinstance(source, dict):
         raise LHTMLMacroError(f'macros: expected a mapping, got {type(source).__name__}')
     if set(source) == {'macros'}:

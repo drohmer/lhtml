@@ -75,11 +75,13 @@ is for callers that extend LHTML in Python.
 lhtml input.l.html                    # Convert to stdout
 lhtml input.l.html -o output.html     # Convert to file
 lhtml input.l.html -w                 # Wrap in full HTML document (--wrap)
+lhtml input.l.html --title Notes --css style.css   # A document, its title and stylesheets (--js: scripts)
 lhtml input.l.html -b                 # Render source line breaks as <br> (--line-breaks)
 lhtml input.l.html -m macros.yaml     # Declare macros, custom :: tags (--macros)
 lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 lhtml a.l.html b.l.html -o build/ -v  # ... naming each file written (-q: no summary)
+cat input.l.html | lhtml -            # The standard input (alone; to stdout, or -o a file)
 python -m lhtml input.l.html          # Alternative invocation
 lhtml --version                       # Show the version (also lhtml.__version__)
 ```
@@ -92,7 +94,7 @@ would be written to the same file are refused before anything is written.
 - stdout holds the HTML only, stderr every message: `lhtml page.l.html > page.html` writes a clean file.
 - The destinations are checked before any file is written: an input missing, two inputs written to one file (or to names that differ by case only, or to two names of one file), an output that is an input (or a symbolic or hard link to one), an output under a file: an error each, and nothing is written.
 - Then each file is converted and written; one that fails does not stop the others. Writing files ends with a summary (`2 converted · 1 warning`).
-- Exit status: 0; 1 when a file is not converted or not written; 2 for a wrong use of the command.
+- Exit status: 0; 1 when a file is not converted or not written; 2 for a wrong use of the command (`lhtml --help` says so too).
 - Files are read and written as UTF-8 (a BOM is accepted).
 - LHTML reads no file but its input and the macro files given with `--macros`, and no front matter: its options come from the command line, or from the caller of `lhtml.run()`.
 
@@ -117,7 +119,7 @@ plain text; did you mean 'python'?`), and one mistake gives one warning (an
 old closer `span::[-]` does not also warn the element it was meant to
 close).
 
-With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`, no CSS or JS from the command line). From Python, `lhtml.wrap(html, title='My Page', css=['style.css'], js=['app.js'])` gives:
+With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`); `--title`, `--css` and `--js` (each repeatable but the title) give its title, stylesheets and scripts, and imply `-w`. From Python, `lhtml.wrap(html, title='My Page', css=['style.css'], js=['app.js'])` gives:
 
 ```html
 <!DOCTYPE html>

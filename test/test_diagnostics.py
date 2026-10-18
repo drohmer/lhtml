@@ -97,3 +97,44 @@ def test_without_stderr_the_usage_is_not_on_stdout(monkeypatch, capsys):
     with pytest.raises(SystemExit) as stop:
         cli.main()
     assert stop.value.code == 2 and capsys.readouterr().out == ''
+
+
+def _cli(monkeypatch, args, stdin=b''):
+    out, err = io.BytesIO(), io.StringIO()
+    monkeypatch.setattr('sys.stdin', io.TextIOWrapper(io.BytesIO(stdin), encoding='utf-8'))
+    monkeypatch.setattr('sys.stdout', io.TextIOWrapper(out, encoding='utf-8'))
+    monkeypatch.setattr('sys.stderr', err)
+    monkeypatch.setattr('sys.argv', ['lhtml', *args])
+    code = 0
+    try:
+        cli.main()
+    except SystemExit as stop:
+        code = stop.code
+    import sys
+    sys.stdout.flush()
+    return code, out.getvalue().decode('utf-8'), err.getvalue()
+
+
+def test_the_standard_input(monkeypatch, tmp_path):
+    assert _cli(monkeypatch, ['-'], '﻿**a**\n'.encode()) == (0, '<strong>a</strong>\n', '')
+    code, _, err = _cli(monkeypatch, ['-'], b'div:: x\n')
+    assert code == 0 and err.startswith('<stdin>:1:1: warning: div:: is never closed')
+    out = tmp_path / 'a.html'
+    assert _cli(monkeypatch, ['-', '-o', str(out)], b'= T\n')[0] == 0 and out.read_text() == '<h1>T</h1>\n\n'
+
+
+def test_the_standard_input_alone_and_to_a_file(monkeypatch, tmp_path):
+    (tmp_path / 'b.l.html').write_text('x')
+    assert _cli(monkeypatch, ['-', str(tmp_path / 'b.l.html'), '-o', str(tmp_path) + '/'])[0] == 2
+    assert _cli(monkeypatch, ['-', '-o', str(tmp_path) + '/'])[0] == 2
+
+
+def test_the_options_of_a_document_imply_it(monkeypatch):
+    code, out, _ = _cli(monkeypatch, ['-', '--title', 'Notes', '--css', 'a.css', '--css', 'b.css'], b'x\n')
+    assert code == 0 and out.startswith('<!DOCTYPE html>') and '<title>Notes</title>' in out
+    assert out.count('rel="stylesheet"') == 2
+
+
+def test_the_help_says_the_exit_status(monkeypatch):
+    code, out, _ = _cli(monkeypatch, ['--help'])
+    assert code == 0 and 'exit status:' in out and '- for the standard input' in out

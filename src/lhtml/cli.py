@@ -16,6 +16,8 @@ Usage:
     lhtml [-w] a.l.html b.l.html -o build/        # Multiple files → output directory
     lhtml -b file.l.html                          # Source line breaks rendered as <br>
     lhtml -m macros.yaml file.l.html              # Custom :: tags declared in a YAML file
+    lhtml - < file.l.html                         # The standard input → stdout (or -o file)
+    lhtml --title Notes --css style.css file.l.html   # A document (as -w), its title, stylesheets
     lhtml --version
     python -m lhtml [same options]
 
@@ -90,6 +92,8 @@ def check(jobs, read=()):
     problems, targets = [], {}
     inputs = {_identity(f) for f in [f for f, _ in jobs] + list(read) if os.path.isfile(f)}
     for f_in, out in jobs:
+        if f_in == STDIN:
+            continue
         if not os.path.exists(f_in):
             problems.append(Diagnostic(f_in, 'error', 'file not found'))
             continue
@@ -120,35 +124,67 @@ def check(jobs, read=()):
     return problems
 
 
+STDIN = '-'
+
+
 def read_source(filename):
-    """Read an LHTML source file (UTF-8, with or without BOM), normalized."""
+    """Read an LHTML source file (UTF-8, with or without BOM), normalized;
+    `-`: the standard input."""
+    if filename == STDIN:
+        return normalize_input(sys.stdin.buffer.read().decode('utf-8-sig'))
     with open(filename, 'r', encoding='utf-8-sig') as fid:
         return normalize_input(fid.read())
 
 
 def convert(source, macros, line_breaks, wrapped):
-    """(its HTML, its problems in the order of the file)."""
+    """(its HTML, its problems in the order of the file). `wrapped`: None,
+    or the arguments of lhtml.wrap (a document)."""
     document = parse(_ensure_trailing_newline(source), macros=macros, warn=False)
     html = render(document, line_breaks=line_breaks)
-    if wrapped:
-        html = wrap(html)
+    if wrapped is not None:
+        html = wrap(html, **wrapped)
     return _ensure_trailing_newline(html), document.problems
+
+
+EPILOG = """\
+The HTML goes to the standard output (one input, no -o), every message to
+the standard error: file:line:column: level: message.
+
+exit status:
+  0  every file converted (warnings included)
+  1  a file not converted or not written (nothing is written when an input
+     is missing or two inputs would share an output)
+  2  a wrong use of the command
+
+examples:
+  lhtml page.l.html > page.html
+  lhtml -w -b notes.l.html -o notes.html
+  lhtml src/*.l.html -o build/
+  cat page.l.html | lhtml -
+"""
 
 
 def main(argv=None):
     """CLI entry point."""
-    parser = argparse.ArgumentParser(prog='lhtml', description='Lightweight HTML')
-    parser.add_argument('input', nargs='+', help='Input file(s)')
+    parser = argparse.ArgumentParser(
+        prog='lhtml', description='Convert LHTML (HTML with :: tags) to HTML.', epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('input', nargs='+', help='input file(s); - for the standard input')
     parser.add_argument('-w', '--wrap', action='store_true',
-                        help='Wrap content in basic HTML template')
+                        help='wrap the HTML in a document (<!DOCTYPE html>, <head>, <body>)')
+    parser.add_argument('--title', help='the title of the document (implies -w)')
+    parser.add_argument('--css', action='append', metavar='URL',
+                        help='a stylesheet of the document (implies -w); may be repeated')
+    parser.add_argument('--js', action='append', metavar='URL',
+                        help='a script of the document (implies -w); may be repeated')
     parser.add_argument('-b', '--line-breaks', action='store_true',
-                        help='Render the line breaks of the source text as <br>')
+                        help='render the line breaks of the source as <br>')
     parser.add_argument('-m', '--macros', action='append', metavar='FILE',
-                        help='YAML file of macros (custom :: tags); may be repeated')
+                        help='a YAML file of macros (custom :: tags); may be repeated')
     parser.add_argument('-o', '--output',
-                        help='Output file (single input) or directory (multiple inputs)')
-    parser.add_argument('-q', '--quiet', action='store_true', help='No summary')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Name each file written')
+                        help='the output file (one input) or directory (several inputs, or a trailing /)')
+    parser.add_argument('-q', '--quiet', action='store_true', help='no summary')
+    parser.add_argument('-v', '--verbose', action='store_true', help='name each file written')
     parser.add_argument('-V', '--version', action='version', version=f'lhtml {__version__}')
     if sys.stderr is None:              # closed: argparse would write its usage to stdout
         sys.stderr = open(os.devnull, 'w')
@@ -156,6 +192,16 @@ def main(argv=None):
 
     if args.output == '':
         parser.error('-o: an empty name')
+    if STDIN in args.input and len(args.input) > 1:
+        parser.error('- (the standard input) must be the only input')
+    if STDIN in args.input and args.output is not None and (
+            os.path.isdir(args.output) or args.output.endswith(('/', os.sep))):
+        parser.error('-o must be a file for the standard input (it has no name to give the output)')
+    wrapped = None
+    if args.wrap or args.title is not None or args.css or args.js:
+        wrapped = {'css': args.css or (), 'js': args.js or ()}
+        if args.title is not None:
+            wrapped['title'] = args.title
     if (len(args.input) > 1 and args.output is not None
             and not os.path.isdir(args.output) and not args.output.endswith(('/', os.sep))):
         parser.error(f'-o must be a directory when several input files are given '
@@ -184,11 +230,11 @@ def main(argv=None):
 
     converted = failed = 0
     for f_in, out in jobs:
-        shown = shown_path(f_in)
+        shown = '<stdin>' if f_in == STDIN else shown_path(f_in)
         source = None
         try:
             source = read_source(f_in)
-            html, found = convert(source, macros, args.line_breaks, args.wrap)
+            html, found = convert(source, macros, args.line_breaks, wrapped)
         except (LHTMLError, OSError, UnicodeError) as e:
             for warning in getattr(e, 'problems', ()):     # those found before it
                 reporter.report(Diagnostic.of(shown, 'warning', warning), source)

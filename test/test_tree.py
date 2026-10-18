@@ -909,3 +909,22 @@ class TestThirdReview:
     def test_a_word_in_a_zone_is_no_closing_meant(self, zone):
         assert [str(p) for p in lhtml.parse('div::\n' + zone, warn=False).problems] == \
             ["div:: is never closed (near 'div::')"]
+
+
+class TestExtensionHelpers:
+
+    def test_add_class(self):
+        attributes = lhtml.Attributes.read('title="t" class="a b"')
+        assert attributes.add_class('b c', 'd').html() == ' title="t" class="a b c d"'
+        assert lhtml.Attributes({'id': 'x'}).add_class('n').html() == ' id="x" class="n"'
+        assert lhtml.Attributes.read('class="{{ k }} a"').add_class('a', 'z')['class'] == '{{ k }} a z'
+
+    def test_load_macros_checks_each_definition(self, tmp_path):
+        with pytest.raises(lhtml.LHTMLMacroError, match='invalid macro name'):
+            lhtml.load_macros({'1bad': {}})
+        path = tmp_path / 'macros.yaml'
+        path.write_text('box: {class: b, colour: red}\n')
+        with pytest.raises(lhtml.LHTMLMacroError, match='unknown field') as error:
+            lhtml.load_macros(str(path))
+        assert error.value.path == str(path)
+        assert lhtml.load_macros([{'a': {}}, {'a': None}]) == {}
