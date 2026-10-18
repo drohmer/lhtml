@@ -895,3 +895,17 @@ def test_attributes_of_many_names_stay_linear():
         return time.perf_counter() - start
     small, large = duration(2000), duration(8000)
     assert large < 8 * small + 0.02, (small, large)
+
+
+class TestThirdReview:
+
+    def test_a_statement_in_a_jinja_string_or_comment_opens_no_block(self):
+        assert lhtml.run('''div::(.base){title="{{ '{% if x %}' }}" class="extra"} x ::''') == \
+            '''<div class="base extra" title="{{ '{% if x %}' }}"> x </div>'''
+        assert lhtml.run('div::(.base){{# {% if x %} #} class="extra"} x ::') == \
+            '<div class="base extra" {# {% if x %} #}> x </div>'
+
+    @pytest.mark.parametrize('zone', ['code::[text]\nword::\ncode::[-]\n', '<!--\nword::\n-->\n'])
+    def test_a_word_in_a_zone_is_no_closing_meant(self, zone):
+        assert [str(p) for p in lhtml.parse('div::\n' + zone, warn=False).problems] == \
+            ["div:: is never closed (near 'div::')"]

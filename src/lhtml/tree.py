@@ -108,6 +108,7 @@ class _Parser:
         self.offsets = []           # the offset in the source of each origin (_offsets, _placed)
         self.open, self.closed_early, self.next_close = [], [], 0   # the :: elements (elements)
         self._glued = None          # the word:: that may be meant as a closing :: (_glued_close)
+        self.prepared = ''          # the source, its zones LHTML does not read hidden (parse)
 
     # -- positions --------------------------------------------------------
 
@@ -159,6 +160,7 @@ class _Parser:
         url_tags = tuple(sorted(name for name, tag in self.tags.items() if tag.url))
         prepared = process_prepare(self.source, self.stores, url_tags)
         self.offsets = self._offsets(prepared)
+        self.prepared = prepared
         text = _Text(prepared, list(range(len(prepared))))
         text = self.headings(text)
         text = self.lists(text)
@@ -499,7 +501,8 @@ class _Parser:
         """'; ... is no closing ::' when a word:: after the element was
         meant to close it (span::[c] text word::)."""
         if self._glued is None:     # read once: many elements may never be closed
-            self._glued = [(m.start(), m.group(1)) for m in _GLUED_CLOSE.finditer(self.source)
+            # in the text LHTML reads: a word:: in a code block or a comment is no closing meant
+            self._glued = [(self.offsets[m.start()], m.group(1)) for m in _GLUED_CLOSE.finditer(self.prepared)
                            if m.group(1) not in self.tags]
         k = bisect.bisect_left(self._glued, (node.span[0], ''))
         if k == len(self._glued):

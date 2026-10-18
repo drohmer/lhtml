@@ -67,9 +67,13 @@ _STATEMENT = re.compile(r'\{%[-+]?\s*(\w+)(.*?)[-+]?%\}', re.DOTALL)
 
 def _depths(text):
     """(position, depth after it) at the end of each Jinja statement that
-    opens or closes a block."""
+    opens or closes a block: the statements Jinja reads, not a {% in an
+    expression's string ({{ '{% if %}' }}) or in a comment."""
     changes, depth = [], 0
-    for m in _STATEMENT.finditer(text):
+    for zone in JINJA_RE.finditer(text):
+        m = _STATEMENT.fullmatch(zone.group(0))
+        if m is None:                   # an expression, a comment
+            continue
         word = m.group(1)
         if word.startswith('end'):
             depth = max(0, depth - 1)
@@ -77,7 +81,7 @@ def _depths(text):
             depth += 1
         else:
             continue
-        changes.append((m.end(), depth))
+        changes.append((zone.end(), depth))
     return changes
 
 
