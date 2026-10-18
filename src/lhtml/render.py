@@ -144,6 +144,11 @@ def _link(node):
     return isinstance(node, Element) and node.name.lower() == 'a'
 
 
+def _markup(piece):
+    """A piece in the label of a link: markup, no block, no line of its own."""
+    return _Piece(piece.html, 'markup')
+
+
 def _pieces(root, media, lexers):
     """The pieces of the HTML of a tree, in order, in one walk with its own
     stack (no recursion: a document may nest deeper than Python's
@@ -160,31 +165,21 @@ def _pieces(root, media, lexers):
             if closing is not None:
                 out.append(closing)
             continue
-        if links:                       # in a label: markup only
-            if isinstance(node, Text):
-                out.append(_Piece(node.value, 'markup'))
-            elif isinstance(node, _ZONES):
-                out.append(_Piece(_zone(node, lexers), 'markup'))
-            elif (html := _leaf(node, media)) is not None:
-                out.append(_Piece(html, 'markup'))
-            else:
-                opening, ending = _around(node)
-                out.append(_Piece(opening, 'markup'))
-                stack.append((iter(node.children), _Piece(ending, 'markup'), False))
-            continue
+        opens_link = False
         if isinstance(node, Text):
-            out.append(_Piece(node.value, 'text'))
+            piece = _Piece(node.value, 'text')
         elif isinstance(node, _ZONES):
-            out.append(_Piece(_zone(node, lexers), 'zone', _is_block(node), _preformatted(node), True))
+            piece = _Piece(_zone(node, lexers), 'zone', _is_block(node), _preformatted(node), True)
         elif (html := _leaf(node, media)) is not None:
-            out.append(_Piece(html, 'markup', _is_block(node), 0, True))
+            piece = _Piece(html, 'markup', _is_block(node), 0, True)
         else:
             opening, ending = _around(node)
-            block, link = _is_block(node), _link(node)
-            out.append(_Piece(opening, 'markup', block, _preformatted(node), False))
-            stack.append((iter(node.children),
-                          _Piece(ending, 'markup', block, _preformatted(node, True), False), link))
-            links += link
+            block, opens_link = _is_block(node), _link(node) and not links
+            piece = _Piece(opening, 'markup', block, _preformatted(node), False)
+            end = _Piece(ending, 'markup', block, _preformatted(node, True), False)
+            stack.append((iter(node.children), _markup(end) if links else end, opens_link))
+        out.append(_markup(piece) if links else piece)      # in a label: markup only
+        links += opens_link
     return out
 
 
