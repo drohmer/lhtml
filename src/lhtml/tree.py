@@ -112,7 +112,6 @@ class _Parser:
         self._glued = None          # the word:: that may be meant as a closing :: (_glued_close)
         self.prepared = ''          # the source, its zones LHTML does not read hidden (parse)
         self.read = []              # (span, Written) of each tag read where it is (lhtml.read_tags)
-        self._given = None          # the Written of the tag _open built last
 
     # -- positions --------------------------------------------------------
 
@@ -316,93 +315,22 @@ class _Parser:
         flat = text.chars               # the text, each node read by a stage one EVENT_CHAR
         containers, closes = self._containers(text)
         self.open, self.closed_early, self.next_close = [], [], 0
-        original = self.stores.original
         for m in TAG_MARKER.finditer(flat):
             if m.start() < prev:
                 continue
-            tag = tag_name_before(flat, m.start())
-            tag_start = m.start() - len(tag)
-            if tag_start < prev:
-                tag, tag_start = '', m.start()
-            # a :: glued to a word is no tag: decided before its element is read (a::a::a...: linear)
-            if not is_tag_boundary(flat, tag_start, tag, last_tag_end):
+            found = self._element(text, m, prev, last_tag_end)
+            if found is None:           # no element here
                 continue
-            line, column = self._place_of(text, m.start())
-            try:
-                element = extract_bracket_elements(flat, tag, tag_start, m.end())
-            except LHTMLParseError as e:
-                warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
-                      (line, column - len(tag) if column else None))
-                continue
-            element.tag, element.start = tag, tag_start
-            if not tag and not adjust_bare_tag(flat, m, element):
-                continue
-            element.line = line
-            element.column = column - len(tag) if column else None
-            element.context = self._quote(text, tag_start, element.end)
-            element.label = None
-            if element.stray:    # all of it is its text
-                if EVENT_CHAR in flat[m.end():element.end]:
-                    warn(f'{tag}:: has a closing bracket without its opening one: it is left as text '
-                          f"(near {element.context!r})", element)
-                    chars.append(text.chars[prev:element.end])
-                    origins.extend(text.origins[prev:element.end])
-                    prev = element.end
-                    continue
-            element.text = original(element.text)
-            element.clear_groups()              # each group as written, then joined
-            for kind, a, b in (() if element.stray else element.groups):     # stray: all of it is text
-                written = flat[a:b]
-                if EVENT_CHAR in written:       # across nodes (a bold, a list): its source
-                    written = self._source(text, a - 1, b + 1)[1:-1]
-                element.add_group(kind, original(written))
-            if tag in self.tags and attributes.unclosed(element.braces):
-                warn(f"{tag}:: a value of its {{...}} has no closing quote: it is written so "
-                      f"(near {element.context!r})", element)
-            element.inline = element.text.endswith('::')
-            if element.inline:
-                element.text = element.text[:-2]
-            self._end_containers(closes, tag_start)
-            crossing = self._crosses(text.origins[tag_start:element.end])
-            if crossing:                # its source as written, not the markup the stages wrote
-                span = self.source_of(text.origins[tag_start:element.end])
-                crossing = quote(self.source[span[0]:span[1]], 0, span[1] - span[0])
-            if tag == 'link' and not crossing and not element.stray and not in_label:     # its label: nodes
-                label = [(a, b) for kind, a, b in element.groups if kind == '[]']
-                element.label = self._label_nodes(text, label)
-                element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
-            what = self._decide(element, containers[tag_start], crossing) \
-                if not (in_label and (tag == 'link' or is_closing_tag(element))) else None
-            if in_label and what is not None and what[0] == 'open':     # it would hold the rest of the label
-                self.open.pop()
-                del self.parsed[what[1]]
-                warn(f'{tag}:: holds what follows: in the label of a link it is left as text '
-                     f'(near {element.context!r})', element)
-                what = None
-            if in_label and tag == 'link':
-                warn(f'link:: in the label of a link is left as text (near {element.context!r})', element)
+            element, as_text = found
+            what = None if as_text else self._accepted(element, text, containers, closes, in_label)
             if what is None:            # not a tag: its text stays, and is not read again
                 chars.append(text.chars[prev:element.end])
                 origins.extend(text.origins[prev:element.end])
                 prev = element.end
                 continue
-            chars.append(text.chars[prev:tag_start])
-            origins.extend(text.origins[prev:tag_start])
-            kind, node = what
-            span = self.source_of(text.origins[tag_start:element.end])
-            if kind == 'close':         # the element ends with its ::
-                if span:
-                    node.span = (node.span[0], span[1])
-            else:                       # the nodes its tag built, where it is
-                if span:
-                    self.read.append((span, self._given))
-                for built in (node if kind == 'leaf' else [node]):
-                    for n in built.walk():
-                        self.built.add(n)
-                        if n.line is None:
-                            n.span = span or n.span
-                            n.line, n.column = element.line, element.column
-            event = self.event(kind, node)
+            chars.append(text.chars[prev:element.start])
+            origins.extend(text.origins[prev:element.start])
+            event = self._record(what, element, text)
             chars.append(EVENT_CHAR)
             origins.append(-(event + 1))
             prev = last_tag_end = element.end
@@ -415,6 +343,99 @@ class _Parser:
         chars.append(text.chars[prev:])
         origins.extend(text.origins[prev:])
         return _Text(''.join(chars), origins)
+
+    def _element(self, text, m, prev, last_tag_end):
+        """The element of the :: matched by `m`, read from the text the
+        stages wrote, its groups and text as the source writes them: (its
+        TagElement, whether all of it stays text); None when no element is
+        there (a :: glued to a word, a bracket never closed: warned)."""
+        flat = text.chars
+        tag = tag_name_before(flat, m.start())
+        tag_start = m.start() - len(tag)
+        if tag_start < prev:
+            tag, tag_start = '', m.start()
+        # a :: glued to a word is no tag: decided before its element is read (a::a::a...: linear)
+        if not is_tag_boundary(flat, tag_start, tag, last_tag_end):
+            return None
+        line, column = self._place_of(text, m.start())
+        try:
+            element = extract_bracket_elements(flat, tag, tag_start, m.end())
+        except LHTMLParseError as e:
+            warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
+                  (line, column - len(tag) if column else None))
+            return None
+        if not tag and not adjust_bare_tag(flat, m, element):
+            return None
+        element.line = line
+        element.column = column - len(tag) if column else None
+        element.context = self._quote(text, tag_start, element.end)
+        element.label = None
+        if element.stray and EVENT_CHAR in flat[m.end():element.end]:     # all of it is its text
+            warn(f'{tag}:: has a closing bracket without its opening one: it is left as text '
+                  f"(near {element.context!r})", element)
+            return element, True
+        original = self.stores.original
+        element.text = original(element.text)
+        element.clear_groups()              # each group as written, then joined
+        for kind, a, b in (() if element.stray else element.groups):     # stray: all of it is text
+            written = flat[a:b]
+            if EVENT_CHAR in written:       # across nodes (a bold, a list): its source
+                written = self._source(text, a - 1, b + 1)[1:-1]
+            element.add_group(kind, original(written))
+        if tag in self.tags and attributes.unclosed(element.braces):
+            warn(f"{tag}:: a value of its {{...}} has no closing quote: it is written so "
+                  f"(near {element.context!r})", element)
+        element.inline = element.text.endswith('::')
+        if element.inline:
+            element.text = element.text[:-2]
+        return element, False
+
+    def _accepted(self, element, text, containers, closes, in_label):
+        """(event, node, written) of an element where it is (_decide); None
+        when it stays text: its text would cross the end of a heading, an
+        item, a bold..., or in a link's label, a link, a closing :: or an
+        element that would hold the rest of the label."""
+        tag, tag_start = element.tag, element.start
+        self._end_containers(closes, tag_start)
+        crossing = self._crosses(text.origins[tag_start:element.end])
+        if crossing:                # its source as written, not the markup the stages wrote
+            span = self.source_of(text.origins[tag_start:element.end])
+            crossing = quote(self.source[span[0]:span[1]], 0, span[1] - span[0])
+        if tag == 'link' and not crossing and not element.stray and not in_label:     # its label: nodes
+            label = [(a, b) for kind, a, b in element.groups if kind == '[]']
+            element.label = self._label_nodes(text, label)
+            element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
+        what = self._decide(element, containers[tag_start], crossing) \
+            if not (in_label and (tag == 'link' or is_closing_tag(element))) else None
+        if in_label and what is not None and what[0] == 'open':     # it would hold the rest of the label
+            self.open.pop()
+            del self.parsed[what[1]]
+            warn(f'{tag}:: holds what follows: in the label of a link it is left as text '
+                 f'(near {element.context!r})', element)
+            what = None
+        if in_label and tag == 'link':
+            warn(f'link:: in the label of a link is left as text (near {element.context!r})', element)
+        return what
+
+    def _record(self, what, element, text):
+        """The event of an element accepted, its nodes placed in the source
+        (a closing ::: the end of its element), the tag noted as read
+        (lhtml.read_tags)."""
+        kind, node, written = what
+        span = self.source_of(text.origins[element.start:element.end])
+        if kind == 'close':         # the element ends with its ::
+            if span:
+                node.span = (node.span[0], span[1])
+        else:                       # the nodes its tag built, where it is
+            if span:
+                self.read.append((span, written))
+            for built in (node if kind == 'leaf' else [node]):
+                for n in built.walk():
+                    self.built.add(n)
+                    if n.line is None:
+                        n.span = span or n.span
+                        n.line, n.column = element.line, element.column
+        return self.event(kind, node)
 
     def _source(self, text, start, end):
         """The source as written of the text between two positions."""
@@ -495,8 +516,8 @@ class _Parser:
         return self.place(self.offsets[origin])
 
     def _decide(self, element, container, crossing):
-        """(event, node) of an element; None when it is not a tag (its
-        source stays)."""
+        """(event, node, written) of an element (_open, _close_tag); None
+        when it is not a tag (its source stays)."""
         tag = element.tag
         if element.brackets == '-' and tag != 'link':
             refuse_explicit_closing(element)
@@ -523,13 +544,13 @@ class _Parser:
         return None
 
     def _open(self, element, tag, name, container):
-        """The nodes the tag builds: ('open', its element) when it holds
-        what follows, else ('leaf', [nodes])."""
+        """The nodes the tag builds, and the Written it is given: ('open',
+        its element, written) when it holds what follows, else ('leaf',
+        [nodes], written)."""
         given = Written(tag=element.tag, text=element.text, inline=element.inline,
                         parentheses=element.parentheses, brackets=element.brackets, braces=element.braces,
                         label=None if element.label is None else tuple(element.label),
                         line=element.line, column=element.column, context=element.context)
-        self._given = given
         holds = self._call(name, 'container', element, tag.holds, given)
         built = self._call(name, 'build', element, lambda w: node_list(tag.build(w)), given)
         if holds and (len(built) != 1 or not isinstance(built[0], Element)):
@@ -540,8 +561,8 @@ class _Parser:
         if holds:
             self.parsed[built[0]] = (element, container)
             self.open.append(built[0])
-            return 'open', built[0]
-        return 'leaf', built
+            return 'open', built[0], given
+        return 'leaf', built, given
 
     def _not_a_tag(self, element):
         """A name that is no tag stays as text (std::vector): warned when a
@@ -586,7 +607,7 @@ class _Parser:
         container; otherwise it closes nothing, and stays as text."""
         top = self.open[-1] if self.open else None
         if top is not None and self.parsed[top][1] is container:
-            return 'close', self.open.pop()
+            return 'close', self.open.pop(), None
         early = self.closed_early[-1] if self.closed_early else None
         start = lambda node: self.parsed[node][0].start
         if early is not None and (top is None or start(early) > start(top)):
