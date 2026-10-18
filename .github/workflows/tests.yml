@@ -38,12 +38,12 @@ jobs:
       - run: pip install build twine pytest
       - run: python -m build
       - run: twine check --strict dist/*
-      - name: The tests of the sdist, from its own files
-        run: |
-          mkdir sdist && tar xzf dist/*.tar.gz -C sdist --strip-components=1
-          cd sdist && python -m pytest -q -p no:cacheprovider test
-      - name: The wheel installed, its command and its types
+      - name: The wheel installed (with its dependencies), its command and its types
         run: |
           pip install dist/*.whl
           cd /tmp && echo '**a**' > a.l.html && lhtml a.l.html
           python -c "import importlib.resources as r; assert r.files('lhtml').joinpath('py.typed').is_file()"
+      - name: The tests of the sdist, from its own files
+        run: |
+          mkdir sdist && tar xzf dist/*.tar.gz -C sdist --strip-components=1
+          cd sdist && python -m pytest -q -p no:cacheprovider test
