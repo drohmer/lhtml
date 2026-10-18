@@ -166,10 +166,15 @@ class _Parser:
         text = self.lists(text)
         text = self.inline(text, BOLD, Strong)
         text = self.inline(text, ITALIC, Emphasis)
+        self._across_lines(text)
         text = self.elements(text)
         return self.build(text)
 
     def headings(self, text):
+        for m in _HEADING_GROUP.finditer(text.chars):      # =[style] T, ={id="x"} T: text
+            warn(f'{self._quote(text, m.start(), m.end())}: a heading takes (.class #id) only, it is '
+                 f'left as text', self._place_of(text, m.start()))
+
         def pieces(m):
             level = len(m.group(1))
             written = self.stores.original(m.group(2) or '').strip()
@@ -179,6 +184,31 @@ class _Parser:
             node.line, node.column = self.place(span[0])
             return [self.event('open', node), (m.start(3), m.end(3)), self.event('close', node)]
         return text.transform(HEADING, pieces)
+
+    def _across_lines(self, text):
+        """A ** or __ that opens on a line and one that closes on a later
+        line of the paragraph: a bold or an italic across lines, which is
+        none (each is within its line). Warned at the first, once."""
+        chars = text.chars
+        for mark in ('**', '__'):
+            opener, line, counted = None, 0, 0
+            for m in _MARK.finditer(chars):
+                line += chars.count('\n', counted, m.start())
+                counted = m.start()
+                if m.group(0) != mark:          # a blank line: the paragraph ends
+                    opener = None
+                    continue
+                before, after = chars[m.start() - 1:m.start()], chars[m.end():m.end() + 1]
+                closes = before.strip() and not after.strip(' \t\n.,;:!?)')
+                if opener is not None and closes:
+                    if line > opener[1]:
+                        kind = 'bold' if mark == '**' else 'italic'
+                        warn(f'{mark}...{mark} across lines is no {kind} (each is within its line): it is '
+                             f'left as text (near {self._quote(text, opener[0], opener[0] + 30)!r})',
+                             self._place_of(text, opener[0]))
+                    opener = None
+                elif (not before.strip() or before == '(') and after.strip():
+                    opener = (m.start(), line)
 
     def lists(self, text):
         """`* item` lines: a run of them is a list. A deeper level is a list
@@ -672,7 +702,11 @@ class _Parser:
         original = self.stores.original(m.group(0))
         if kind == 'C':
             block = CODE_BLOCK.match(original)
-            node = Code(language=code_language(block.group('header')), body=block.group('body'))
+            body = block.group('body')
+            last = body.rfind('\n') + 1
+            if last and not body[last:].strip():    # the indentation of an indented code::[-]
+                body = body[:last]
+            node = Code(language=code_language(block.group('header')), body=body)
         elif kind == 'I':
             node = InlineCode(text=original[1:-1])
         elif kind == 'R' and original.startswith(('\\(', '\\[')):
@@ -693,6 +727,10 @@ class _Parser:
 # ---------------------------------------------------------------------------
 
 # a word glued to a :: that ends its line or is followed by a space: a closing :: meant
+# a heading written with a style or attributes: no heading
+_HEADING_GROUP = re.compile(r'^=+[\[{].*', re.MULTILINE)
+# the marks of bold and italic left after their stages, and the blank lines between paragraphs
+_MARK = re.compile(r'\*\*|__|\n[ \t]*\n')
 _GLUED_CLOSE = re.compile(r'(?<![\w:-])([A-Za-z][\w-]*)::(?=[ \t]*(?:\n|$))', re.MULTILINE)
 
 _KINDS = {Heading: 'heading', List: 'list', Item: 'list item', Strong: 'bold', Emphasis: 'italic'}

@@ -928,3 +928,25 @@ class TestExtensionHelpers:
             lhtml.load_macros(str(path))
         assert error.value.path == str(path)
         assert lhtml.load_macros([{'a': {}}, {'a': None}]) == {}
+
+
+class TestAuthorsGroup4:
+
+    def said(self, text):
+        return [str(p) for p in lhtml.parse(text, warn=False).problems]
+
+    def test_a_heading_with_a_style_or_attributes(self):
+        assert self.said('=[color:red] Titre\nx') == [
+            '=[color:red] Titre: a heading takes (.class #id) only, it is left as text']
+        assert self.said('=(.c) Titre') == []
+
+    def test_bold_or_italic_across_lines(self):
+        assert self.said('**a\nb** c') == [
+            "**...** across lines is no bold (each is within its line): it is left as text (near '**a')"]
+        assert self.said('x __a\nb__ y')[0].startswith('__...__ across lines is no italic')
+        for fine in ('2**10 and 3**4\nz', '**a**\nb', '**a\n\nb**', 'my__var and __init__'):
+            assert self.said(fine) == [], fine
+
+    def test_an_indented_code_closer_adds_no_line(self):
+        assert lhtml.run('  code::[text]\n  x\n  code::[-]\n') == \
+            '  <div class="code"><pre><span></span>  x\n</pre></div>\n\n'

@@ -415,6 +415,21 @@ Output:
 <div style="height:1em;"></div>
 ```
 
+For spaces of several heights, a `gap` macro with a class per height keeps
+them in the stylesheet, one place to change them, instead of
+`::[height:25px;]::` written by hand on each page:
+
+```yaml
+macros:
+  gap: {class: gap, empty: true, variant: [s, m, l], default: m}
+```
+
+```css
+.gap-s { height: 0.5em; }  .gap-m { height: 1em; }  .gap-l { height: 2em; }
+```
+
+`gap::` is a medium space, `gap::l` a large one (`<div class="gap gap-l"></div>`).
+
 
 ### Verbatim
 
