@@ -365,7 +365,7 @@ class _Parser:
             if crossing:                # its source as written, not the markup the stages wrote
                 span = self.source_of(text.origins[tag_start:element.end])
                 crossing = quote(self.source[span[0]:span[1]], 0, span[1] - span[0])
-            if tag == 'link' and not crossing and not element.stray:     # its label: nodes
+            if tag == 'link' and not crossing and not element.stray and not in_label:     # its label: nodes
                 label = [(a, b) for kind, a, b in element.groups if kind == '[]']
                 element.label = self._label_nodes(text, label)
                 element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
@@ -771,12 +771,12 @@ def _tag_error(label, what, error, element):
                       f"(near {element.context or label!r})", element.line, element.column)
 
 
-def _registry(tags, macros):
+def registry(tags, macros):
     """The built-in TAGS, the macros, then the tags given (which win)."""
     if macros is not None and not isinstance(macros, Mapping):
         raise TypeError(f'macros: expected a mapping of definitions, got {type(macros).__name__} '
                         f'(the macros of files: lhtml.load_macros(path or [paths]))')
-    registry = registry_with_macros(macros) if macros else dict(TAGS)
+    tags_of_run = registry_with_macros(macros) if macros else dict(TAGS)
     for name, tag in (tags or {}).items():
         if not isinstance(tag, Tag):
             raise TypeError(f'tag {name!r}: expected an lhtml.Tag(build, container, url), '
@@ -785,8 +785,8 @@ def _registry(tags, macros):
             raise ValueError(f'invalid tag name {name!r} (a letter, then letters, digits, _ or -)')
         if name in NOT_ELEMENTS:
             raise ValueError(f'{name}:: is LHTML syntax, not an element: it cannot be a tag')
-        registry[name] = tag
-    return registry
+        tags_of_run[name] = tag
+    return tags_of_run
 
 
 def _given_offsets(given, normalized):
@@ -813,12 +813,12 @@ def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
     LHTMLError raised holds those found before it in its `problems`. Each
     parse collects its own (threads and tasks included): no global state
     is changed."""
-    registry = _registry(tags, macros)
+    tags_of_run = registry(tags, macros)
     lexers = checked_lexers(lexers)
     collected = []
     token = PROBLEMS.set(collected)
     try:
-        parser = _Parser(text, registry, lexers)
+        parser = _Parser(text, tags_of_run, lexers)
         document = parser.parse()
     except LHTMLError as error:
         error.problems = _in_order(collected)

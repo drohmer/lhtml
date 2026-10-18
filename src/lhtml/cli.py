@@ -92,18 +92,16 @@ def check(jobs, read=()):
     problems, targets = [], {}
     inputs = {_identity(f) for f in [f for f, _ in jobs] + list(read) if os.path.isfile(f)}
     for f_in, out in jobs:
-        if f_in == STDIN:
-            continue
-        if not os.path.exists(f_in):
+        if f_in != STDIN and not os.path.exists(f_in):
             problems.append(Diagnostic(f_in, 'error', 'file not found'))
             continue
-        if not os.path.isfile(f_in):
+        if f_in != STDIN and not os.path.isfile(f_in):
             problems.append(Diagnostic(f_in, 'error', 'not a file'))
             continue
         if out is None:
             continue
         if os.path.exists(out) and _identity(out) in inputs:
-            problems.append(Diagnostic(f_in, 'error', f'its output would overwrite the input file {out}'))
+            problems.append(Diagnostic(f_in, 'error', f'its output would overwrite {out}, a file the run reads'))
             continue
         if os.path.isdir(out):
             problems.append(Diagnostic(f_in, 'error', f'its output {out} is a directory'))
@@ -223,7 +221,8 @@ def main(argv=None):
     problems = check(jobs, args.macros or ())
     if problems:
         for problem in problems:
-            reporter.report(Diagnostic(shown_path(problem.path), problem.level, problem.message))
+            shown = '<stdin>' if problem.path == STDIN else shown_path(problem.path)
+            reporter.report(Diagnostic(shown, problem.level, problem.message))
         if any(out is not None for _, out in jobs):
             reporter.write(reporter.paint('lhtml: nothing written', 'error'))
         sys.exit(1)

@@ -87,9 +87,11 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - `Attributes.add_class(*names)`. `load_macros` checks each definition, as
   `registry_with_macros` did (a wrong name or field was accepted until the
   tags were made); a file's error names its path.
-- `lhtml.zones(text)` and `lhtml.read_tag(text, start)`: a source as LHTML
-  reads it, for the tools around it (the zones it leaves as they are, what
-  a tag writes), in place of `lhtml.patterns` and `extract_bracket_elements`.
+- `lhtml.zones(text)`, `lhtml.read_tags(text)` and `lhtml.read_tag(text,
+  start)`: a source as LHTML reads it, for the tools around it (the zones
+  it leaves as they are; each tag, where it is and what it writes, read by
+  parse itself), in place of `lhtml.patterns` and
+  `extract_bracket_elements`.
 - The label of a link reads the elements that hold nothing:
   `link::page.html[img::thumb.png]` is an image as a link (it was the text
   `img::thumb.png`; raw HTML `<a>` was written around `img::` by hand). An

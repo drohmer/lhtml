@@ -6,6 +6,7 @@ with head, meta, CSS/JS includes.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from html import escape
 
@@ -30,9 +31,9 @@ HTML_TEMPLATE = """\
 
 
 def _names(value, option):
-    if isinstance(value, str):
+    if isinstance(value, (str, os.PathLike)):
         return [value]
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, Iterable):
         return list(value)
     raise TypeError(f'{option}: expected a file name or a list of them, got {type(value).__name__}')
 

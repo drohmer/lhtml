@@ -150,8 +150,10 @@ class TagElement:
         self.parentheses = self.brackets = self.braces = ''
 
 
-def extract_bracket_elements(text, index_start):
+def extract_bracket_elements(text, index_start, after_text=False):
     """The element whose `::` ends at `index_start`, a TagElement.
+    `after_text`: read after text (a URL read already): a group then ends
+    the word, as a group after text does.
 
     A closing bracket without its opening one makes the whole element text
     (its groups are still listed, so that their content stays literal).
@@ -165,7 +167,7 @@ def extract_bracket_elements(text, index_start):
         element.start = tag_start
 
     word, groups = [], []
-    seen_text = group_after_text = stray = False
+    seen_text, group_after_text, stray = after_text, False, False
     i = index_start
     while i < len(text):
         ch = text[i]

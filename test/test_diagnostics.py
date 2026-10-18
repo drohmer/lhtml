@@ -138,3 +138,11 @@ def test_the_options_of_a_document_imply_it(monkeypatch):
 def test_the_help_says_the_exit_status(monkeypatch):
     code, out, _ = _cli(monkeypatch, ['--help'])
     assert code == 0 and 'exit status:' in out and '- for the standard input' in out
+
+
+def test_the_standard_input_cannot_overwrite_a_macros_file(monkeypatch, tmp_path):
+    macros = tmp_path / 'm.yaml'
+    macros.write_text('box: {class: b}\n')
+    code, _, err = _cli(monkeypatch, ['-', '-m', str(macros), '-o', str(macros)], b'x\n')
+    assert code == 1 and 'a file the run reads' in err and err.startswith('<stdin>: error:')
+    assert macros.read_text() == 'box: {class: b}\n'

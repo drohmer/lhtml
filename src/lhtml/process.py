@@ -87,7 +87,7 @@ def code_language(header):
 # Protected zones (raw HTML, inline code, URLs, math)
 # ---------------------------------------------------------------------------
 
-def _url_and_closing_marks(url, marks):
+def url_and_closing_marks(url, marks):
     """A URL ends before a final `**` or `__` that closes a bold or an
     italic opened before its tag on its line (`**img::a.png**`); otherwise
     they are part of it (`link::...#object.__init__`). `marks`: the number
@@ -103,15 +103,16 @@ def _url_and_closing_marks(url, marks):
             return url, after
 
 
-class _MarksOnLine:
+class MarksOnLine:
     """The line of a place, and the number of `**` and of `__` on its line
     before it, counted as the text is read left to right: each character
     once (a long line of URLs, many code blocks: linear)."""
 
-    def __init__(self, text):
-        self.text, self.checked, self.at = text, 0, {'**': 0, '__': 0}
+    def __init__(self, text, start=0, line=1):
+        """Read from `start`, the start of a line, the line `line`."""
+        self.text, self.checked, self.at = text, start, {'**': start, '__': start}
         self.counts = {'**': 0, '__': 0}
-        self.line, self.line_start = 1, 0
+        self.line, self.line_start = line, start
 
     def _read(self, position):
         """Up to `position`: its line and where it starts."""
@@ -150,7 +151,7 @@ def process_protect(text, stores, url_tags, lexers=None):
     Text between HTML tags is still processed. Jinja expressions,
     statements and comments are opaque.
     """
-    marks = _MarksOnLine(text)
+    marks = MarksOnLine(text)
 
     def _protect(m):
         if m.group('code') is not None:
@@ -165,7 +166,7 @@ def process_protect(text, stores, url_tags, lexers=None):
         if m.group('url') is not None:
             url = m.group('url')
             if url.endswith(('**', '__')):      # the marks before it on its line, counted only then
-                url, after = _url_and_closing_marks(url, marks.before(m.start()))
+                url, after = url_and_closing_marks(url, marks.before(m.start()))
             else:
                 after = ''
             return m.group('urltag') + stores.add('U', url) + after

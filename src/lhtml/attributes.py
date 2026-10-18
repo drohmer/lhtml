@@ -62,6 +62,8 @@ def _masked(text):
 # The Jinja statements that open a block (closed by its end...): an
 # attribute written in one depends on it
 _BLOCKS = {'if', 'for', 'block', 'macro', 'call', 'filter', 'with', 'set', 'autoescape', 'raw', 'trans'}
+# the blocks whose attributes join the others with their block (_blocks)
+_FOLDED = ('if', 'for')
 _STATEMENT = re.compile(r'\{%[-+]?\s*(\w+)(.*?)[-+]?%\}', re.DOTALL)
 
 
@@ -251,8 +253,8 @@ class Attributes(MutableMapping):
             return
         # set, it is given always: the others go, those of Jinja blocks too
         found = next((entry for entry in self._items if entry.name == name and not entry.nested), None)
-        dropped = self._in_blocks(name, self._blocks(name))
-        dropped.update(id(e) for e in self._items if e.name == name and e is not found)
+        dropped = self._in_blocks(name, self._blocks(name))     # those of {% if %} and {% for %}
+        dropped.update(id(e) for e in self._items if e.name == name and e is not found and not e.nested)
         if found is not None:
             found.value, found.written = value, None    # in its place, written once
         if dropped:
@@ -330,21 +332,23 @@ class Attributes(MutableMapping):
         return self
 
     def _blocks(self, name):
-        """The Jinja blocks written among them (from an opening statement
-        to its closing one) that hold an attribute `name`: their items."""
+        """The {% if %} and {% for %} blocks written among them (from the
+        opening statement to its closing one) that hold an attribute `name`:
+        their items. Not the others: what a {% set %}, a {% macro %} or a
+        {% block %} holds is not written there as it is."""
         blocks, block, depth = [], None, 0
         for entry in self._items:
             kind = _statement(entry.written) if entry.name is None else None
             if kind == 'open':
                 if depth == 0:
-                    block = []
+                    block = [] if _STATEMENT.fullmatch(entry.written).group(1) in _FOLDED else None
                 depth += 1
             if block is not None:
                 block.append(entry)
             if kind == 'close' and depth:
                 depth -= 1
                 if depth == 0:
-                    if any(e.name == name for e in block):
+                    if block is not None and any(e.name == name for e in block):
                         blocks.append(block)
                     block = None
         return blocks
@@ -360,12 +364,13 @@ class Attributes(MutableMapping):
         parts = []
         for block in blocks:
             folded, value_before = [], False
+            loop = _STATEMENT.fullmatch(block[0].written).group(1) == 'for'    # each turn: its joiner
             for entry in block:
                 if entry.name is None and _statement(entry.written):
                     folded.append(entry.written)
                     value_before = False
                 elif entry.name == name and entry.value:
-                    folded.append((joiner if value_before else '') + entry.value)
+                    folded.append((joiner if value_before or loop else '') + entry.value)
                     value_before = True
             parts.append(''.join(folded))
         return joiner.join(parts), self._without_entries(self._in_blocks(name, blocks))

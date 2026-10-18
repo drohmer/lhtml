@@ -1075,8 +1075,76 @@ class TestReadingASource:
         assert [z.kind for z in lhtml.zones('= T\n<b>', start=4)] == ['tag']
 
     def test_read_tag(self):
-        written = lhtml.read_tag('x includeadv::{root: a, file: b} y', 2)
-        assert (written.tag, written.braces, written.text) == ('includeadv', 'root: a, file: b', '')
-        written = lhtml.read_tag('img::{{ base }}/a.png(.w)[s]', 0)
+        found = lhtml.read_tag('x includeadv::{root: a, file: b} y', 2)
+        assert (found.start, found.end) == (2, 32)
+        assert (found.written.tag, found.written.braces, found.written.line, found.written.column) == \
+            ('includeadv', 'root: a, file: b', 1, 3)
+        written = lhtml.read_tag('img::{{ base }}/a.png(.w)[s]', 0).written
         assert (written.text, written.parentheses, written.brackets) == ('{{ base }}/a.png', '.w', 's')
-        assert lhtml.read_tag('span::x::', 0).inline and lhtml.read_tag('no tag', 0) is None
+        assert lhtml.read_tag('span::x::', 0).written.inline and lhtml.read_tag('no tag', 0) is None
+
+    def test_the_url_ends_where_parse_ends_it(self):
+        for text in ('**img::a.png**', '__**img::a.png**__'):
+            assert [z.value for z in lhtml.zones(text) if z.kind == 'url'] == ['a.png']
+            assert [f.written.text for f in lhtml.read_tags(text)] == ['a.png']
+        found = list(lhtml.read_tags('(link::https://e.org/S_t[screen tearing]).'))
+        assert [(f.written.text, f.written.brackets) for f in found] == [('https://e.org/S_t', 'screen tearing')]
+
+    def test_read_tags_reads_as_parse(self):
+        text = ('a `img::no.png` <!-- img::c.png --> **img::z.png** std::vector cgp::mesh\n'
+                'code::[t]\nimg::q.png\ncode::[-]\nlink::u[img::in.png] x __video::v.mp4 y__\n')
+        found = [(f.written.tag, f.written.text, text[f.start:f.end]) for f in lhtml.read_tags(text)]
+        assert found == [('img', 'z.png', 'img::z.png'), ('link', 'u', 'link::u[img::in.png]'),
+                         ('img', 'in.png', 'img::in.png'), ('video', 'v.mp4', 'video::v.mp4')]
+        macros = {'demo': {'url': 'src', 'empty': True}}
+        assert [f.written.tag for f in lhtml.read_tags('demo::a.html', macros=macros)] == ['demo']
+        assert list(lhtml.read_tags('demo::a.html')) == []          # no tag of the run: text
+
+    def test_read_tags_is_linear(self):
+        import time
+
+        def duration(n):
+            text = ' '.join('img::a.png(.c)' for _ in range(n))
+            start = time.perf_counter()
+            assert len(list(lhtml.read_tags(text))) == n
+            return time.perf_counter() - start
+        small, large = duration(500), duration(2000)
+        assert large < 8 * small + 0.02, (small, large)
+
+
+
+class TestFourthReview:
+
+    def test_wrap_takes_any_iterable(self):
+        assert lhtml.wrap('x', css=(name for name in ['a.css', 'b.css'])).count('rel="stylesheet"') == 2
+
+    def test_links_nested_deeply_need_no_recursion(self):
+        html, _ = quiet(lhtml.run, 'link::a[' * 3000 + 'x' + ']' * 3000)
+        assert html.startswith('<a href="a">link::a[')
+
+    def test_only_if_and_for_blocks_join_a_class(self):
+        assert lhtml.run('span::(.base){{% for c in cs %}class="{{ c }}"{% endfor %}} t ::') == \
+            '<span class="base {% for c in cs %} {{ c }}{% endfor %}"> t </span>'
+        assert lhtml.run('span::(.base){{% set x %}class="z"{% endset %}} t ::') == \
+            '<span class="base" {% set x %}class="z"{% endset %}> t </span>'
+        attributes = lhtml.Attributes.read('title="o" {% set x %}title="s"{% endset %}')
+        attributes['title'] = 'T'
+        assert attributes.html() == ' title="T" {% set x %}title="s"{% endset %}'
+
+    def test_read_tag_reads_the_syntax_anywhere(self):
+        text = 'code::[c++]\nincludeadv::{filepath:"f.hpp"}\ncode::[-]\n'
+        found = lhtml.read_tag(text, text.index('includeadv'))
+        assert (found.written.braces, found.written.line) == ('filepath:"f.hpp"', 2)
+        assert list(lhtml.read_tags(text, {'includeadv'})) == []            # parse: in a code block
+
+    def test_a_page_read_tag_by_tag_stays_linear(self):
+        import time
+
+        def duration(n):
+            text = '\n'.join('img::a.png(.c)' for _ in range(n))
+            start = time.perf_counter()
+            for k in range(n):
+                lhtml.read_tag(text, k * 15)
+            return time.perf_counter() - start
+        small, large = duration(500), duration(2000)
+        assert large < 8 * small + 0.02, (small, large)

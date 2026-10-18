@@ -34,7 +34,7 @@ from .nodes import (
     Written,
 )
 from .render import render
-from .source import URL_TAGS, Zone, read_tag, zones
+from .source import URL_TAGS, SourceTag, Zone, read_tag, read_tags, zones
 from .tree import parse
 from .wrap_html import wrap
 
@@ -50,7 +50,7 @@ __all__ = [
     'describe_macro', 'load_macros', 'registry_with_macros', 'Attributes',
     'Node', 'Document', 'Text', 'Heading', 'List', 'Item', 'Strong', 'Emphasis', 'Element', 'Video',
     'Code', 'InlineCode', 'Math', 'Raw', 'Written',
-    'zones', 'Zone', 'read_tag', 'URL_TAGS',
+    'zones', 'Zone', 'read_tag', 'read_tags', 'SourceTag', 'URL_TAGS',
     # Errors
     'LHTMLError', 'LHTMLParseError',
     'LHTMLWarning', 'LHTMLMacroError',

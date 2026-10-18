@@ -154,15 +154,33 @@ for zone in lhtml.zones(text):          # in order, one left-to-right pass
     text[zone.start:zone.end]
     zone.tag, zone.value                # a url zone: img, a.png
 
-written = lhtml.read_tag(text, start)   # the Written of the name:: tag at `start`
-written.braces                          # its {...} as written
+for found in lhtml.read_tags(text, macros=macros):     # the tags of the run, in order
+    found.start, found.end, found.written              # text[start:end], what it writes
+found = lhtml.read_tag(text, start)                    # the tag written at `start`, as syntax
+found.written.braces                                   # its {...} as written
 ```
 
-`zones` takes `url_tags` (the tags whose text is a URL: the built-in ones,
-`lhtml.URL_TAGS`; add the macros with `url:`), `code` (the pattern of the
-code blocks of another markup, the fenced blocks of Markdown, in place of
-`code::[...]`) and `start`. `read_tag` reads a URL whole
-(`img::{{ base }}/a.png`).
+`zones` reads with the patterns of `parse`, and ends a URL where it does
+(`**img::a.png**`: `a.png`). It takes `url_tags` (the tags whose text is
+a URL: the built-in ones, `lhtml.URL_TAGS`; add the macros with `url:`),
+`code` (the pattern of the code blocks of another markup, the fenced
+blocks of Markdown, in place of `code::[...]`) and `start`.
+
+`read_tags` is `parse`: each tag asked keeps what it is given, so a tool
+agrees with LHTML on every tag (none in a code block, a comment, inline
+code or a URL; a URL whole, `img::{{ base }}/a.png`, and ending before the
+`**` that closes a bold; the tags in a link's label). It reads the tags of
+the run (the built-in ones, the `macros`), or those of `names`, any name
+(a tag of the tool: `includeadv`). Each `SourceTag(start, end, written)`:
+`written` as a `Tag` is given it (tag, text, groups as written, line,
+column, context; a link's label), the tag at `text[start:end]` (a tag
+that holds what follows: its opening).
+
+`read_tag` reads the syntax written at a place, any name, wherever it is
+(in a code block too: a plugin that replaces a tag of its own before LHTML
+reads the page), with the URL rules of `parse`; no label (its nodes are
+`parse`'s). A page read tag by tag stays linear (its brackets and lines are
+read once per text).
 
 ### Custom Code Lexers
 
