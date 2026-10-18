@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [3.0.0] - Unreleased
 
+In short: LHTML reads no file but its input; a text is parsed into a
+document tree that `render` writes, and that a caller may read and change;
+tags written in Python build nodes; the options are named arguments; the
+problems carry their line and column, collected per parse
+(`document.problems`); the syntax LHTML 2 deprecated is gone. From LHTML 2:
+[docs/migration.md](docs/migration.md).
+
 LHTML reads no file but its input and the macro files it is given: a
 caller that reads its sources itself (a site generator) knows everything a
 page depends on.
@@ -60,6 +67,15 @@ The API is `run`, `parse`, `render`, `wrap`, `Tag`, `TAGS`, `Attributes`,
 the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - `media`, an argument of `lhtml.run()`: a callable,
   `media(src) -> [(url, mime type)]`, listing the sources of a video. An
   empty list, or no resolver, keeps the source as written.
@@ -223,6 +239,15 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 ## [2.5.0] - 2026-10-04
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - Macros: custom `::` tags declared in YAML or a dict (`tag`, `class`,
   `style`, `attrs`, `empty`, `url`, `variant`, `default`, `doc`), e.g.
   `box::(.good) ... ::`, `gap::l`, `demo::url`. They are declared with
@@ -238,6 +263,15 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 ## [2.4.1] - 2026-10-03
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - `lhtml --version` (`-V`) and `lhtml.__version__`. The version is defined
   once, in `lhtml/__init__.py`, and read from there by `pyproject.toml`.
 
@@ -254,6 +288,15 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 ## [2.4.0] - 2026-10-03
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments
   (`{# ... #}`) pass through unchanged, including quoted strings that contain
   the closing delimiter.
@@ -295,6 +338,15 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 ## [2.3.0] - 2026-10-03
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - Line breaks option (`-b` / `--line-breaks`, `line-breaks: true` in the
   front matter or `meta['line-breaks']`): source line breaks are rendered as
   `<br>`, except around block elements and inside code, verbatim, scripts,
@@ -330,17 +382,44 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 ## [2.2.0] - 2026-04-10
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - Explicit closing tags: `::div[-]`, `::span[-]`, etc.
 - Improved error reporting.
 
 ## [2.1.0] - 2026-04-10
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - The CLI accepts several input files.
 
 ## [2.0.1] - 2026-04-10
 
 ### Added
+- `parse(text, warn=False)` and `document.problems`: the problems of a text
+  without the warnings module. Each parse collects its own (in threads
+  too: no global state is changed, where `warnings.catch_warnings` was);
+  an `LHTMLError` holds those found before it (`problems`) and its `path`.
+  A warning emitted names the place of the caller, not of LHTML.
+- `lhtml.highlight(code, language)`: the HTML of a code block.
+- Type hints on the API, and `py.typed`; the API is `lhtml.__all__`, the
+  modules inside the package may change in any release (README,
+  Stability).
 - GitHub URLs on the PyPI page.
 
 ## [2.0.0] - 2026-04-10

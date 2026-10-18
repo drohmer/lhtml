@@ -1,18 +1,22 @@
 """The HTML of a document tree, from the fields of its nodes alone
 (nodes.py): render(document, line_breaks=False, media=None)."""
 
-from collections.abc import Mapping
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from html import escape
 import re
 
 from .attributes import Attributes, quoted
-from .code import export_html_code
-from .nodes import Code, Element, Emphasis, Heading, InlineCode, Item, List, Math, Raw, Strong, Text, Video
+from .code import highlight
+from .nodes import Node, Code, Element, Emphasis, Heading, InlineCode, Item, List, Math, Raw, Strong, Text, Video
 from .patterns import BLOCK_RAW, BLOCK_TAGS, JINJA_LINE, LEADING_TAG, PREFORMATTED_TAG
 from .process import escape_inline_code, render_inline_code
 
 _ZONES = (Code, InlineCode, Math, Raw)
+# media(src) -> [(url, mime type)]: the sources of a video
+Media = Callable[[str], Iterable[tuple[str, str]]]
 _PREFORMATTED = ('pre', 'textarea')     # their line breaks are visible already
 
 
@@ -48,7 +52,7 @@ def _video(node, media):
 
 def _zone(node):
     if isinstance(node, Code):
-        return export_html_code(node.body, node.language, warn=False)     # warned by parse
+        return highlight(node.body, node.language)     # an unknown language: warned by parse
     if isinstance(node, InlineCode):
         return render_inline_code(escape_inline_code(node.text))
     return node.text                    # Math, Raw
@@ -228,7 +232,7 @@ def _with_line_breaks(tokens):
     return '\n'.join(texts)
 
 
-def render(document, *, line_breaks=False, media=None):
+def render(document: Node, *, line_breaks: bool = False, media: Media | None = None) -> str:
     """The HTML of a document tree (or of any node). `line_breaks`: the line
     breaks of the source are rendered as <br>; `media`: the resolver of the
     sources of a video, media(src) -> [(url, mime type)] (none: the source

@@ -10,7 +10,7 @@ made by the caller, or by a tag, may have no place (line None).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field, fields
 
 from .attributes import Attributes
@@ -45,7 +45,7 @@ class Node:
                  if f.repr and f.name != 'children']
         return f"{self.kind}({', '.join(shown)}, children=[{len(self.children)}])"
 
-    def walk(self):
+    def walk(self) -> Iterator[Node]:
         """The node and its descendants, in document order (no recursion:
         a document may nest deeper than Python's recursion limit)."""
         stack = [self]

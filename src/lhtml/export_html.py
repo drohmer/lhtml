@@ -4,13 +4,15 @@ A tag builds the nodes of an element from what the source wrote, a
 Written (nodes.py): its name, its groups as written, the word after them.
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Callable
+from collections.abc import Callable
 
 from .attributes import Attributes
-from .nodes import Element, Node, Text, Video
+from .nodes import Element, Node, Text, Video, Written
 from .patterns import JINJA_RE
 
 
@@ -111,11 +113,11 @@ class Tag:
     follows until its `::`. `container`: a bool, or a function of the
     Written; written `name::text::`, it holds nothing either way. `url`:
     its text is a URL, kept as written (img::a__b.png)."""
-    build: Callable
-    container: bool | Callable = False
+    build: Callable[[Written], Node | list[Node]]
+    container: bool | Callable[[Written], bool] = False
     url: bool = False
 
-    def holds(self, written):
+    def holds(self, written: Written) -> bool:
         if written.inline:
             return False
         return self.container(written) if callable(self.container) else bool(self.container)

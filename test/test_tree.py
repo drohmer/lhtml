@@ -784,3 +784,36 @@ def test_attributes_in_many_jinja_blocks_stay_linear():
         return time.perf_counter() - start
     small, large = duration(1000), duration(4000)
     assert large < 8 * small + 0.02, (small, large)
+
+
+class TestProblems:
+    """Each parse collects its own problems: no global state."""
+
+    def test_problems_without_warnings(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            document = lhtml.parse('div:: x', warn=False)
+        assert caught == [] and [p.line for p in document.problems] == [1]
+
+    def test_a_warning_is_where_the_caller_called(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            lhtml.run('div:: x')
+        assert [w.filename for w in caught] == [__file__]
+
+    def test_an_error_holds_the_problems_before_it(self):
+        macros = {'gap': {'class': 'gap', 'variant': ['s'], 'empty': True}}
+        with pytest.raises(lhtml.LHTMLError) as error:
+            lhtml.parse('gap::zz\nbad::\n', macros=macros, tags={'bad': lhtml.Tag(lambda written: 1 / 0)},
+                        warn=False)
+        assert [p.line for p in error.value.problems] == [1]
+
+    def test_parses_in_threads_keep_their_own(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def problems(k):
+            text = 'div:: x\n' * (k % 3) + 'ok\n'
+            return k, len(lhtml.parse(text, warn=False).problems)
+        with ThreadPoolExecutor(8) as pool:
+            results = list(pool.map(problems, range(2000)))
+        assert all(count == k % 3 for k, count in results)

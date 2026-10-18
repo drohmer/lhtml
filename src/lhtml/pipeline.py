@@ -6,11 +6,17 @@ is a leaf of the tree, never read as LHTML; headings, lists, bold, italic
 and the :: elements are its nodes.
 """
 
-from .render import render
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from .export_html import Tag
+from .render import Media, render
 from .tree import parse
 
 
-def run(text, *, macros=None, tags=None, line_breaks=False, media=None):
+def run(text: str, *, macros: Mapping[str, Mapping | None] | None = None, tags: Mapping[str, Tag] | None = None,
+        line_breaks: bool = False, media: Media | None = None) -> str:
     """Convert LHTML text to HTML (the content of a page: lhtml.wrap makes a
     document of it).
 
@@ -23,6 +29,7 @@ def run(text, *, macros=None, tags=None, line_breaks=False, media=None):
 
     LHTML reads no file. The problems found are LHTMLWarning warnings and
     LHTMLError errors, with the `line` and `column` in `text` where they
-    are (None if not known).
+    are (None if not known); to collect them without the warnings module,
+    parse(text, warn=False) and render: document.problems.
     """
     return render(parse(text, macros=macros, tags=tags), line_breaks=line_breaks, media=media)

@@ -137,7 +137,7 @@ Every node but the document has its place: `span`, the offsets of its source in 
 given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,
 `column` of its start (1-based); a node a tag built has the place of its
 element, a node made by the caller none. `document.problems` holds the
-warnings, in source order. The nodes nest, nothing crosses (see the `::`
+problems, in source order (`parse(text, warn=False)`: kept, not warned). The nodes nest, nothing crosses (see the `::`
 elements in the [README](../README.md)). The tree is walked and rendered
 without recursion: a document may nest deeper than Python's recursion
 limit, whatever its nodes.

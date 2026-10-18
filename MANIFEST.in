@@ -1,0 +1,5 @@
+# The sdist: the package, its tests (runnable: pytest test/), its docs and examples
+include CHANGELOG.md LICENSE.md README.md
+graft docs
+graft examples
+graft test

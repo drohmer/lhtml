@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,8 +7,27 @@ name = "lhtml-markup"
 dynamic = ["version"]
 description = "Lightweight HTML markup language — simplifies HTML authoring with shorthand syntax"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE.md"]
 requires-python = ">=3.10"
+authors = [{name = "Damien Rohmer"}]
+keywords = ["markup", "html", "static-site", "jinja", "lightweight-markup"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Text Processing :: Markup :: HTML",
+    "Typing :: Typed",
+]
 dependencies = [
     "pygments>=2.15",
     "pyyaml>=6.0",
@@ -16,6 +35,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/drohmer/lhtml"
+Documentation = "https://github.com/drohmer/lhtml/blob/main/docs/advanced.md"
 Repository = "https://github.com/drohmer/lhtml"
 Issues = "https://github.com/drohmer/lhtml/issues"
 Changelog = "https://github.com/drohmer/lhtml/blob/main/CHANGELOG.md"
@@ -33,6 +53,9 @@ version = {attr = "lhtml.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+lhtml = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

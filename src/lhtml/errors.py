@@ -1,18 +1,21 @@
 """The errors and the warnings of LHTML.
 
 Both carry `line` and `column` (1-based) of the problem in the text given to
-`run`, or None where it is not known (a macros file, a text without one).
+`run`, or None where it is not known (a macros file, a text without one),
+and `path`: the file it is in when LHTML read one (a macros file), else None.
 """
 
 
 class _Located:
-    def __init__(self, message, line=None, column=None):
+    def __init__(self, message, line=None, column=None, path=None):
         super().__init__(message)
-        self.line, self.column = line, column
+        self.line, self.column, self.path = line, column, path
 
 
 class LHTMLError(_Located, Exception):
-    """Base class for all LHTML errors."""
+    """Base class for all LHTML errors. Raised by parse, `problems` holds
+    the LHTMLWarning found before it."""
+    problems = ()
 
 
 class LHTMLParseError(LHTMLError):

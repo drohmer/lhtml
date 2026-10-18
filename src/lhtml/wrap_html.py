@@ -4,6 +4,9 @@ Wraps LHTML output in a complete HTML5 document structure
 with head, meta, CSS/JS includes.
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterable
 from html import escape
 
 HTML_TEMPLATE = """\
@@ -34,7 +37,8 @@ def _names(value, option):
     raise TypeError(f'{option}: expected a file name or a list of them, got {type(value).__name__}')
 
 
-def wrap(html_in, *, title='Webpage', css=(), js=()):
+def wrap(html_in: str, *, title: str = 'Webpage', css: str | Iterable[str] = (),
+         js: str | Iterable[str] = ()) -> str:
     """A complete HTML5 document of the HTML of a page: its `title`, and the
     stylesheets `css` and scripts `js` it links (a name or a list)."""
     head_parts = []

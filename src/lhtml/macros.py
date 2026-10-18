@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterable, Mapping
 
 from .errors import LHTMLMacroError
 from . import attributes
@@ -155,7 +156,7 @@ def macro_tag(name, spec):
     return Tag(build, container=not void and not empty, url=bool(url))
 
 
-def describe_macro(name, spec):
+def describe_macro(name: str, spec: Mapping | None) -> dict:
     """What a macro definition gives, for documentation tools: its opening
     HTML, the attribute its text sets (url), whether it has no content
     (empty), its variants (a list, or None) and default, doc."""
@@ -178,7 +179,7 @@ def describe_macro(name, spec):
             'doc': spec.get('doc')}
 
 
-def load_macros(source):
+def load_macros(source: Mapping | str | os.PathLike | Iterable | None) -> dict[str, dict]:
     """Macro definitions from a dict, a YAML file name, or a list of them
     (later definitions replace earlier ones, and a definition null removes
     the macro). A dict or file holds the definitions, directly or as its
@@ -188,9 +189,7 @@ def load_macros(source):
 
 def _file_error(path, message, line=None, column=None):
     """An LHTMLMacroError of a macros file: `path` is where it is."""
-    error = LHTMLMacroError(f'{message} [{path}]', line, column)
-    error.path = os.fspath(path)
-    return error
+    return LHTMLMacroError(f'{message} [{path}]', line, column, os.fspath(path))
 
 
 def _load_macros(source):
@@ -228,7 +227,8 @@ def _load_macros(source):
     return dict(source)
 
 
-def registry_with_macros(macros, base=None):
+def registry_with_macros(macros: Mapping | str | os.PathLike | Iterable | None,
+                         base: Mapping[str, Tag] | None = None) -> dict[str, Tag]:
     """The tags of `base` (the built-in TAGS by default) plus those of the
     macros (see load_macros): a new dict, `base` is not changed."""
     tags = dict(TAGS if base is None else base)

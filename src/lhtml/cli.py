@@ -26,13 +26,13 @@ wrong use of the command.
 import argparse
 import os
 import sys
-import warnings
 
 from . import __version__
 from .diagnostics import Diagnostic, Reporter, shown_path
 from .errors import LHTMLError
 from .macros import load_macros, registry_with_macros
-from .pipeline import run
+from .render import render
+from .tree import parse
 from .process import read_source
 from .wrap_html import wrap
 
@@ -121,15 +121,12 @@ def check(jobs, read=()):
 
 
 def convert(source, macros, line_breaks, wrapped):
-    """(its HTML, its warnings in the order of the file)."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter('always')
-        html = run(_ensure_trailing_newline(source), macros=macros, line_breaks=line_breaks)
+    """(its HTML, its problems in the order of the file)."""
+    document = parse(_ensure_trailing_newline(source), macros=macros, warn=False)
+    html = render(document, line_breaks=line_breaks)
     if wrapped:
         html = wrap(html)
-    found = sorted((w.message for w in caught),
-                   key=lambda m: (getattr(m, 'line', None) or 0, getattr(m, 'column', None) or 0))
-    return _ensure_trailing_newline(html), found
+    return _ensure_trailing_newline(html), document.problems
 
 
 def main(argv=None):
@@ -165,7 +162,7 @@ def main(argv=None):
             macros = load_macros(args.macros)
             registry_with_macros(macros)    # checked before any file
         except LHTMLError as e:
-            place = getattr(e, 'path', None) or (args.macros[0] if len(args.macros) == 1 else 'lhtml')
+            place = e.path or (args.macros[0] if len(args.macros) == 1 else 'lhtml')
             message = str(e).removesuffix(f' [{place}]')
             reporter.report(Diagnostic(shown_path(place), 'error', message, e.line, e.column))
             sys.exit(1)
@@ -187,6 +184,8 @@ def main(argv=None):
             source = read_source(f_in)
             html, found = convert(source, macros, args.line_breaks, args.wrap)
         except (LHTMLError, OSError, UnicodeError) as e:
+            for warning in getattr(e, 'problems', ()):     # those found before it
+                reporter.report(Diagnostic.of(shown, 'warning', warning), source)
             reporter.report(Diagnostic.of(shown, 'error', e), source)     # its line, when it has one
             failed += 1
             continue

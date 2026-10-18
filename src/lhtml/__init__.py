@@ -10,6 +10,7 @@ Usage:
     page = lhtml.wrap(html, title='My Page', css=['style.css'])
     document = lhtml.parse(text)          # the document tree: lhtml.Element, lhtml.Text... (nodes.py)
     html = lhtml.render(document)         # its HTML, from the fields of the nodes
+    document.problems                     # the LHTMLWarning found (parse(..., warn=False): not warned)
     tags = {'alert': lhtml.Tag(build)}    # build(written) -> nodes: a tag of the caller (docs/advanced.md)
 
 run is documented in pipeline.py.
@@ -22,7 +23,7 @@ from .errors import (
     LHTMLWarning, LHTMLMacroError,
 )
 
-from .code import LEXERS
+from .code import LEXERS, highlight
 from .export_html import TAGS, Tag
 from .macros import describe_macro, load_macros, registry_with_macros
 from .pipeline import run
@@ -43,7 +44,7 @@ def main():
 
 
 __all__ = [
-    '__version__', 'run', 'parse', 'render', 'wrap', 'main', 'TAGS', 'Tag', 'LEXERS',
+    '__version__', 'run', 'parse', 'render', 'wrap', 'main', 'TAGS', 'Tag', 'LEXERS', 'highlight',
     'describe_macro', 'load_macros', 'registry_with_macros', 'Attributes',
     'Node', 'Document', 'Text', 'Heading', 'List', 'Item', 'Strong', 'Emphasis', 'Element', 'Video',
     'Code', 'InlineCode', 'Math', 'Raw', 'Written',

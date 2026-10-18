@@ -4,9 +4,9 @@ LEXERS maps a language name to a Pygments lexer class, taken before the
 lexers of Pygments: add one with lhtml.LEXERS['name'] = LexerClass.
 """
 
-import warnings
+from __future__ import annotations
 
-from pygments import highlight
+
 from pygments.lexers import get_lexer_by_name, TextLexer
 from pygments.util import ClassNotFound
 from pygments.formatters import HtmlFormatter
@@ -75,15 +75,9 @@ def unknown_language_message(language):
     return f'Unknown language {language.strip()!r} for code::[...] block, rendered as plain text'
 
 
-def export_html_code(text, language, warn=True):
-    """Highlight a code block and return HTML. An unknown language is
-    rendered as plain text, with a warning unless `warn` is False (the
-    pipeline warns where the block is, lhtml.process)."""
-    lexer = _lexer(language)
-    if lexer is None:
-        if warn:
-            from .errors import LHTMLWarning
-            warnings.warn(unknown_language_message(language), LHTMLWarning, stacklevel=2)
-        lexer = TextLexer(**LEXER_OPTIONS)
-    formatter = HtmlFormatter(linenos=False, cssclass='code')
-    return highlight(text, lexer, formatter)
+def highlight(code: str, language: str) -> str:
+    """The HTML of a code block, `<div class="code"><pre>...`, highlighted by
+    Pygments (lhtml.LEXERS first). An unknown language is plain text (parse
+    warns where the block is)."""
+    lexer = _lexer(language) or TextLexer(**LEXER_OPTIONS)
+    return pygments.highlight(code, lexer, HtmlFormatter(linenos=False, cssclass='code'))

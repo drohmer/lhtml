@@ -11,13 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -26,3 +26,24 @@ jobs:
 
       - name: Run tests
         run: pytest test/ -v
+
+  package:
+    # the sdist and the wheel PyPI would get: their metadata, the tests of the sdist, the wheel installed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - run: pip install build twine pytest
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - name: The tests of the sdist, from its own files
+        run: |
+          mkdir sdist && tar xzf dist/*.tar.gz -C sdist --strip-components=1
+          cd sdist && python -m pytest -q -p no:cacheprovider test
+      - name: The wheel installed, its command and its types
+        run: |
+          pip install dist/*.whl
+          cd /tmp && echo '**a**' > a.l.html && lhtml a.l.html
+          python -c "import importlib.resources as r; assert r.files('lhtml').joinpath('py.typed').is_file()"

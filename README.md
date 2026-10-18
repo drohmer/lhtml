@@ -7,7 +7,7 @@ LHTML is a markup language that simplifies HTML authoring with embedded CSS styl
 
 LHTML is used to build static websites and presentation slides, typically combined with Jinja2 templates.
 
-See the [examples](examples/) and the [changelog](CHANGELOG.md).
+See the [examples](https://github.com/drohmer/lhtml/tree/main/examples/) and the [changelog](https://github.com/drohmer/lhtml/blob/main/CHANGELOG.md).
 
 ## Installation
 
@@ -63,7 +63,7 @@ import lhtml
 html = lhtml.run(text)
 ```
 
-The rest of this page details each construct; [docs/advanced.md](docs/advanced.md)
+The rest of this page details each construct; [docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)
 is for callers that extend LHTML in Python.
 
 
@@ -151,8 +151,8 @@ page = lhtml.wrap(html, title='My Page', css=['style.css'], js=['script.js'])
 ```
 
 That is the whole API of a page. Custom tags written in Python, the macro
-functions and the document tree are in [docs/advanced.md](docs/advanced.md).
-Coming from LHTML 2: [docs/migration.md](docs/migration.md).
+functions and the document tree are in [docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md).
+Coming from LHTML 2: [docs/migration.md](https://github.com/drohmer/lhtml/blob/main/docs/migration.md).
 
 
 ## Syntax Reference
@@ -388,7 +388,7 @@ Output (Pygments HTML inside `<div class="code">`):
 </pre></div>
 ```
 
-Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](docs/advanced.md#custom-code-lexers)).
+Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)).
 
 The colors come from a Pygments stylesheet, which you must include in your page. Generate one for the `.code` class (any [Pygments style](https://pygments.org/styles/) can replace `default`):
 
@@ -601,13 +601,39 @@ lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a 
 | Argument | Type | Description |
 |----------|------|-------------|
 | `macros` | mapping | The definitions of the macros (see [Macros](#macros-custom-tags-from-a-configuration)); `lhtml.load_macros` reads files |
-| `tags` | mapping | Tags written in Python, `{name: lhtml.Tag}` ([docs/advanced.md](docs/advanced.md)) |
+| `tags` | mapping | Tags written in Python, `{name: lhtml.Tag}` ([docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)) |
 | `line_breaks` | boolean | Render source line breaks as `<br>` |
 | `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
 | `title`, `css`, `js` | of `wrap` | The title, the stylesheets and the scripts (a name or a list) |
 
 An argument spelled otherwise is a `TypeError`. LHTML reads no file:
 `lhtml.load_macros` is the caller reading its macro files.
+
+The problems of a text are `LHTMLWarning` warnings, each with its `line`
+and `column`. A caller that collects them parses and renders itself:
+
+```python
+document = lhtml.parse(text, macros=macros, warn=False)   # warn=False: kept, not warned
+html = lhtml.render(document, line_breaks=True)
+for problem in document.problems:                         # in source order
+    print(problem.line, problem.column, problem)
+```
+
+Each parse keeps its own problems, in threads too (no global state is
+changed). An `LHTMLError` stops the parse: its `line`, `column`, `path`
+(a macros file) say where, and its `problems` holds those found before it.
+`lhtml.highlight(code, language)` gives the HTML of a code block, as
+`code::[language]` renders it.
+
+### Stability
+
+The API is what `lhtml` exports (`lhtml.__all__`): `run`, `parse`,
+`render`, `wrap`, `highlight`, `Tag`, `TAGS`, `Written`, the nodes,
+`Attributes`, `LEXERS`, `load_macros`, `describe_macro`,
+`registry_with_macros`, the errors, and the command `lhtml`. It changes
+only with a major version (4.0), as the HTML LHTML writes for a source. The
+modules inside the package (`lhtml.patterns`, `lhtml.process`,
+`lhtml.tree`...) are its implementation and may change in any release.
 
 
 ## Design Principles
@@ -622,4 +648,4 @@ An argument spelled otherwise is a `TypeError`. LHTML reads no file:
 
 ## License
 
-MIT, see [LICENSE.md](LICENSE.md).
+MIT, see [LICENSE.md](https://github.com/drohmer/lhtml/blob/main/LICENSE.md).

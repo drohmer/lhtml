@@ -19,7 +19,7 @@ after those of (.a .b), the styles after the one of [...].
 from __future__ import annotations
 
 import re
-from collections.abc import MutableMapping
+from collections.abc import Iterable, MutableMapping
 from dataclasses import dataclass
 
 from .patterns import JINJA_RE, PLACEHOLDER
@@ -180,7 +180,7 @@ class Attributes(MutableMapping):
             self[name] = value
 
     @classmethod
-    def read(cls, text):
+    def read(cls, text: str | None) -> Attributes:
         """The attributes of an attribute text (`title="a" alt`)."""
         text = text or ''
         attributes, position = cls(), 0
@@ -243,12 +243,12 @@ class Attributes(MutableMapping):
     def __repr__(self):
         return f'Attributes({self.html().strip()!r})'
 
-    def copy(self):
+    def copy(self) -> Attributes:
         copied = Attributes()
         copied._items = [_Entry(e.name, e.value, e.written, e.space, e.nested) for e in self._items]
         return copied
 
-    def without(self, names, *, nested=True):
+    def without(self, names: Iterable[str], *, nested: bool = True) -> Attributes:
         """A copy without the attributes named in `names` (keys); the item
         after one removed takes its spaces (as if it was cut out of the
         text). `nested=False`: those written inside a Jinja block stay."""
@@ -263,16 +263,16 @@ class Attributes(MutableMapping):
             cut = False
         return copied
 
-    def extend(self, other):
+    def extend(self, other: Attributes) -> Attributes:
         """The attributes of `other` added after these, as they are."""
         self._items += other.copy()._items
         return self
 
-    def values_of(self, name, *, nested=True):
+    def values_of(self, name: str, *, nested: bool = True) -> list[str | None]:
         """Every value written for `name` (an attribute written twice);
         `nested=False`: not those written inside a Jinja block."""
         return [entry.value for entry in self._items if entry.name == key(name) and (nested or not entry.nested)]
 
-    def html(self):
+    def html(self) -> str:
         """The attributes as HTML: ` name="value"` each."""
         return ''.join(entry.html() for entry in self._items)

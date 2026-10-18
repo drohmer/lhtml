@@ -7,6 +7,7 @@ The kinds of stored content are listed in ProtectionStores; they become the
 opaque leaves of the tree (code, inline code, mathematics, raw HTML).
 """
 
+import contextvars
 import re
 import warnings
 from dataclasses import dataclass, field
@@ -65,13 +66,24 @@ def position(before):
     return before.count('\n') + 1, len(before) - before.rfind('\n')
 
 
+# The problems of the parse running in this context (a thread, a task): each
+# parse has its own list, no global state is changed (warnings.catch_warnings is)
+PROBLEMS = contextvars.ContextVar('lhtml_problems', default=None)
+
+
 def _warn(message, place, stacklevel=3):
-    """A warning at `place`: (line, column), or an element (or Written) with them."""
+    """A problem at `place`: (line, column), or an element (or Written) with
+    them. Kept by the parse running (PROBLEMS), a warning outside one."""
     if isinstance(place, dict):
         place = place.get('line'), place.get('column')
     elif hasattr(place, 'line'):
         place = place.line, place.column
-    warnings.warn(LHTMLWarning(message, *(place or (None, None))), stacklevel=stacklevel)
+    problem = LHTMLWarning(message, *(place or (None, None)))
+    problems = PROBLEMS.get()
+    if problems is None:
+        warnings.warn(problem, stacklevel=stacklevel)
+    else:
+        problems.append(problem)
 
 
 # ---------------------------------------------------------------------------

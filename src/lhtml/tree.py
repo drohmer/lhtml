@@ -38,12 +38,14 @@ stays as text, with a warning. The text passes wrote malformed HTML there
 from __future__ import annotations
 
 import bisect
+import os
 import re
+import sys
 import warnings
 from collections.abc import Mapping
 
 from . import attributes
-from .errors import LHTMLError, LHTMLParseError
+from .errors import LHTMLError, LHTMLParseError, LHTMLWarning
 from .export_html import SPACER, TAGS, Tag, class_and_id, node_list
 from .macros import NAME_RE, NOT_ELEMENTS, registry_with_macros
 from .nodes import (
@@ -53,7 +55,7 @@ from .patterns import (
     BOLD, EVENT_CHAR, HEADING, ITALIC, PLACEHOLDER, TAG_MARKER,
 )
 from .process import (
-    ProtectionStores, normalize_input, process_prepare, _code_language,
+    PROBLEMS, ProtectionStores, normalize_input, process_prepare, _code_language,
     _is_tag_boundary, _adjust_bare_tag, _context, _warn, check_is_closing_tag,
     _refuse_explicit_closing,
 )
@@ -716,30 +718,52 @@ def _given_offsets(given, normalized):
     return lambda o: o + bom + bisect.bisect_left(removed, o)
 
 
-def parse(text, *, macros=None, tags=None):
+def parse(text: str, *, macros: Mapping[str, Mapping | None] | None = None,
+          tags: Mapping[str, Tag] | None = None, warn: bool = True) -> Document:
     """The document tree of an LHTML text. `macros`: the definitions of the
     macros, a mapping (lhtml.load_macros reads them from files); `tags`:
     {name: Tag}, added to the built-in TAGS and the macros (a tag given
-    wins). Reads no file. The warnings are emitted, and kept in
-    document.problems, in source order."""
+    wins). Reads no file.
+
+    The problems found are kept in document.problems (LHTMLWarning, in
+    source order), and emitted as warnings unless `warn` is False; an
+    LHTMLError raised holds those found before it in its `problems`. Each
+    parse collects its own (threads and tasks included): no global state
+    is changed."""
     registry = _registry(tags, macros)
-    caught = []
+    collected = []
+    token = PROBLEMS.set(collected)
     try:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter('always')
-            parser = _Parser(text, registry)
-            document = parser.parse()
+        parser = _Parser(text, registry)
+        document = parser.parse()
+    except LHTMLError as error:
+        error.problems = _in_order(collected)
+        raise
     finally:                            # emitted, an error raised or not
-        caught = sorted(caught, key=lambda w: (getattr(w.message, 'line', None) is None,
-                                               getattr(w.message, 'line', None) or 0,
-                                               getattr(w.message, 'column', None) or 0))
-        for w in caught:
-            warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
+        PROBLEMS.reset(token)
+        if warn:
+            _emit(_in_order(collected))
     given = _given_offsets(text, parser.source)
     if given:
         for node in document.walk():
             node.span = (given(node.span[0]), given(node.span[1]))
     document.span = (0, len(text))
-    document.problems = [w.message for w in caught]
+    document.problems = _in_order(collected)
     document.source = text
     return document
+
+
+def _in_order(problems):
+    return sorted(problems, key=lambda p: (p.line is None, p.line or 0, p.column or 0))
+
+
+def _emit(problems):
+    """The problems as warnings, at the first place of the caller outside
+    LHTML (its call of run or parse)."""
+    frame, package = sys._getframe(1), os.path.dirname(__file__)
+    while frame is not None and os.path.dirname(frame.f_code.co_filename) == package:
+        frame = frame.f_back
+    filename, lineno, module = ('lhtml', 0, None) if frame is None else \
+        (frame.f_code.co_filename, frame.f_lineno, frame.f_globals.get('__name__'))
+    for problem in problems:
+        warnings.warn_explicit(problem, LHTMLWarning, filename, lineno, module)
