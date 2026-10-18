@@ -184,7 +184,9 @@ the text as it is: what a plugin replaces before LHTML reads the page (a
 tag of its own, in a code block too). No markup around it is read: in
 `**img::a.png**` its URL is `a.png**` (`read_tags` gives `a.png`). Its
 groups, its URL whole for a tag of `url_tags`, no label. A page read tag
-by tag stays linear (its brackets and lines are read once per text). A
+by tag stays linear (its brackets and lines are read once per text; each
+call reads its own tag, so tags glued in one word, `a::a::a`, each read to
+the end of the word, take the time of their lengths). A
 `start` outside the text is a `ValueError`; a name that does not start
 there (`pan::` in `span::`) gives `None`.
 

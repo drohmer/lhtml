@@ -1261,6 +1261,7 @@ class TestEighthReview:
         assert lhtml.read_tag('span::[a:1][b:2]', 0).written.brackets == 'a:1;b:2'
 
 
+@pytest.mark.filterwarnings("ignore::lhtml.LHTMLWarning")
 class TestAudit:
 
     def test_a_bold_from_a_label_group_to_the_next_leaves_the_link_as_text(self):
@@ -1274,3 +1275,37 @@ class TestAudit:
         started = time.perf_counter()
         lhtml.run('*' * 20000 + ' x')
         assert time.perf_counter() - started < 2
+
+    def test_runs_of_glued_double_colons_are_linear(self):
+        for piece in ('-::', '=::=', '::nl', '**::', '/::/', 'div::a)'):
+            started = time.perf_counter()
+            lhtml.run(piece * 8000)
+            assert time.perf_counter() - started < 2, piece
+
+    def test_a_bare_double_colon_reads_as_parse_does(self):
+        assert lhtml.run('::)(see link::https://x.org)') == '::)(see <a href="https://x.org">https://x.org</a>)'
+        assert lhtml.parse('::nl](.c) = ', warn=False).problems == []
+
+    def test_links_with_many_labels_are_linear(self):
+        text = ' '.join('link::u' + ''.join(f'[img::a.png(.c{j})]' for j in range(9)) for _ in range(2000))
+        started = time.perf_counter()
+        lhtml.run(text)
+        assert time.perf_counter() - started < 4
+
+    def test_unclosed_openers_are_linear(self):
+        for opener in ('<!-- ', '{# ', '\\( ', '\\[ ', '<script> ', '<style> ', 'code::[python] x\n'):
+            started = time.perf_counter()
+            lhtml.run(opener * 16000)
+            lhtml.zones(opener * 16000)
+            assert time.perf_counter() - started < 2, opener
+        assert lhtml.run('<script> a <!-- b') == '<script> a <!-- b'
+
+    def test_many_diagnostics_in_a_terminal_are_linear(self):
+        import io
+        from lhtml.diagnostics import Diagnostic, Reporter
+        source = 'x ::\n' * 40000
+        reporter = Reporter(io.StringIO(), rich=True, color=False)
+        started = time.perf_counter()
+        for problem in lhtml.parse(source, warn=False).problems:
+            reporter.report(Diagnostic('f', 'warning', str(problem), problem.line, problem.column), source)
+        assert time.perf_counter() - started < 3

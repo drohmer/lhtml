@@ -91,23 +91,30 @@ def excerpt(source_line, column, show=lambda ch: ch):
     how a character is written (an escape, where the stream cannot)."""
     line = source_line.rstrip('\n')
     at = max(0, min(column - 1, len(line)))
-    end = at
-    while end < len(line) and not line[end].isspace():
-        end += 1
-    widths = [4 if ch == '\t' else _width(show(ch)) for ch in line]    # columns, as shown
+
+    def width(ch):                      # its columns, as shown
+        return 4 if ch == '\t' else _width(show(ch))
+    total = 0
+    for ch in line:                     # its width, up to what is shown (a long line: read around the place only)
+        total += width(ch)
+        if total > _EXCERPT:
+            break
     start, stop, before, after = 0, len(line), '', ''
-    if sum(widths) > _EXCERPT:          # cut around the place: a third before it, by columns
+    if total > _EXCERPT:                # cut around the place: a third before it, by columns
         start, used = at, 0
-        while start > 0 and used + widths[start - 1] <= _EXCERPT // 3:
+        while start > 0 and used + width(line[start - 1]) <= _EXCERPT // 3:
             start -= 1
-            used += widths[start]
+            used += width(line[start])
         stop, used = start, 0
-        while stop < len(line) and used + widths[stop] <= _EXCERPT:
-            used += widths[stop]
+        while stop < len(line) and used + width(line[stop]) <= _EXCERPT:
+            used += width(line[stop])
             stop += 1
         before = '…' if start else ''
         after = '…' if stop < len(line) else ''
-    end = max(at + 1, min(end, stop)) if at < len(line) else at
+    end = at
+    while end < stop and not line[end].isspace():
+        end += 1
+    end = max(at + 1, end) if at < len(line) else at
     shown = show(before) + ''.join(show(ch) for ch in line[start:stop]) + show(after)
     underline = _blank(before + line[start:at], show) + _marks(line[at:end], show)
     return shown, underline
@@ -130,6 +137,7 @@ class Reporter:
         self.unicode = encoding.startswith('utf')
         self.encoding = encoding        # '': a stream of str (no encoding to respect)
         self.counts = {'error': 0, 'warning': 0}
+        self._split = None              # (a source, its lines): the last one reported
 
     def paint(self, text, style):
         return f'\x1b[{_COLORS[style]}m{text}\x1b[0m' if self.color and text else text
@@ -141,7 +149,7 @@ class Reporter:
         """Writes a diagnostic; `source`: the text it is in (its excerpt)."""
         self.counts[diagnostic.level] = self.counts.get(diagnostic.level, 0) + 1
         level = self.paint(diagnostic.level, diagnostic.level if diagnostic.level in _COLORS else 'bold')
-        lines = source.split('\n') if self.rich and source is not None and diagnostic.line else []
+        lines = self._lines(source) if self.rich and source is not None and diagnostic.line else []
         if diagnostic.line and diagnostic.line <= len(lines):
             line = lines[diagnostic.line - 1]
             near = _NEAR.search(diagnostic.message)
@@ -158,6 +166,12 @@ class Reporter:
             self.write('')
         else:
             self.write(f'{self.paint(diagnostic.place, "bold")}: {level}: {diagnostic.message}')
+
+    def _lines(self, source):
+        """The lines of a source, split once for all its diagnostics."""
+        if self._split is None or self._split[0] is not source:
+            self._split = (source, source.split('\n'))
+        return self._split[1]
 
     def summary(self, converted, failed):
         """`2 converted · 1 failed · 3 warnings`, each count in its color."""

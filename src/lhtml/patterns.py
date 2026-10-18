@@ -87,6 +87,68 @@ def protected_blocks(url_tags):
     return re.compile(BLOCKS.pattern + '|' + protected_zones(tuple(sorted(url_tags))), re.DOTALL)
 
 
+# The openers of the zones that need their closer, each with its closer, the
+# character changed in an opener no closer follows and what it is changed to:
+# a character every other zone reads alike (closable)
+_OPENERS = (
+    (re.compile(r'<!--'), re.compile(r'-->'), 1, '\x7f'),
+    (re.compile(r'\{#'), re.compile(r'#\}'), 0, '\x00'),
+    (re.compile(r'\\\('), re.compile(r'\\\)'), 0, '\x7f'),
+    (re.compile(r'\\\['), re.compile(r'\\\]'), 0, '\x7f'),
+    (re.compile(r'<(?i:script)\b'), re.compile(r'</(?i:script)\s*>'), 1, 'x'),
+    (re.compile(r'<(?i:style)\b'), re.compile(r'</(?i:style)\s*>'), 1, 'x'),
+    (re.compile(_DIRECTIVE_START + r'code::\[(?!-\])'), re.compile(r'code::\[-\]'), 0, 'x'),
+)
+
+
+def closable(text):
+    """The text, each opener of a zone that no closer follows (an <!-- after
+    the last -->) changed in one character, so that its zone is not tried:
+    each would scan the rest of the text (a text full of unclosed <!-- would
+    be read in quadratic time). The zones found are the same; the length
+    too, and what they hold is read in the text (zones_in)."""
+    chars = None
+    for opener, closer, at, by in _OPENERS:
+        last = -1
+        for m in closer.finditer(text):
+            last = m.start()
+        for m in opener.finditer(text, last + 1):
+            chars = chars if chars is not None else list(text)
+            chars[m.start() + at] = by
+    return text if chars is None else ''.join(chars)
+
+
+class _InText:
+    """A match found in the text closable gives, its groups read in the text."""
+
+    def __init__(self, m, text):
+        self.m, self.text = m, text
+
+    def group(self, name=0):
+        start, end = self.m.span(name)
+        return None if start < 0 else self.text[start:end]
+
+    def start(self, name=0):
+        return self.m.start(name)
+
+    def end(self, name=0):
+        return self.m.end(name)
+
+    def span(self, name=0):
+        return self.m.span(name)
+
+
+def zones_in(pattern, text, start=0):
+    """The matches of a pattern of zones in a text, from `start`, in linear
+    time whatever its unclosed openers (closable)."""
+    masked = closable(text)
+    if masked is text:
+        yield from pattern.finditer(text, start)
+        return
+    for m in pattern.finditer(masked, start):
+        yield _InText(m, text)
+
+
 # The zones of the built-in tags: read by the site generator (lib/source_scan.py)
 PROTECTED        = re.compile(protected_zones(URL_TAGS), re.DOTALL)
 PROTECTED_BLOCKS = protected_blocks(URL_TAGS)

@@ -10,11 +10,11 @@ opaque leaves of the tree (code, inline code, mathematics, raw HTML).
 import re
 from dataclasses import dataclass, field
 
-from .tag_parser import extract_bracket_elements, is_tag_boundary, tag_name_before
+from .tag_parser import adjust_bare_tag, bare_tag, extract_bracket_elements, is_tag_boundary, tag_name_before
 from .code import known_language, unknown_language_message
 from .errors import LHTMLParseError, quote, warn
 from .patterns import (
-    protected_blocks,
+    protected_blocks, zones_in,
     HEADING,
     INCLUDE, REMOVED_COMMENT, REMOVED_VERBATIM, TAG_MARKER,
     PLACEHOLDER_CHAR, PLACEHOLDER, EVENT_CHAR,
@@ -172,7 +172,12 @@ def process_protect(text, stores, url_tags, lexers=None):
                 after = ''
             return m.group('urltag') + stores.add('U', url) + after
         return stores.add('R', m.group(0))
-    return protected_blocks(tuple(url_tags)).sub(_protect, text)
+    parts, prev = [], 0
+    for m in zones_in(protected_blocks(tuple(url_tags)), text):
+        parts += [text[prev:m.start()], _protect(m)]
+        prev = m.end()
+    parts.append(text[prev:])
+    return ''.join(parts)
 
 
 def process_protect_attributes(text, stores):
@@ -183,18 +188,25 @@ def process_protect_attributes(text, stores):
         return f'{m.group(1)}({stores.add("A", m.group(2))}) {m.group(3)}'
     text = HEADING.sub(_heading, text)
 
-    parts, prev = [], 0
+    parts, prev, read = [], 0, 0        # read: the end of the last element (its :: are its word, as in parse)
     for m in TAG_MARKER.finditer(text):
-        if m.start() < prev:
+        if m.start() < max(prev, read):
             continue
         tag = tag_name_before(text, m.start())
         # a :: glued to a word is no tag: decided before its element is read (a::a::a...: linear)
         if tag in ('include', 'code') or not is_tag_boundary(text, m.start() - len(tag), tag):
             continue
-        try:
-            element = extract_bracket_elements(text, tag, m.start() - len(tag), m.end())
-        except LHTMLParseError:
+        is_tag, element = bare_tag(text, m) if not tag else (True, None)
+        if not is_tag:
             continue
+        if element is None:
+            try:
+                element = extract_bracket_elements(text, tag, m.start() - len(tag), m.end())
+            except LHTMLParseError:
+                continue
+            if not tag and not adjust_bare_tag(text, m, element):
+                continue
+        read = element.end
         for kind, start, end in element.groups:
             if tag == 'link' and kind == '[]':      # the label of a link is text
                 continue

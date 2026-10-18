@@ -26,7 +26,7 @@ from typing import NamedTuple
 
 from .errors import quote
 from .nodes import Written
-from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones
+from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones, zones_in
 from .process import MarksOnLine, url_and_closing_marks
 from .tag_parser import extract_bracket_elements
 from .tags import Tag
@@ -78,7 +78,7 @@ def zones(text: str, *, url_tags: Iterable[str] = URL_TAGS, code: re.Pattern | N
     them all); `code`: the pattern of the code blocks of another markup (the
     fenced ``` blocks of Markdown), in place of LHTML's code::[...]."""
     found, marks = [], MarksOnLine(text)
-    for m in _pattern(url_tags, code).finditer(text, start):
+    for m in zones_in(_pattern(url_tags, code), text, start):
         group = next(g for g in _KINDS if m.group(g) is not None)
         kind = _KINDS[group]
         if kind == 'jinja' and m.group(0).startswith('{#'):
@@ -142,7 +142,9 @@ def read_tag(text: str, start: int, *, url_tags: Iterable[str] = URL_TAGS) -> So
     its tag, text, inline, groups as written, line, column and context, no
     label. A bracket without its closing one raises LHTMLParseError; a
     `start` outside the text, ValueError. Its brackets and lines are read
-    once per text: a page read tag by tag stays linear."""
+    once per text: a page read tag by tag stays linear, each call reading
+    its own tag (tags glued in one word, a::a::a, each read to its end, are
+    read in the time of their lengths)."""
     if not 0 <= start <= len(text):
         raise ValueError(f'start: {start} is not a place in the text (0 to {len(text)})')
     m = _ONE_NAME.match(text, start)

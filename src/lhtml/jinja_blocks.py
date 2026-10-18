@@ -105,24 +105,27 @@ def fold(block, name, joiner):
     block before it (not in another branch), or a turn of a loop. The
     whitespace control of a statement ({%- -%}) is dropped: it would take
     the joiners."""
-    folded, value_before, opened = [], False, []
+    folded, value_before, opened, loops = [], False, [], 0     # loops: the {% for %} open
     for entry in block:
         kind = statement(entry.written) if entry.name is None else None
         if kind:
             folded.append(_TRIM.sub(r'\1\2', entry.written))
             if kind == 'open':
                 opened.append(_Opened(_STATEMENT.fullmatch(entry.written).group(1), value_before))
+                loops += opened[-1].word == 'for'
             elif kind == 'branch':
                 value_before = opened[-1].value_before
             elif kind == 'close':
                 level = opened.pop()
+                loops -= level.word == 'for'
                 value_before = level.value_before or level.value_in
+                if opened:              # a value in it is one in the block around it
+                    opened[-1].value_in = opened[-1].value_in or level.value_in
         elif entry.name == name and entry.value:
-            loop = any(level.word == 'for' for level in opened)
-            folded.append((joiner if value_before or loop else '') + entry.value)
+            folded.append((joiner if value_before or loops else '') + entry.value)
             value_before = True
-            for level in opened:
-                level.value_in = True
+            if opened:
+                opened[-1].value_in = True
     return ''.join(folded)
 
 

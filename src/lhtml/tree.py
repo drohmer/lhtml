@@ -58,7 +58,7 @@ from .patterns import (
 from .code import checked_lexers
 from .process import ProtectionStores, code_language, normalize_input, process_prepare
 from .tag_parser import (
-    adjust_bare_tag, extract_bracket_elements, is_closing_tag, is_tag_boundary, refuse_explicit_closing,
+    adjust_bare_tag, bare_tag, bracket_matches, extract_bracket_elements, is_closing_tag, is_tag_boundary, refuse_explicit_closing,
     tag_name_before,
 )
 
@@ -112,6 +112,7 @@ class _Parser:
         self._glued = None          # the word:: that may be meant as a closing :: (_glued_close)
         self.prepared = ''          # the source, its zones LHTML does not read hidden (parse)
         self.read = []              # (span, Written) of each tag read where it is (lhtml.read_tags)
+        self._brackets = {}         # the matched brackets of each text read (the page, each label group)
 
     # -- positions --------------------------------------------------------
 
@@ -358,14 +359,20 @@ class _Parser:
         if not is_tag_boundary(flat, tag_start, tag, last_tag_end):
             return None
         line, column = self._place_of(text, m.start())
-        try:
-            element = extract_bracket_elements(flat, tag, tag_start, m.end())
-        except LHTMLParseError as e:
-            warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
-                  (line, column - len(tag) if column else None))
+        is_tag, element = bare_tag(flat, m) if not tag else (True, None)
+        if not is_tag:
             return None
-        if not tag and not adjust_bare_tag(flat, m, element):
-            return None
+        if element is None:             # its word read
+            try:
+                if flat not in self._brackets:
+                    self._brackets[flat] = bracket_matches(flat)
+                element = extract_bracket_elements(flat, tag, tag_start, m.end(), matches=self._brackets[flat])
+            except LHTMLParseError as e:
+                warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
+                      (line, column - len(tag) if column else None))
+                return None
+            if not tag and not adjust_bare_tag(flat, m, element):
+                return None
         element.line = line
         element.column = column - len(tag) if column else None
         element.context = self._quote(text, tag_start, element.end)

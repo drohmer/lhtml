@@ -60,8 +60,7 @@ _VALUE_BEFORE = re.compile(r'[^\s"\'=<>/{}]=[ \t]*\Z')     # {title="..."}: a na
 _CSS_STRING_BEFORE = re.compile(r'[:(,][ \t]*\Z')     # [content:"]"], [font-family:'A', 'B']
 
 
-@functools.lru_cache(maxsize=8)
-def _matches(text):
+def bracket_matches(text):
     """The closing bracket of each opening one, by position, each kind of
     bracket nesting its own kind only (an unclosed one has none): computed
     once per text, so that unclosed brackets do not each scan to its end.
@@ -95,6 +94,9 @@ def _matches(text):
             matches[stacks[closing[ch]].pop()] = i
         i += 1
     return matches
+
+
+_matches = functools.lru_cache(maxsize=8)(bracket_matches)     # the texts of the calls (parse keeps its own)
 
 
 # the group of each kind of bracket, as a field of TagElement
@@ -150,7 +152,7 @@ class TagElement:
         self.parentheses = self.brackets = self.braces = ''
 
 
-def extract_bracket_elements(text, tag, tag_start, index_start, after_text=False):
+def extract_bracket_elements(text, tag, tag_start, index_start, after_text=False, matches=None):
     """The element of the tag `tag` written at `tag_start`, a TagElement,
     its word and groups read from `index_start` (after its `::`, or after
     its URL). `after_text`: read after text (a URL read already): a group then ends
@@ -180,7 +182,9 @@ def extract_bracket_elements(text, tag, tag_start, index_start, after_text=False
             break
         if ch in PAIRS:
             close = PAIRS[ch]
-            j = _matches(text).get(i)
+            if matches is None:
+                matches = _matches(text)
+            j = matches.get(i)
             if j is None:
                 raise LHTMLParseError(f'{ch!r} has no closing {close!r}')
             j += 1
@@ -251,6 +255,22 @@ def is_tag_boundary(text, index, tag, last_tag_end=-1):
     if tag:
         return ch not in '-.'
     return ch not in '[({'
+
+
+def bare_tag(text, m):
+    """A bare :: decided by what is around it, before its word is read (a
+    run of ::-::-::, ::nl::nl is read in linear time): (False, None) when it
+    is no tag (between two protected zones); (True, element) when what
+    follows decides it - ::nl is a spacer, :: then punctuation a closing
+    :: -; (True, None) when its word decides it (adjust_bare_tag)."""
+    following = text[m.end():m.end() + 1]
+    if m.start() > 0 and text[m.start() - 1] == PLACEHOLDER_CHAR and following == PLACEHOLDER_CHAR:
+        return False, None
+    if SPACER.match(text, m.end()):
+        return True, TagElement(start=m.start(), end=m.end() + 2, text='nl')
+    if following and not (following.isalnum() or following.isspace() or following in '[({'):
+        return True, TagElement(start=m.start(), end=m.end())
+    return True, None
 
 
 def adjust_bare_tag(text, m, element):
