@@ -192,7 +192,7 @@ def process_protect_attributes(text, stores):
         if tag in ('include', 'code') or not is_tag_boundary(text, m.start() - len(tag), tag):
             continue
         try:
-            element = extract_bracket_elements(text, m.end())
+            element = extract_bracket_elements(text, tag, m.start() - len(tag), m.end())
         except LHTMLParseError:
             continue
         for kind, start, end in element.groups:
@@ -232,7 +232,7 @@ def _refuse_include(text, locate):
     if m is None:
         return
     try:
-        name = extract_bracket_elements(text, m.end()).text
+        name = extract_bracket_elements(text, 'include', m.start(), m.end()).text
     except LHTMLParseError:
         name = text[m.end():].split(None, 1)[0] if text[m.end():].strip() else ''
     raise LHTMLParseError(

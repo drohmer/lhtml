@@ -150,9 +150,10 @@ class TagElement:
         self.parentheses = self.brackets = self.braces = ''
 
 
-def extract_bracket_elements(text, index_start, after_text=False):
-    """The element whose `::` ends at `index_start`, a TagElement.
-    `after_text`: read after text (a URL read already): a group then ends
+def extract_bracket_elements(text, tag, tag_start, index_start, after_text=False):
+    """The element of the tag `tag` written at `tag_start`, a TagElement,
+    its word and groups read from `index_start` (after its `::`, or after
+    its URL). `after_text`: read after text (a URL read already): a group then ends
     the word, as a group after text does. After a URL, a closing bracket
     without its opening one ends it too: (see img::a.png) is text around
     an image.
@@ -160,13 +161,7 @@ def extract_bracket_elements(text, index_start, after_text=False):
     A closing bracket without its opening one makes the whole element text
     (its groups are still listed, so that their content stays literal).
     An unclosed bracket raises LHTMLParseError."""
-    element = TagElement(start=index_start, end=index_start)
-    if index_start >= 2:
-        name_end = index_start - 2
-        m = _TAG_NAME_BEFORE.search(text, max(0, name_end - _MAX_TAG_NAME), name_end)
-        tag_start = m.start() if m else name_end
-        element.tag = text[tag_start:name_end]
-        element.start = tag_start
+    element = TagElement(tag=tag, start=tag_start, end=index_start)
 
     word, groups = [], []
     seen_text, group_after_text, stray = after_text, False, False
@@ -209,6 +204,8 @@ def extract_bracket_elements(text, index_start, after_text=False):
     element.text = ''.join(word)
     for kind, start, end in groups:
         element.add_group(kind, text[start:end])
+    if tag == 'link':                   # its labels as its label is written, an empty one too
+        element.brackets = ' '.join(text[start:end] for kind, start, end in groups if kind == '[]')
     return element
 
 

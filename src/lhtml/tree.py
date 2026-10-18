@@ -329,7 +329,7 @@ class _Parser:
                 continue
             line, column = self._place_of(text, m.start())
             try:
-                element = extract_bracket_elements(flat, m.end())
+                element = extract_bracket_elements(flat, tag, tag_start, m.end())
             except LHTMLParseError as e:
                 warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
                       (line, column - len(tag) if column else None))
