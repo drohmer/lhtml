@@ -1321,7 +1321,7 @@ class TestAudit:
             [('data-i', '{{ i }}'), ('class', 'first')]
 
     def test_jinja_classes_and_styles_join_only_where_it_is_safe(self):
-        import jinja2
+        jinja2 = pytest.importorskip("jinja2")
         env = jinja2.Environment(undefined=jinja2.StrictUndefined)
         html = lhtml.run('div::(.a){{% for i in L %}data-i={{ i }}{% if loop.first %} class="first"{% endif %}'
                          '{% endfor %}} x ::')
@@ -1357,7 +1357,7 @@ class TestAudit:
         assert lhtml.Attributes({'Title': 'x'}) == {'Title': 'x'}
 
     def test_a_video_keeps_its_jinja(self):
-        import jinja2
+        jinja2 = pytest.importorskip("jinja2")
         html = lhtml.run("video::{{ url_for('static', filename='clip.mp4') }}\n")
         jinja2.Template(html)           # a template still
         assert 'type=' not in html      # its file is Jinja's: no type
@@ -1365,7 +1365,7 @@ class TestAudit:
         assert 'type=' not in lhtml.run('video::dir.v/clip')
 
     def test_wrap_keeps_jinja(self):
-        import jinja2
+        jinja2 = pytest.importorskip("jinja2")
         page = lhtml.wrap('x', title='{{ t }} <b>', css="{{ url_for('static', filename='s.css') }}")
         jinja2.Template(page)
         assert '<title>{{ t }} &lt;b&gt;</title>' in page
