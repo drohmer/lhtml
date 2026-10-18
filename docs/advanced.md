@@ -154,9 +154,9 @@ for zone in lhtml.zones(text):          # in order, one left-to-right pass
     text[zone.start:zone.end]
     zone.tag, zone.value                # a url zone: img, a.png
 
-for found in lhtml.read_tags(text, macros=macros):     # the tags of the run, in order
+for found in lhtml.read_tags(text, macros=macros):     # the tags parse reads, in order
     found.start, found.end, found.written              # text[start:end], what it writes
-found = lhtml.read_tag(text, start)                    # the tag written at `start`
+found = lhtml.read_tag(text, start)                    # the syntax written at `start`
 found.written.braces                                   # its {...} as written
 ```
 
@@ -166,26 +166,27 @@ a URL: the built-in ones, `lhtml.URL_TAGS`; add the macros with `url:`),
 `code` (the pattern of the code blocks of another markup, the fenced
 blocks of Markdown, in place of `code::[...]`) and `start`.
 
-`read_tags` is `parse`: it notes each tag read, with its own rules, so a tool
-agrees with LHTML on every tag (none in a code block, a comment, inline
-code or a URL; a URL whole, `img::{{ base }}/a.png`, and ending before the
-`**` that closes a bold; the tags in a link's label). It reads the tags of
-the run (the built-in ones, the `macros`), or those of `names`, any name
-(a tag of the tool: `includeadv`). Each `SourceTag(start, end, written)`:
-`written` as a `Tag` is given it (tag, text, groups as written, line,
-column, context; a link's label), the tag at `text[start:end]` (a tag
-that holds what follows: its opening; a tag that cannot be there, a
-`span::` in a link's label, is none, as it is text for `parse`).
+`read_tags` gives the tags `parse` reads: `parse` notes each one as it
+reads it, with its own rules, so a tool agrees with LHTML on every tag
+(none in a code block, a comment, inline code or a URL; a URL whole,
+`img::{{ base }}/a.png`, and ending before the `**` that closes a bold;
+the tags in a link's label, but a container there, which is text). It
+takes the `tags` and `macros` of the run, as `parse` does (a tag of a
+tool: `tags={'includeadv': lhtml.Tag(build)}`), and `names`, a filter:
+those tags only, what is read does not change. Each `SourceTag(start,
+end, written)`: the tag at `text[start:end]` (a tag that holds what
+follows: its opening), `written` as its `Tag` got it (tag, text, groups
+as written, line, column, context; a link's label, its nodes). Each call
+reads anew: what it gives is the caller's.
 
-`read_tag` reads the tag written at a place, any name, wherever it is (a
-plugin that replaces a tag of its own before LHTML reads the page). Where
-`parse` reads a tag, it is the one `read_tags` gives (a bold, a link's
-label around it). Elsewhere, in a code block, a comment, inline code, or a
-tag `parse` leaves as text, it is its syntax, the text as it is: its
-groups, its URL whole, no label. A page is parsed once for all the calls
-on it: read tag by tag, it stays linear. A `start` outside the text is a
-`ValueError`; a name that does not start there (`pan::` in `span::`)
-gives `None`.
+`read_tag` reads the syntax written at a place, any name, wherever it is,
+the text as it is: what a plugin replaces before LHTML reads the page (a
+tag of its own, in a code block too). No markup around it is read: in
+`**img::a.png**` its URL is `a.png**` (`read_tags` gives `a.png`). Its
+groups, its URL whole for a tag of `url_tags`, no label. A page read tag
+by tag stays linear (its brackets and lines are read once per text). A
+`start` outside the text is a `ValueError`; a name that does not start
+there (`pan::` in `span::`) gives `None`.
 
 ### Custom Code Lexers
 

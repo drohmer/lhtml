@@ -1136,7 +1136,8 @@ class TestFourthReview:
         text = 'code::[c++]\nincludeadv::{filepath:"f.hpp"}\ncode::[-]\n'
         found = lhtml.read_tag(text, text.index('includeadv'))
         assert (found.written.braces, found.written.line) == ('filepath:"f.hpp"', 2)
-        assert list(lhtml.read_tags(text, {'includeadv'})) == []            # parse: in a code block
+        tool = {'includeadv': lhtml.Tag(lambda written: lhtml.Raw(''))}
+        assert list(lhtml.read_tags(text, tags=tool)) == []                 # parse: in a code block
 
     def test_a_page_read_tag_by_tag_stays_linear(self):
         import time
@@ -1195,14 +1196,7 @@ class TestFifthReview:
         assert lhtml.run('(link::https://w.org/A_(b)) x') == '(<a href="https://w.org/A_(b)">https://w.org/A_(b)</a>) x'
         assert [z.value for z in lhtml.zones('(see img::a.png) more') if z.kind == 'url'] == ['a.png']
 
-    def test_read_tag_reads_as_parse_where_parse_reads(self):
-        for text, start, expected in [('**includeadv::{a:1}** c', 2, 'includeadv::{a:1}'),
-                                      ('span::[c]**bold** text', 0, 'span::[c]'),
-                                      ('link::p.html[includeadv::a.txt] after', 13, 'includeadv::a.txt'),
-                                      ('**img::a.png**', 2, 'img::a.png')]:
-            found = lhtml.read_tag(text, start)
-            assert text[found.start:found.end] == expected
-        assert lhtml.read_tag('link::a.html[t][u] q', 0).written.brackets == 't u'
+    def test_read_tag_checks_its_start(self):
         assert lhtml.read_tag('abc span::x', 5) is None
         with pytest.raises(ValueError):
             lhtml.read_tag('x', -3)
@@ -1221,7 +1215,7 @@ class TestFifthReview:
 
 class TestSixthReview:
 
-    def test_read_tag_parses_a_page_once_whatever_its_names(self):
+    def test_read_tag_is_linear_whatever_the_names(self):
         names = ['img', 'link', 'span', 'div', 'b', 'video', 'figure', 'n0', 'n1', 'n2']
         text = ' '.join(f'{names[i % len(names)]}::a{i}.png' for i in range(2000))
         started = time.perf_counter()
@@ -1237,3 +1231,23 @@ class TestSixthReview:
 
     def test_zones_keeps_the_ascii_flag_of_code(self):
         assert lhtml.zones('é', code=re.compile(r'\w', re.A)) == []
+
+
+class TestSeventhReview:
+
+    def test_read_tags_names_only_filter(self):
+        assert list(lhtml.read_tags('std::vector', {'std'})) == []
+        tool = {'std': lhtml.Tag(lambda written: lhtml.Raw(''))}
+        assert [f.written.text for f in lhtml.read_tags('std::vector', tags=tool)] == ['vector']
+        text = 'img::a.png link::u[img::b.png]'
+        assert [f.written.text for f in lhtml.read_tags(text, {'img'})] == ['a.png', 'b.png']
+
+    def test_read_tag_reads_the_syntax_only(self):
+        found = lhtml.read_tag('**img::a.png**', 2)
+        assert found.written.text == 'a.png**' and found.written.label is None
+        assert [f.written.text for f in lhtml.read_tags('**img::a.png**')] == ['a.png']
+
+    def test_a_result_read_is_its_own(self):
+        text = 'link::u[img::p.png]'
+        next(lhtml.read_tags(text)).written.label[0].attributes['src'] = 'changed.png'
+        assert next(lhtml.read_tags(text)).written.label[0].attributes['src'] == 'p.png'

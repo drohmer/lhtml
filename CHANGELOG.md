@@ -90,9 +90,9 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - `lhtml.zones(text)`, `lhtml.read_tags(text)` and `lhtml.read_tag(text,
   start)`: a source as LHTML reads it, for the tools around it (the zones
   it leaves as they are; each tag, where it is and what it writes, read by
-  parse itself, with the rules of each tag; `read_tag` at one place, as
-  parse reads it, or as syntax where parse reads none: a code block), in
-  place of `lhtml.patterns` and
+  parse itself, with the rules of each tag, given the `tags` and `macros`
+  of the run, `names` a filter; `read_tag`, the syntax at one place, a
+  code block too), in place of `lhtml.patterns` and
   `extract_bracket_elements`.
 - The label of a link reads the elements that hold nothing:
   `link::page.html[img::thumb.png]` is an image as a link (it was the text

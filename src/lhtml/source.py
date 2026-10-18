@@ -21,16 +21,15 @@ import bisect
 import functools
 import re
 from collections.abc import Iterable, Iterator, Mapping
-import dataclasses
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from .errors import LHTMLError, quote
-from .nodes import Raw, Written
+from .errors import quote
+from .nodes import Written
 from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones
 from .process import MarksOnLine, url_and_closing_marks
 from .tag_parser import extract_bracket_elements
-from .tags import TAGS, Tag
+from .tags import Tag
 from .code import checked_lexers
 from .tree import _parse, registry
 
@@ -101,37 +100,23 @@ class SourceTag(NamedTuple):
     written: Written
 
 
-_SYNTAX = ('code', 'nl', 'include')    # LHTML syntax, not tags
+def read_tags(text: str, names: Iterable[str] | None = None, *, tags: Mapping[str, Tag] | None = None,
+              macros: Mapping | None = None) -> Iterator[SourceTag]:
+    """The tags parse reads in `text`, in order, each with its own rules
+    (parse notes them as it reads), so a tool agrees with LHTML: a tag in a
+    code block, a comment, inline code or a URL is none, a URL ends where
+    parse ends it (**img::a.png**), a tag in a link's label is one, a
+    container there is text, a name that is no tag is text (std::vector).
 
-
-def read_tags(text: str, names: Iterable[str] | None = None, *, macros: Mapping | None = None,
-              url_tags: Iterable[str] = ()) -> Iterator[SourceTag]:
-    """The tags written in `text`, in order, as parse reads them - parse
-    reads them: each tag keeps what it is given - so a tool agrees with
-    LHTML: a tag in a code block, a comment, inline code or a URL is none,
-    a URL ends where parse ends it (**img::a.png**), a tag in a link's label
-    is one, a name that is no tag is text (std::vector).
-
-    `names`: those tags only, any name (includeadv: a tag of the tool); by
-    default the tags of the run, the built-in ones and the `macros`.
-    `url_tags`: names whose text is a URL besides those of the run (the
-    built-in ones, the macros with `url:`). Each SourceTag(start, end,
-    written): `written` as a Tag gets it (its label: the nodes of a link's
-    label), the tag at text[start:end] (an element that holds what follows:
-    its opening, `div::(.c)`). The tags of the run are read with their own
-    rules (a container in a link's label is text there), a name of
-    `names` that is none of them as a tag that holds nothing. A syntax
-    removed in 3.0, or an error of a tag, raises as in parse."""
-    run = registry(None, macros)
+    `tags` and `macros`: those of the run, as parse takes them (a tag of a
+    tool: tags={'includeadv': lhtml.Tag(build)}). `names`: a filter, those
+    tags only (it changes nothing of what is read). Each SourceTag(start,
+    end, written): the tag at text[start:end] (a container: its opening,
+    `div::(.c)`), `written` as its Tag got it (a link's label: its nodes).
+    A syntax removed in 3.0, or an error of a tag, raises as in parse."""
+    run = registry(tags, macros)
     wanted = set(run) if names is None else set(names)
-    wanted -= set(_SYNTAX)
-    url_tags = frozenset(url_tags)
-    tags = dict(run)
-    for name in wanted - set(run):      # a tag of the tool: read, it writes nothing
-        tags[name] = Tag(lambda written: Raw(''), url=name in url_tags)
-    for name in url_tags & set(run):    # its text a URL, the rest its own
-        tags[name] = dataclasses.replace(tags[name], url=True)
-    _, read = _parse(text, tags, checked_lexers(None), False)
+    _, read = _parse(text, run, checked_lexers(None), False)
     for (start, end), written in sorted(read, key=lambda pair: pair[0]):
         if written.tag in wanted:
             yield SourceTag(start, end, written)
@@ -143,55 +128,31 @@ def _line_starts(text):
     return [0] + [m.end() for m in re.finditer('\n', text)]
 
 
-@functools.lru_cache(maxsize=8)
-def _readings(text, url_tags):
-    """The tags parse reads in a text, by their start, as names are asked:
-    {None: the tags of LHTML, name: a tag of a tool}, each read once."""
-    return {}
-
-
-def _read_by_parse(text, name, url_tags):
-    """The tags `name` parse reads in a text, by their start: one parse for
-    all the tags of LHTML, one for each name of a tool."""
-    readings = _readings(text, url_tags)
-    asked = None if name in TAGS else name
-    if asked not in readings:
-        try:
-            readings[asked] = {found.start: found for found in
-                               read_tags(text, None if asked is None else {asked}, url_tags=url_tags)}
-        except LHTMLError:              # a syntax removed in 3.0: read as syntax
-            readings[asked] = {}
-    return readings[asked]
-
-
 _ONE_NAME = re.compile(r'(?<![\w-])[A-Za-z][\w-]*::')
 _URL = re.compile(URL_TOKEN)
 
 
 def read_tag(text: str, start: int, *, url_tags: Iterable[str] = URL_TAGS) -> SourceTag | None:
-    """The tag written at `start` (its name, then ::, any name; None if no
-    name starts there), what a tool replaces before LHTML reads the page.
-    Where parse reads a tag, as read_tags gives it (a bold, a link's label,
-    Jinja around it); elsewhere - a code block, a comment, inline code, a
-    tag parse leaves as text - as syntax, the text as it is: its groups,
-    and its URL whole for a tag of `url_tags`, `written` with its tag,
-    text, inline, groups, line, column and context, no label. There a
-    bracket without its closing one raises LHTMLParseError. The page is
-    parsed once for all the calls on it: read_tag reads a page tag by tag."""
+    """The tag written at `start`, any name, read as syntax: the text as it
+    is, wherever it is (in a code block too), what a tool replaces before
+    LHTML reads the page; read_tags gives what parse reads. None if no name
+    and :: start there (pan:: in span:: is none). Its groups, and its URL
+    whole for a tag of `url_tags`; no markup around it is read (a bold, a
+    link's label: in **img::a.png** its URL is a.png**). `written` holds
+    its tag, text, inline, groups as written, line, column and context, no
+    label. A bracket without its closing one raises LHTMLParseError; a
+    `start` outside the text, ValueError. Its brackets and lines are read
+    once per text: a page read tag by tag stays linear."""
     if not 0 <= start <= len(text):
         raise ValueError(f'start: {start} is not a place in the text (0 to {len(text)})')
     m = _ONE_NAME.match(text, start)
     if m is None:
         return None
     name, after = m.group(0)[:-2], m.end()
-    url_tags = frozenset(url_tags)
-    read = _read_by_parse(text, name, url_tags).get(start)
-    if read is not None and read.written.tag == name:
-        return read
     lines = _line_starts(text)
     line = bisect.bisect_right(lines, start)
     url = None
-    if name in url_tags:                # its URL first: kept as written
+    if name in frozenset(url_tags):     # its URL first: kept as written
         found = _URL.match(text, after)
         if found:
             url = found.group(0)
