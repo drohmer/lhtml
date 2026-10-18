@@ -219,11 +219,13 @@ src/lhtml/
   nodes.py             # The nodes of the tree
   render.py            # render(): the HTML of a tree, from its nodes, and its line breaks
   attributes.py        # The attributes: one reader, Attributes, one rule of priority
+  jinja_blocks.py      # The Jinja blocks among attributes: which are folded, how their values join
   diagnostics.py       # The problems as the command shows them
   macros.py            # Macros: custom :: tags declared in YAML
   process.py           # The protected zones (placeholders), the syntax removed in 3.0
   patterns.py          # Centralized regex patterns and utilities
   tag_parser.py        # The parser of a :: tag element, and whether a :: is a tag
+  source.py            # zones, read_tags, read_tag: a source as LHTML reads it, for the tools
   tags.py              # Tag, TAGS: the built-in tags build their nodes
   code.py              # Code syntax highlighting (Pygments)
   wrap_html.py         # HTML document wrapping
