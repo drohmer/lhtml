@@ -30,7 +30,7 @@ from .nodes import Raw, Written
 from .patterns import URL_TAGS, URL_TOKEN, protected_blocks, protected_zones
 from .process import MarksOnLine, url_and_closing_marks
 from .tag_parser import extract_bracket_elements
-from .tags import Tag
+from .tags import TAGS, Tag
 from .code import checked_lexers
 from .tree import _parse, registry
 
@@ -63,7 +63,7 @@ class Zone:
 def _pattern(url_tags, code):
     if code is None:
         return protected_blocks(tuple(sorted(url_tags)))
-    flags = 's' + ''.join(letter for letter, flag in (('i', re.I), ('m', re.M), ('x', re.X))
+    flags = 's' + ''.join(letter for letter, flag in (('a', re.A), ('i', re.I), ('m', re.M), ('x', re.X))
                           if code.flags & flag)    # its own, not those of the other zones
     end = '\n' if code.flags & re.X else ''        # (re.X: a # comment ends with its line)
     return re.compile(f'(?P<code>(?{flags}:{code.pattern}{end}))|' + protected_zones(tuple(sorted(url_tags))),
@@ -144,12 +144,24 @@ def _line_starts(text):
 
 
 @functools.lru_cache(maxsize=8)
+def _readings(text, url_tags):
+    """The tags parse reads in a text, by their start, as names are asked:
+    {None: the tags of LHTML, name: a tag of a tool}, each read once."""
+    return {}
+
+
 def _read_by_parse(text, name, url_tags):
-    """The tags `name` parse reads in a text, by their start: once per text."""
-    try:
-        return {found.start: found for found in read_tags(text, {name}, url_tags=url_tags)}
-    except LHTMLError:                  # a syntax removed in 3.0: read as syntax
-        return {}
+    """The tags `name` parse reads in a text, by their start: one parse for
+    all the tags of LHTML, one for each name of a tool."""
+    readings = _readings(text, url_tags)
+    asked = None if name in TAGS else name
+    if asked not in readings:
+        try:
+            readings[asked] = {found.start: found for found in
+                               read_tags(text, None if asked is None else {asked}, url_tags=url_tags)}
+        except LHTMLError:              # a syntax removed in 3.0: read as syntax
+            readings[asked] = {}
+    return readings[asked]
 
 
 _ONE_NAME = re.compile(r'(?<![\w-])[A-Za-z][\w-]*::')
@@ -174,7 +186,7 @@ def read_tag(text: str, start: int, *, url_tags: Iterable[str] = URL_TAGS) -> So
     name, after = m.group(0)[:-2], m.end()
     url_tags = frozenset(url_tags)
     read = _read_by_parse(text, name, url_tags).get(start)
-    if read is not None:
+    if read is not None and read.written.tag == name:
         return read
     lines = _line_starts(text)
     line = bisect.bisect_right(lines, start)

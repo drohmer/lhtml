@@ -369,19 +369,26 @@ class Attributes(MutableMapping):
             return '', self.copy()
         parts = []
         for block in blocks:
-            folded, value_before, opened = [], False, []
+            # a joiner before a value when one may be written before it: in
+            # the block before it (not in another branch), or a turn of a loop
+            folded, value_before, opened = [], False, []    # opened: [word, value before, a value in]
             for entry in block:
                 kind = _statement(entry.written) if entry.name is None else None
                 if kind:            # its whitespace control would take the joiners
                     folded.append(_TRIM.sub(r'\1\2', entry.written))
-                    value_before = False
                     if kind == 'open':
-                        opened.append(_STATEMENT.fullmatch(entry.written).group(1))
+                        opened.append([_STATEMENT.fullmatch(entry.written).group(1), value_before, False])
+                    elif kind == 'branch':
+                        value_before = opened[-1][1]
                     elif kind == 'close':
-                        opened.pop()
-                elif entry.name == name and entry.value:     # in a loop: each turn its joiner
-                    folded.append((joiner if value_before or 'for' in opened else '') + entry.value)
+                        _, before, written = opened.pop()
+                        value_before = before or written
+                elif entry.name == name and entry.value:
+                    loop = any(word == 'for' for word, _, _ in opened)
+                    folded.append((joiner if value_before or loop else '') + entry.value)
                     value_before = True
+                    for level in opened:
+                        level[2] = True
             parts.append(''.join(folded))
         return joiner.join(parts), self._without_entries(self._in_blocks(name, blocks))
 

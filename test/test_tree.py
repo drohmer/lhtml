@@ -1217,3 +1217,23 @@ class TestFifthReview:
     def test_zones_code_flags_are_its_own(self):
         found = lhtml.zones('IMG::a.png ```A```', code=re.compile('```a```', re.I))
         assert [z.kind for z in found] == ['code']
+
+
+class TestSixthReview:
+
+    def test_read_tag_parses_a_page_once_whatever_its_names(self):
+        names = ['img', 'link', 'span', 'div', 'b', 'video', 'figure', 'n0', 'n1', 'n2']
+        text = ' '.join(f'{names[i % len(names)]}::a{i}.png' for i in range(2000))
+        started = time.perf_counter()
+        found = [lhtml.read_tag(text, m.start()) for m in re.finditer(r'(?<![\w-])\w+::', text)]
+        assert time.perf_counter() - started < 5
+        assert [f.written.tag for f in found[:10]] == names
+
+    def test_a_value_after_a_block_has_its_joiner(self):
+        assert lhtml.run('div::(.base){{% if ok %}{% if ok %}class="a"{% endif %}class="b"{% endif %}} x ::') == \
+            '<div class="base {% if ok %}{% if ok %}a{% endif %} b{% endif %}"> x </div>'
+        assert lhtml.run('div::(.base){{% if ok %}class="a"{% else %}class="b"{% endif %}} x ::') == \
+            '<div class="base {% if ok %}a{% else %}b{% endif %}"> x </div>'
+
+    def test_zones_keeps_the_ascii_flag_of_code(self):
+        assert lhtml.zones('é', code=re.compile(r'\w', re.A)) == []
