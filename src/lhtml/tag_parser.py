@@ -13,6 +13,7 @@ a bold, a heading...), at a protected zone, or at text that follows a group that
 import bisect
 import functools
 import re
+from dataclasses import dataclass, field
 
 from .errors import LHTMLParseError, warn
 from .patterns import EVENT_CHAR, PLACEHOLDER_CHAR, SPACER
@@ -95,29 +96,67 @@ def _matches(text):
     return matches
 
 
-def extract_bracket_elements(text, index_start):
-    """The element whose `::` ends at `index_start`, as a dict:
+# the group of each kind of bracket, as a field of TagElement
+GROUP_FIELDS = {'()': 'parentheses', '[]': 'brackets', '{}': 'braces'}
 
-    '()', '[]', '{}'   the content of the groups (a group written twice is
-                       joined with a space)
-    'text'             the word after `::`
-    'groups'           (kind, start, end) of each group: its content is
-                       text[start:end]
-    'tag'              the name before `::` ('' for a bare `::`)
-    'index_start'      where the name starts
-    'index_end'        where the element ends
+
+@dataclass(slots=True, eq=False)
+class TagElement:
+    """A `name::` element as the source writes it: `tag` (the name, '' for a
+    bare ::), from `start` (where the name starts) to `end`; its groups as
+    written, `parentheses` (classes and id), `brackets` (style, or the
+    label of a link), `braces` (HTML attributes), each group written twice
+    joined with a space; `text`, the word after `::`; `groups`, (kind,
+    start, end) of each group, its content text[start:end]; `stray`: a
+    closing bracket without its opening one, all of it is text.
+
+    The parser of the tree adds where it is (`line`, `column`, `context`:
+    what a message quotes), `inline` (written name::text::), `label` (the
+    nodes of the label of a link) and `warned` (what follows from it is
+    warned already)."""
+    tag: str = ''
+    start: int = 0
+    end: int = 0
+    parentheses: str = ''
+    brackets: str = ''
+    braces: str = ''
+    text: str = ''
+    groups: list = field(default_factory=list)
+    stray: bool = False
+    line: int | None = None
+    column: int | None = None
+    context: str = ''
+    inline: bool = False
+    label: list | None = None
+    warned: bool = False
+
+    def group(self, kind):
+        return getattr(self, GROUP_FIELDS[kind])
+
+    def set_group(self, kind, value):
+        setattr(self, GROUP_FIELDS[kind], value)
+
+    def add_group(self, kind, value):
+        written = self.group(kind)
+        self.set_group(kind, f'{written} {value}' if written else value)
+
+    def clear_groups(self):
+        self.parentheses = self.brackets = self.braces = ''
+
+
+def extract_bracket_elements(text, index_start):
+    """The element whose `::` ends at `index_start`, a TagElement.
 
     A closing bracket without its opening one makes the whole element text
     (its groups are still listed, so that their content stays literal).
     An unclosed bracket raises LHTMLParseError."""
-    element = {'[]': '', '()': '', '{}': '', 'text': '', 'groups': [],
-               'tag': '', 'index_start': index_start, 'index_end': index_start}
+    element = TagElement(start=index_start, end=index_start)
     if index_start >= 2:
         name_end = index_start - 2
         m = _TAG_NAME_BEFORE.search(text, max(0, name_end - _MAX_TAG_NAME), name_end)
         tag_start = m.start() if m else name_end
-        element['tag'] = text[tag_start:name_end]
-        element['index_start'] = tag_start
+        element.tag = text[tag_start:name_end]
+        element.start = tag_start
 
     word, groups = [], []
     seen_text = group_after_text = stray = False
@@ -150,15 +189,15 @@ def extract_bracket_elements(text, index_start):
         seen_text = True
         i += 1
 
-    element['index_end'] = i
-    element['groups'] = groups  # protected from formatting even in a stray element
+    element.end = i
+    element.groups = groups     # protected from formatting even in a stray element
     if stray:                   # not a tag element: all of it is text
-        element['stray'] = bool(groups)
-        element['text'] = text[index_start:i]
+        element.stray = bool(groups)
+        element.text = text[index_start:i]
         return element
-    element['text'] = ''.join(word)
+    element.text = ''.join(word)
     for kind, start, end in groups:
-        element[kind] += (' ' if element[kind] else '') + text[start:end]
+        element.add_group(kind, text[start:end])
     return element
 
 
@@ -168,23 +207,23 @@ def extract_bracket_elements(text, index_start):
 
 def is_closing_tag(element):
     """A bare :: (empty tag, span of exactly 2) is a closing tag."""
-    return element['tag'] == '' and element['index_end'] - element['index_start'] == 2
+    return element.tag == '' and element.end - element.start == 2
 
 
 def refuse_explicit_closing(element):
     """::[-] and ::name[-] were removed in LHTML 3.0: a tag is closed by ::.
     On a named tag, x::[-] is a style '-' (as in LHTML 2): kept, with a
     warning, since it was most likely meant as a closing tag."""
-    context = element.get('context', '')
-    if element['tag'] == '':
+    context = element.context
+    if element.tag == '':
         raise LHTMLParseError(f'::[-] was removed in LHTML 3.0; close a tag with :: (near {context!r})',
-                              element.get('line'), element.get('column'))
-    element['warned'] = True            # what follows from it is not warned again
-    if element['tag'] == 'code':
+                              element.line, element.column)
+    element.warned = True            # what follows from it is not warned again
+    if element.tag == 'code':
         warn(f'code::[-] closes no code block; a block opens with code::[language] '
               f'(near {context!r})', element, stacklevel=5)
         return
-    warn(f"{element['tag']}::[-]: [-] is a style here, not a closing tag; close a tag with :: "
+    warn(f"{element.tag}::[-]: [-] is a style here, not a closing tag; close a tag with :: "
           f'(near {context!r})', element, stacklevel=5)
 
 
@@ -219,15 +258,16 @@ def adjust_bare_tag(text, m, element):
     if after_placeholder and text[m.end():m.end() + 1] == PLACEHOLDER_CHAR:
         return False
 
-    word = element['text']
+    word = element.text
     if SPACER.match(word):
-        if element['index_end'] != m.end() + 2:
-            element.update({'text': 'nl', '[]': '', '()': '', '{}': '',
-                            'index_end': m.end() + 2})
+        if element.end != m.end() + 2:
+            element.text, element.end = 'nl', m.end() + 2
+            element.clear_groups()
         return True
     if after_placeholder and word[:1].isalnum():
         return False
     following = text[m.end():m.end() + 1]
     if following and not (following.isalnum() or following.isspace() or following in '[({'):
-        element.update({'text': '', '[]': '', '()': '', '{}': '', 'index_end': m.end()})
+        element.text, element.end = '', m.end()
+        element.clear_groups()
     return True

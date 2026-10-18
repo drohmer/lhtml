@@ -193,7 +193,7 @@ def process_protect_attributes(text, stores):
             element = extract_bracket_elements(text, m.end())
         except LHTMLParseError:
             continue
-        for kind, start, end in element['groups']:
+        for kind, start, end in element.groups:
             if tag == 'link' and kind == '[]':      # the label of a link is text
                 continue
             parts.append(text[prev:start])
@@ -230,7 +230,7 @@ def _refuse_include(text, locate):
     if m is None:
         return
     try:
-        name = extract_bracket_elements(text, m.end())['text']
+        name = extract_bracket_elements(text, m.end()).text
     except LHTMLParseError:
         name = text[m.end():].split(None, 1)[0] if text[m.end():].strip() else ''
     raise LHTMLParseError(

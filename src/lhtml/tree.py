@@ -105,6 +105,9 @@ class _Parser:
         self.parsed = {}            # an element -> (its element dict, the container it is opened in)
         self.built = set()          # the nodes the tags built: text after them is not theirs
         self.lines = [0] + [m.end() for m in re.finditer('\n', self.source)]
+        self.offsets = []           # the offset in the source of each origin (_offsets, _placed)
+        self.open, self.closed_early, self.next_close = [], [], 0   # the :: elements (elements)
+        self._glued = None          # the word:: that may be meant as a closing :: (_glued_close)
 
     # -- positions --------------------------------------------------------
 
@@ -291,52 +294,53 @@ class _Parser:
                 warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
                       (line, column - len(tag) if column else None))
                 continue
-            element.update({'tag': tag, 'index_start': tag_start})
+            element.tag, element.start = tag, tag_start
             if not tag and not adjust_bare_tag(flat, m, element):
                 continue
-            element['line'] = line
-            element['column'] = column - len(tag) if column else None
-            element['context'] = self._quote(text, tag_start, element['index_end'])
-            element['label'] = None
-            if element.get('stray'):    # all of it is its text
-                if EVENT_CHAR in flat[m.end():element['index_end']]:
+            element.line = line
+            element.column = column - len(tag) if column else None
+            element.context = self._quote(text, tag_start, element.end)
+            element.label = None
+            if element.stray:    # all of it is its text
+                if EVENT_CHAR in flat[m.end():element.end]:
                     warn(f'{tag}:: has a closing bracket without its opening one: it is left as text '
-                          f"(near {element['context']!r})", element)
-                    chars.append(text.chars[prev:element['index_end']])
-                    origins.extend(text.origins[prev:element['index_end']])
-                    prev = element['index_end']
+                          f"(near {element.context!r})", element)
+                    chars.append(text.chars[prev:element.end])
+                    origins.extend(text.origins[prev:element.end])
+                    prev = element.end
                     continue
             for kind in ('[]', '()', '{}'):     # a group across nodes (a bold, a list): as written
-                if EVENT_CHAR in element[kind]:
-                    element[kind] = ' '.join(self._source(text, a - 1, b + 1)[1:-1]
-                                             for k, a, b in element['groups'] if k == kind)
-            for key in ('text', '[]', '()', '{}'):
-                element[key] = original(element[key])
-            if tag in self.tags and attributes.unclosed(element['{}']):
+                if EVENT_CHAR in element.group(kind):
+                    element.set_group(kind, ' '.join(self._source(text, a - 1, b + 1)[1:-1]
+                                                     for k, a, b in element.groups if k == kind))
+            element.text = original(element.text)
+            for kind in ('[]', '()', '{}'):
+                element.set_group(kind, original(element.group(kind)))
+            if tag in self.tags and attributes.unclosed(element.braces):
                 warn(f"{tag}:: a value of its {{...}} has no closing quote: it is written so "
-                      f"(near {element['context']!r})", element)
-            element['inline'] = element['text'].endswith('::')
-            if element['inline']:
-                element['text'] = element['text'][:-2]
+                      f"(near {element.context!r})", element)
+            element.inline = element.text.endswith('::')
+            if element.inline:
+                element.text = element.text[:-2]
             self._end_containers(closes, tag_start)
-            crossing = self._crosses(text.origins[tag_start:element['index_end']])
+            crossing = self._crosses(text.origins[tag_start:element.end])
             if crossing:                # its source as written, not the markup the stages wrote
-                span = self.source_of(text.origins[tag_start:element['index_end']])
+                span = self.source_of(text.origins[tag_start:element.end])
                 crossing = quote(self.source[span[0]:span[1]], 0, span[1] - span[0])
-            if tag == 'link' and not crossing and not element.get('stray'):     # its label: nodes
-                label = [(a, b) for kind, a, b in element['groups'] if kind == '[]']
-                element['label'] = self._label_nodes(text, label)
-                element['[]'] = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
+            if tag == 'link' and not crossing and not element.stray:     # its label: nodes
+                label = [(a, b) for kind, a, b in element.groups if kind == '[]']
+                element.label = self._label_nodes(text, label)
+                element.brackets = ' '.join(self._source(text, a - 1, b + 1)[1:-1] for a, b in label)
             what = self._decide(element, containers[tag_start], crossing)
             if what is None:            # not a tag: its text stays, and is not read again
-                chars.append(text.chars[prev:element['index_end']])
-                origins.extend(text.origins[prev:element['index_end']])
-                prev = element['index_end']
+                chars.append(text.chars[prev:element.end])
+                origins.extend(text.origins[prev:element.end])
+                prev = element.end
                 continue
             chars.append(text.chars[prev:tag_start])
             origins.extend(text.origins[prev:tag_start])
             kind, node = what
-            span = self.source_of(text.origins[tag_start:element['index_end']])
+            span = self.source_of(text.origins[tag_start:element.end])
             if kind == 'close':         # the element ends with its ::
                 if span:
                     node.span = (node.span[0], span[1])
@@ -346,17 +350,17 @@ class _Parser:
                         self.built.add(n)
                         if n.line is None:
                             n.span = span or n.span
-                            n.line, n.column = element['line'], element['column']
+                            n.line, n.column = element.line, element.column
             event = self.event(kind, node)
             chars.append(EVENT_CHAR)
             origins.append(-(event + 1))
-            prev = last_tag_end = element['index_end']
+            prev = last_tag_end = element.end
         self._end_containers(closes, len(flat) + 1)
         for node in self.open:
             element = self.parsed[node][0]
-            if not element.get('warned'):
+            if not element.warned:
                 warn(f"{_label(node)} is never closed{self._glued_close(node)} "
-                      f"(near {element['context']!r})", element)
+                      f"(near {element.context!r})", element)
         chars.append(text.chars[prev:])
         origins.extend(text.origins[prev:])
         return _Text(''.join(chars), origins)
@@ -416,9 +420,9 @@ class _Parser:
             while self.open and self.parsed[self.open[-1]][1] is container:
                 node = self.open.pop()
                 element = self.parsed[node][0]
-                if not element.get('warned'):
+                if not element.warned:
                     warn(f'{_label(node)} is closed at the end of the {_KINDS[type(container)]} it is '
-                          f"opened in: its :: is elsewhere, or missing (near {element['context']!r})",
+                          f"opened in: its :: is elsewhere, or missing (near {element.context!r})",
                           element)
                 self.closed_early.append(node)
 
@@ -431,17 +435,17 @@ class _Parser:
     def _decide(self, element, container, crossing):
         """(event, node) of an element; None when it is not a tag (its
         source stays)."""
-        tag = element['tag']
-        if element['[]'] == '-' and tag != 'link':
+        tag = element.tag
+        if element.brackets == '-' and tag != 'link':
             refuse_explicit_closing(element)
             if self.open:               # the element it was meant to close: warned with it
-                self.parsed[self.open[-1]][0]['warned'] = True
+                self.parsed[self.open[-1]][0].warned = True
         if tag and tag not in self.tags:
             self._not_a_tag(element)
             return None
-        if element.get('stray'):
+        if element.stray:
             warn(f'{tag}:: has a closing bracket without its opening one: its groups are left as text '
-                  f"(near {element.get('context', '')!r})", element)
+                  f"(near {element.context!r})", element)
         if crossing:                    # a label across the end of a heading, an item, a bold
             warn(f'{tag}:: is left as text: its text would cross the end of a heading, list item, '
                   f'bold or italic (near {crossing!r})', element)
@@ -450,31 +454,21 @@ class _Parser:
             return self._open(element, self.tags[tag], tag, container)
         if is_closing_tag(element):
             return self._close_tag(element, container)
-        if element['text'] == 'nl':
+        if element.text == 'nl':
             return self._open(element, SPACER, '', container)
-        if element['[]'] or element['()'] or element['{}'] or element['text'] or element['groups']:
+        if element.brackets or element.parentheses or element.braces or element.text or element.groups:
             return self._open(element, self.tags['div'], '', container)    # an anonymous div
         return None
 
     def _open(self, element, tag, name, container):
         """The nodes the tag builds: ('open', its element) when it holds
         what follows, else ('leaf', [nodes])."""
-        given = Written(tag=element['tag'], text=element['text'], inline=element['inline'],
-                        parentheses=element['()'], brackets=element['[]'], braces=element['{}'],
-                        label=None if element['label'] is None else tuple(element['label']), line=element['line'], column=element['column'],
-                        context=element['context'])
-        try:
-            holds = tag.holds(given)
-        except LHTMLError:
-            raise
-        except Exception as e:
-            raise _tag_error(f'{name}::', 'container', e, element) from e
-        try:
-            built = node_list(tag.build(given))
-        except LHTMLError:
-            raise
-        except Exception as e:
-            raise _tag_error(f'{name}::', 'build', e, element) from e
+        given = Written(tag=element.tag, text=element.text, inline=element.inline,
+                        parentheses=element.parentheses, brackets=element.brackets, braces=element.braces,
+                        label=None if element.label is None else tuple(element.label),
+                        line=element.line, column=element.column, context=element.context)
+        holds = self._call(name, 'container', element, tag.holds, given)
+        built = self._call(name, 'build', element, lambda w: node_list(tag.build(w)), given)
         if holds and (len(built) != 1 or not isinstance(built[0], Element)):
             raise _tag_error(f'{name}::', 'build', TypeError('a container builds one Element'), element)
         for node in built:
@@ -490,21 +484,21 @@ class _Parser:
         """A name that is no tag stays as text (std::vector): warned when a
         group follows its :: at once (code::[python] never closed, bx::(.c)
         for box::(.c))."""
-        tag, groups = element['tag'], element['groups']
-        after = element['index_start'] + len(tag) + 2     # just after its ::
-        if element.get('warned') or not groups or groups[0][1] != after + 1:
+        tag, groups = element.tag, element.groups
+        after = element.start + len(tag) + 2     # just after its ::
+        if element.warned or not groups or groups[0][1] != after + 1:
             return
         if tag == 'code' and groups[0][0] == '[]':
-            warn(f"code::[{element['[]']}] is never closed (its code::[-] is missing): what follows "
+            warn(f"code::[{element.brackets}] is never closed (its code::[-] is missing): what follows "
                   f"is read as LHTML", element)
         else:
             warn(f'{tag}:: is no tag, it is left as text{suggestion(tag, self.tags)} '
-                  f"(near {element['context']!r})", element)
+                  f"(near {element.context!r})", element)
 
     def _glued_close(self, node):
         """'; ... is no closing ::' when a word:: after the element was
         meant to close it (span::[c] text word::)."""
-        if not hasattr(self, '_glued'):     # read once: many elements may never be closed
+        if self._glued is None:     # read once: many elements may never be closed
             self._glued = [(m.start(), m.group(1)) for m in _GLUED_CLOSE.finditer(self.source)
                            if m.group(1) not in self.tags]
         k = bisect.bisect_left(self._glued, (node.span[0], ''))
@@ -513,6 +507,16 @@ class _Parser:
         word = self._glued[k][1]
         return f"; {word}:: is no closing ::, write '{word} ::'"
 
+    def _call(self, name, what, element, function, given):
+        """A function of a tag: an exception it raises is an LHTMLError
+        naming the tag and its place (the exception as its cause)."""
+        try:
+            return function(given)
+        except LHTMLError:
+            raise
+        except Exception as e:
+            raise _tag_error(f'{name}::', what, e, element) from e
+
     def _close_tag(self, element, container):
         """A `::`: it closes the last open element if they are in the same
         container; otherwise it closes nothing, and stays as text."""
@@ -520,19 +524,19 @@ class _Parser:
         if top is not None and self.parsed[top][1] is container:
             return 'close', self.open.pop()
         early = self.closed_early[-1] if self.closed_early else None
-        start = lambda node: self.parsed[node][0]['index_start']
+        start = lambda node: self.parsed[node][0].start
         if early is not None and (top is None or start(early) > start(top)):
             self.closed_early.pop()
-            if self.parsed[early][0].get('warned'):     # the :: of an element warned already
+            if self.parsed[early][0].warned:     # the :: of an element warned already
                 return None
             warn(f'this :: closes nothing: {_label(early)} was closed at the end of the '
                   f"{_KINDS[type(self.parsed[early][1])]} it is opened in "
-                  f"(near {self.parsed[early][0]['context']!r})", element)
+                  f"(near {self.parsed[early][0].context!r})", element)
         elif top is not None:
             warn(f'this :: closes nothing: it is inside a {_KINDS.get(type(container), "container")} '
-                  f"that {_label(top)} is not in (near {self.parsed[top][0]['context']!r})", element)
+                  f"that {_label(top)} is not in (near {self.parsed[top][0].context!r})", element)
         else:
-            warn(f"this :: closes nothing: no element is open (near {element.get('context', '')!r})",
+            warn(f"this :: closes nothing: no element is open (near {element.context!r})",
                   element)
         return None
 
@@ -697,7 +701,7 @@ def _label(node):
 
 def _tag_error(label, what, error, element):
     return LHTMLError(f'{label} its {what} raised {type(error).__name__}: {error} '
-                      f"(near {element.get('context', label)!r})", element.get('line'), element.get('column'))
+                      f"(near {element.context or label!r})", element.line, element.column)
 
 
 def _registry(tags, macros):

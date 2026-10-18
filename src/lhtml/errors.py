@@ -53,9 +53,7 @@ PROBLEMS = contextvars.ContextVar('lhtml_problems', default=None)
 def warn(message, place, stacklevel=3):
     """A problem at `place`: (line, column), or an element (or Written) with
     them. Kept by the parse running (PROBLEMS), a warning outside one."""
-    if isinstance(place, dict):
-        place = place.get('line'), place.get('column')
-    elif hasattr(place, 'line'):
+    if hasattr(place, 'line'):
         place = place.line, place.column
     problem = LHTMLWarning(message, *(place or (None, None)))
     problems = PROBLEMS.get()
