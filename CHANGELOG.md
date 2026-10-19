@@ -41,6 +41,14 @@ The README, read and run as a newcomer would, step by step:
   (`pipx` or `lhtml` not found, `import lhtml` after a pipx install). Then
   the syntax at a glance and the command line; the source installation and
   the output of `wrap` further down.
+- The reference reads more easily: each section shows its example first;
+  the detailed rules of the tags, of the URLs and labels, and of the macros
+  are bullet lists under *Precise rules*, to skip on a first reading; the
+  long paragraphs of the code blocks, the line breaks and the HTML-first
+  principle are lists too. Two rules that apply to every tag (quoted
+  strings in the groups, the defaults of `img::` and `link::`) are with
+  the tags, no longer only with the macros; the line before a block gets
+  no `<br>` either.
 - A source for the command is `page.l.html`; a page of lhtml-site is a
   Jinja2 template `page.html.j2`, rendered by the generator, not by `lhtml`.
 

@@ -270,16 +270,6 @@ tagName::(.classes #id)[cssStyle]{htmlAttributes} content ::
 
 All bracket groups are optional. If `tagName` is omitted, defaults to `div`. A bare `::` closes the last opened tag.
 
-Tag names start with a letter and may contain letters, digits, `_` and `-` (useful for custom tags). A tag is only recognized when it is not glued to a preceding word: `std::chrono::seconds`, `obj.link::x` or the Python slice `a[::2]` are left untouched.
-
-A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons: a run of three or more (`:::`, `::::`) is text. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
-
-A tag that is opened but never closed, or a `::` that closes nothing, produces a warning quoting the beginning of the tag (printed by the command; from Python, an `LHTMLWarning`, see the [Python API Reference](#python-api-reference)). A tag never closed is not closed in the output either: `div::` gives an opening `<div>` without its `</div>`. An unmatched `::` is kept as text in the output.
-
-Elements nest inside headings, list items, bold and italic: one opened there and not closed there is closed at its end, with a warning, and a `::` closes the last open element only when both are in the same heading, item, bold or italic (or both outside). In `div:: a **x :: y** b ::` the `::` inside the bold closes nothing (a warning, it stays as text) and the last one closes the div. A `link::` whose label would cross the end of a heading, an item or a bold (`**x link::u[b** c]`) is left as text, with a warning.
-
-A warning or an error has the `line` and `column` where it is in the text given to `lhtml.run` (`None` when not known). The command line prints each problem as `file:line:column: level: message`.
-
 #### Div / Span with Styles
 
 ```
@@ -345,15 +335,47 @@ Output:
 <div style="color:blue;"> short text </div>
 ```
 
+#### Precise rules of the tags
+
+*To skip on a first reading.*
+
+- **Names**: a tag name starts with a letter and may contain letters,
+  digits, `_` and `-` (useful for custom tags).
+- **Not glued**: a tag is only recognized when it is not glued to a
+  preceding word: `std::chrono::seconds`, `obj.link::x` or the Python slice
+  `a[::2]` are left untouched.
+- **The closing `::`** may be directly followed by punctuation or HTML
+  (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons:
+  a run of three or more (`:::`, `::::`) is text. A `::` between two HTML
+  tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
+- **Quoted strings** hold their brackets: in `{...}`, a value quoted after
+  its `=` (`{title="a } b"}`, over several lines but not across a blank
+  line); in `[...]`, a CSS string (`[content:"]"]`). A tag whose groups are
+  left as text because of a closing bracket without its opening one is
+  warned.
+- **Defaults of `img::` and `link::`**: their `src`, `alt` and `href` come
+  first, and an attribute written in the source replaces them
+  (`img::a.png{alt="x" src="b.png"}` is `<img alt="x" src="b.png">`).
+- **Unclosed or unmatched**: a tag that is opened but never closed, or a
+  `::` that closes nothing, produces a warning quoting the beginning of the tag
+  (printed by the command; from Python, an `LHTMLWarning`, see the
+  [Python API Reference](#python-api-reference)). A tag never closed is not
+  closed in the output either: `div::` gives an opening `<div>` without its
+  `</div>`. An unmatched `::` is kept as text in the output.
+- **Nesting**: elements nest inside headings, list items, bold and italic.
+  One opened there and not closed there is closed at its end, with a
+  warning.
+- **Which `::` closes**: a `::` closes the last open element only when both
+  are in the same heading, item, bold or italic (or both outside). In
+  `div:: a **x :: y** b ::` the `::` inside the bold closes nothing (a
+  warning, it stays as text) and the last one closes the div.
+- **Where**: every warning or error, of a tag or not, has the `line` and
+  `column` where it is in the text given to `lhtml.run` (`None` when not
+  known). The command line prints each problem as
+  `file:line:column: level: message`.
+
+
 ### Links
-
-The URL of `link::`, `img::`, `video::` and `videoplay::` is never modified (`__`, `**`, `$` are kept), but for a final `**` or `__` that closes a bold or an italic opened before it on its line: `**img::a.png**` is an image in bold. Parentheses that are part of the URL are kept (`Mercury_(planet)`, `fig(1).png`), while a group starting with `.` or `#` is a class/id group. The URL may contain Jinja expressions (`img::{{ base }}/photo.jpg`, `link::{{ url_for('page') }}[Home]`), which are kept unchanged. A link without a label shows its URL (`link::https://example.org` is `<a href="https://example.org">https://example.org</a>`), as an image without `alt` gets its source.
-
-A label holds text, bold, italic, inline code, and the elements that hold
-nothing: an image as a link is `link::page.html[img::thumb.png]`
-(`<a href="page.html"><img src="thumb.png" alt="thumb.png"></a>`), as are a
-`video::`, an empty macro or `span::word::`. An element that would hold what
-follows (`div::`) or another link stays text in a label, with a warning.
 
 ```
 link::https://example.com[Click here]
@@ -365,6 +387,33 @@ Output:
 <a href="https://example.com">Click here</a>
 <a class="nav" href="page.html">Back to home</a>
 ```
+
+A link without a label shows its URL (`link::https://example.org` is
+`<a href="https://example.org">https://example.org</a>`), as an image
+without `alt` gets its source. An image as a link is
+`link::page.html[img::thumb.png]`
+(`<a href="page.html"><img src="thumb.png" alt="thumb.png"></a>`).
+
+#### Precise rules of the URLs and labels
+
+*To skip on a first reading.*
+
+- **The URL** of `link::`, `img::`, `video::` and `videoplay::` is never
+  modified (`__`, `**`, `$` are kept), but for a final `**` or `__` that
+  closes a bold or an italic opened before it on its line: `**img::a.png**`
+  is an image in bold.
+- **Parentheses** that are part of the URL are kept (`Mercury_(planet)`,
+  `fig(1).png`), while a group starting with `.` or `#` is a class/id
+  group.
+- **Jinja** expressions in the URL (`img::{{ base }}/photo.jpg`,
+  `link::{{ url_for('page') }}[Home]`) are kept unchanged.
+- **A label** holds text, bold, italic, inline code, and the elements that
+  hold nothing: an image, a `video::`, an empty macro or `span::word::`. An
+  element that would hold what follows (`div::`) or another link stays text
+  in a label, with a warning.
+- **Links across**: a `link::` whose label would cross the end of a
+  heading, an item or a bold (`**x link::u[b** c]`) is left as text, with a
+  warning.
 
 
 ### Images
@@ -395,7 +444,7 @@ videoplay::assets/clip.mp4[width:600px;]
 </video>
 ```
 
- LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
+LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
 
 ```python
 def media(src):
@@ -428,7 +477,14 @@ its lines are never read as LHTML, so a `::` in the code (`std::vector`)
 cannot close it. (The `[-]` closers of the other tags were removed in 3.0,
 see [Removed in 3.0](#removed-in-30).)
 
-Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)).
+Syntax highlighting is powered by Pygments:
+
+- any language supported by Pygments can be used, case-insensitively;
+- an empty language (`code::[]`) renders plain text, an unknown language
+  plain text with a warning;
+- the built-in `c++` language is C++ with the types of the
+  [CGP library](https://github.com/drohmer/cgp) highlighted;
+- other languages can be added (see [Custom Code Lexers](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)).
 
 The colors come from a Pygments stylesheet, which you must include in your page. Generate one for the `.code` class (any [Pygments style](https://pygments.org/styles/) can replace `default`):
 
@@ -436,7 +492,7 @@ The colors come from a Pygments stylesheet, which you must include in your page.
 pipx run --spec pygments pygmentize -S default -f html -a .code > code.css
 ```
 
-`pygmentize -S default -f html -a .code > code.css` where Pygments is installed (a virtual environment with LHTML): a pipx installation gives the command `lhtml` only.
+Where Pygments is installed (a virtual environment with LHTML), run `pygmentize -S default -f html -a .code > code.css` directly; a pipx installation provides `lhtml` only.
 
 Then link it to the page: `lhtml page.l.html --title "My page" --css code.css -o page.html`.
 
@@ -468,7 +524,19 @@ Line 2     =>     Line 2<br>
 Other paragraph   Other paragraph
 ```
 
-Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, scripts, comments and math is never modified, nor are the line breaks a tag writes in its own HTML: a style written on two lines (`span::[color:red;\nfont-size:90%]`), a link label on two lines (`link::`; raw HTML `<a>` is text), the lines of a `video::`.
+With `-b`:
+
+- **Images and videos are inline**: images written one per line are stacked
+  (write them on the same line to keep them side by side).
+- **Structure gets no `<br>`**: lines that start or end with a block element
+  (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`,
+  `<li>`, code blocks, `<script>`, display math, ...) never get a `<br>`,
+  nor does the line just before one, and blank lines next to them are
+  ignored.
+- **Never modified**: the content of code blocks, scripts, comments and
+  math, and the line breaks a tag writes in its own HTML: a style written on
+  two lines (`span::[color:red;\nfont-size:90%]`), a link label on two lines
+  (`link::`; raw HTML `<a>` is text), the lines of a `video::`.
 
 
 ### Macros (custom tags from a configuration)
@@ -529,29 +597,8 @@ space, `gap::l` a large one.
 | `default` | Variant used when none is given (one of the variants) |
 | `doc` | Description, ignored by LHTML (for documentation tools; `lhtml.describe_macro(name, spec)` gives what a definition renders) |
 
-The classes written in the source come after those of the macro (its
-`class`, then the classes of its `attrs`), and its style after a style of
-the macro's `attrs`: the page wins the cascade. An id written `(#id)` or
-`{id=...}` replaces the macro's. Any other attribute is given once, by the last of:
-the `attrs` of the macro, its `url` (`demo::page.html`), the source
-(`box::{title="x"}`); for `img::` and `link::`, their defaults (`src`,
-`alt`, `href`) come first. An attribute the source writes twice in one
-`{...}` is kept as written. The
-other attributes are kept as written, spaces in their values included; a
-`url` macro written without its URL (`demo::`) keeps the one of its
-`attrs`. A quoted string holds its brackets: in `{...}`, a value quoted
-after its `=` (`{title="a } b"}`, over several lines but not across a
-blank line); in `[...]`, a CSS string (`[content:"]"]`). A tag whose groups
-are left as text because of a closing bracket without its opening one is
-warned. The `tag` of a macro is an HTML
-element, rendered as it is - never through an LHTML tag (`tag: video` gives
-`<video>`, not `video::`; `tag: img` with `url: src` gives `<img src>`), nor
-through another macro. A macro is closed by `::`. Macros are
-not active inside inline code (`` `box::` `` stays text), and a macro cannot
-replace a built-in tag (`div`, `img`, ...). The URL of a `url` macro is kept
-as written, as the one of `img::` (`demo::my__demo__.html`).
-
-A variant may be closed at once like any element: `gap::l::`.
+A macro is closed by `::`, and a variant may be closed at once like any
+element: `gap::l::`.
 
 Declare them with `-m` / `--macros` (repeatable, later files win), or with
 `lhtml.run(text, macros=...)`, a mapping of definitions;
@@ -566,6 +613,29 @@ wrong type) raise `LHTMLMacroError`.
 ```bash
 lhtml -m macros.yaml slide.l.html
 ```
+
+#### Precise rules of the macros
+
+*To skip on a first reading.*
+
+- **Classes and style**: the classes written in the source come after those
+  of the macro (its `class`, then the classes of its `attrs`), and its style
+  after a style of the macro's `attrs`: the page wins the cascade.
+- **Id**: an id written `(#id)` or `{id=...}` replaces the macro's.
+- **Other attributes**: each is given once, by the last of: the `attrs` of
+  the macro, its `url` (`demo::page.html`), the source (`box::{title="x"}`)
+  (for `img::` and `link::`, their defaults come first, as for any tag). An
+  attribute the source writes twice in one `{...}` is kept as written.
+  Values are kept as written, spaces included.
+- **A `url` macro**: its URL is kept as written, as the one of `img::`
+  (`demo::my__demo__.html`); written without its URL (`demo::`), it keeps
+  the one of its `attrs`.
+- **The `tag`** of a macro is an HTML element, rendered as it is - never
+  through an LHTML tag (`tag: video` gives `<video>`, not `video::`;
+  `tag: img` with `url: src` gives `<img src>`), nor through another macro.
+- **Where they apply**: macros are not active inside inline code
+  (`` `box::` `` stays text), and a macro cannot replace a built-in tag
+  (`div`, `img`, ...).
 
 
 ### Input
@@ -755,7 +825,13 @@ modules inside the package (`lhtml.patterns`, `lhtml.process`,
 
 ## Design Principles
 
-- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers conversions. In particular, the following are never transformed: HTML tags and their attributes, including tags spanning multiple lines (URLs containing `__`, quoted values containing `>`, ...), `<script>` and `<style>` blocks (CSS `::before`, ...), HTML comments, and math (`\(...\)`, `\[...\]`, so that `\(x**2\)` reaches MathJax/KaTeX intact; since 3.0 a `$` is text, as in a price). Text between HTML tags is still processed.
+- **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers
+  conversions; text between HTML tags is still processed. Never transformed:
+  - HTML tags and their attributes, including tags spanning multiple lines
+    (URLs containing `__`, quoted values containing `>`, ...);
+  - `<script>` and `<style>` blocks (CSS `::before`, ...) and HTML comments;
+  - math, `\(...\)` and `\[...\]`, so that `\(x**2\)` reaches MathJax/KaTeX
+    intact (since 3.0 a `$` is text, as in a price).
 - **Attributes stay literal**: styles, classes/IDs and HTML attributes in LHTML tag groups and headings are preserved without inline formatting (`div::(.my__class__)` keeps `my__class__`). Link labels still support formatting, and the elements that hold nothing (`link::u[img::a.png]`).
 - **Template-friendly**: Jinja2 expressions (`{{ ... }}`), statements (`{% ... %}`) and comments (`{# ... #}`) pass through unchanged (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
 - **Island grammar**: LHTML syntax "islands" float in a sea of opaque content (HTML, Jinja2 templates, LaTeX, etc.) that passes through untouched.
