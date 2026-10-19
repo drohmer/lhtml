@@ -3,3 +3,8 @@ include CHANGELOG.md LICENSE.md README.md
 graft docs
 graft examples
 graft test
+
+# Never the caches of a test run made before the build
+global-exclude *.py[cod] .DS_Store
+prune test/__pycache__
+prune test/.pytest_cache

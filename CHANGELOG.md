@@ -35,6 +35,10 @@ The README, read and run as a newcomer would, step by step:
 - A source for the command is `page.l.html`; a page of lhtml-site is a
   Jinja2 template `page.html.j2`, rendered by the generator, not by `lhtml`.
 
+### Packaging
+- The sdist leaves out the caches of a test run made before the build
+  (`__pycache__`, `*.pyc`, `.pytest_cache`), in `MANIFEST.in`.
+
 ## [3.0.0] - 2026-10-18
 
 In short: LHTML reads no file but its input; a text is parsed into a
