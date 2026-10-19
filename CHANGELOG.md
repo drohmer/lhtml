@@ -32,6 +32,15 @@ The README, read and run as a newcomer would, step by step:
   code block is the one construct closed by `code::[-]`; a stylesheet is
   linked relative to the page.
 - `examples/README.md` installs LHTML as the README does.
+- The start reorganized into two complete paths, each ending with a page to
+  open: the command (pipx, a first page) and the library (a virtual
+  environment, macOS/Linux and Windows PowerShell, a first script); what
+  PyPI, pip and pipx are; Python 3.10 or newer, and the three names
+  (`lhtml-markup`, `lhtml`, `import lhtml`) at the top; lhtml-site named
+  for presentations and websites; three answers when something goes wrong
+  (`pipx` or `lhtml` not found, `import lhtml` after a pipx install). Then
+  the syntax at a glance and the command line; the source installation and
+  the output of `wrap` further down.
 - A source for the command is `page.l.html`; a page of lhtml-site is a
   Jinja2 template `page.html.j2`, rendered by the generator, not by `lhtml`.
 

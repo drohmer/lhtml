@@ -5,80 +5,32 @@
 
 LHTML is a markup language that simplifies HTML authoring with embedded CSS styling. It is designed to be **HTML-first**: raw HTML passes through untouched, and only a few shorthand symbols (`::`, `*`, `=`, `**`, `__`) trigger conversions.
 
-LHTML is used to build static websites and presentation slides, typically combined with Jinja2 templates.
+Requires Python 3.10 or newer. Install `lhtml-markup`; run `lhtml`; `import lhtml`.
+
+To build presentations or a complete website, with themes and navigation, use
+[lhtml-site](https://github.com/drohmer/lhtml-site), the generator built on
+LHTML: its guide explains how to install it and start (it installs LHTML on
+its own).
 
 See the [examples](https://github.com/drohmer/lhtml/tree/main/examples/) and the [changelog](https://github.com/drohmer/lhtml/blob/main/CHANGELOG.md).
 
+
 ## Installation
 
-**The command `lhtml`**, with [pipx](https://pipx.pypa.io/): it is installed
-in an environment of its own, and available everywhere.
+The package `lhtml-markup` is on PyPI, the catalog of Python packages; pipx
+and pip are two tools that install it from there. **pipx** suits the
+command `lhtml`, **pip** the library used in a Python project. Pick the path
+you need: each ends with a page you can open.
+
+### The command, and a first page
+
+Install [pipx](https://pipx.pypa.io/stable/installation/) if you do not have
+it, then LHTML:
 
 ```bash
 pipx install lhtml-markup
-pipx upgrade lhtml-markup        # later, to update it
+lhtml --version
 ```
-
-Or run it once without installing it: `pipx run --spec lhtml-markup lhtml page.l.html`.
-
-**The library**, to `import lhtml` in a Python project, with pip, in a
-virtual environment of that project (Homebrew and recent system Pythons
-refuse a `pip install` outside one, with `externally-managed-environment`):
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install lhtml-markup
-```
-
-This installs the command `lhtml` too, inside that environment.
-
-**From source**, in a virtual environment as well:
-
-```bash
-git clone https://github.com/drohmer/lhtml.git
-cd lhtml
-python3 -m venv .venv
-source .venv/bin/activate
-pip install .                    # or, to work on LHTML: pip install -e ".[dev]" (adds pytest)
-```
-
-Dependencies (`pygments`, `pyyaml`) are installed automatically.
-
-To build a whole website or slides, the generator
-[lhtml-site](https://github.com/drohmer/lhtml-site) (LHTML with Jinja2
-templates, themes and a menu) installs LHTML on its own: `pipx install
-lhtml-site` needs no separate installation of LHTML, and gives the command
-`lhtml-site`, not `lhtml`.
-
-
-## In two minutes
-
-Each line of LHTML on the left, what it gives on the right:
-
-| LHTML | gives |
-|-------|-------|
-| `= Title` | `<h1>Title</h1>` |
-| `== Section` | `<h2>Section</h2>` (and so on to `======`) |
-| `* item` | a list (`** item` for a nested one) |
-| `**bold** and __italic__` | `<strong>bold</strong> and <em>italic</em>` |
-| `` `code` `` | inline code, never read as LHTML |
-| `link::https://example.org[text]` | `<a href="https://example.org">text</a>` |
-| `img::photo.jpg[width:300px;]` | `<img style="width:300px;" src="photo.jpg" alt="photo.jpg">` |
-| `div::(.note)[color:gray;]`, lines, then `::` | `<div class="note" style="color:gray;">`, the lines, `</div>` |
-| `code::[python]`, lines, then `code::[-]` | the lines as a highlighted Python code block |
-| `<b>raw HTML</b>` | kept as it is; so are `\(math\)` and `{{ jinja }}` |
-
-Everything else is HTML, written as it is: a paragraph `<p>`, a numbered
-list `<ol>`, a table, a quote. In particular a blank line does not make a
-paragraph, as in HTML: write `<p>`, or render the line breaks of the source
-with `-b` (see [Line breaks](#line-breaks)).
-
-The rest of this page details each construct; [docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)
-is for callers that extend LHTML in Python.
-
-
-## Your first page
 
 **1.** Create a file `page.l.html`:
 
@@ -111,16 +63,88 @@ Then:
   put in a template (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
 - **The names**: a source is usually named `page.l.html`, and `lhtml` writes
   `page.html` (any name works: `notes.txt` gives `notes.html`). In a site
-  built with [lhtml-site](https://github.com/drohmer/lhtml-site), a page is
-  instead a Jinja2 template written in LHTML, `page.html.j2`, rendered by the
-  generator, not by `lhtml` (which would write `page.html.html`, its Jinja2
-  left as it is).
-- More complete sources are in the [examples](https://github.com/drohmer/lhtml/tree/main/examples/).
+  built with lhtml-site, a page is instead a Jinja2 template written in
+  LHTML, `page.html.j2`, rendered by the generator, not by `lhtml` (which
+  would write `page.html.html`, its Jinja2 left as it is).
+- **Later**: `pipx upgrade lhtml-markup` updates it. `pipx run --spec
+  lhtml-markup lhtml page.l.html` runs it once without installing it.
+
+### The library, from Python
+
+In a virtual environment of your project. On macOS and Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install lhtml-markup
+```
+
+On Windows, in PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install lhtml-markup
+```
+
+(Homebrew and recent system Pythons refuse a `pip install` outside a virtual
+environment, with `externally-managed-environment`.) Then, in a file
+`hello.py`:
+
+```python
+import lhtml
+
+html = lhtml.wrap(lhtml.run("= Hello\n\nSome **bold** text.\n"), title="Hello")
+with open("page.html", "w", encoding="utf-8") as f:
+    f.write(html)
+```
+
+`python hello.py` writes `page.html`, to open in a browser. `lhtml.run`
+converts a text, `lhtml.wrap` makes it a complete page (`css=[...]`,
+`js=[...]`: its stylesheets and scripts): that is the whole API of a page, see
+the [Python API Reference](#python-api-reference). The environment has the
+command `lhtml` too, and `python -m lhtml` is the same command.
+
+### When something goes wrong
+
+- **`pipx: command not found`**: install pipx first, see
+  [its installation](https://pipx.pypa.io/stable/installation/).
+- **`lhtml: command not found` after `pipx install`**: run `pipx ensurepath`,
+  then open a new terminal.
+- **`import lhtml` fails after `pipx install`**: pipx installs the command
+  in an environment of its own, which your Python does not see. Follow
+  [The library, from Python](#the-library-from-python), in the environment
+  of your project.
 
 
-## Quick Start
+## Syntax at a glance
 
-### Command Line
+Each line of LHTML on the left, what it gives on the right:
+
+| LHTML | gives |
+|-------|-------|
+| `= Title` | `<h1>Title</h1>` |
+| `== Section` | `<h2>Section</h2>` (and so on to `======`) |
+| `* item` | a list (`** item` for a nested one) |
+| `**bold** and __italic__` | `<strong>bold</strong> and <em>italic</em>` |
+| `` `code` `` | inline code, never read as LHTML |
+| `link::https://example.org[text]` | `<a href="https://example.org">text</a>` |
+| `img::photo.jpg[width:300px;]` | `<img style="width:300px;" src="photo.jpg" alt="photo.jpg">` |
+| `div::(.note)[color:gray;]`, lines, then `::` | `<div class="note" style="color:gray;">`, the lines, `</div>` |
+| `code::[python]`, lines, then `code::[-]` | the lines as a highlighted Python code block |
+| `<b>raw HTML</b>` | kept as it is; so are `\(math\)` and `{{ jinja }}` |
+
+Everything else is HTML, written as it is: a paragraph `<p>`, a numbered
+list `<ol>`, a table, a quote. In particular a blank line does not make a
+paragraph, as in HTML: write `<p>`, or render the line breaks of the source
+with `-b` (see [Line breaks](#line-breaks)).
+
+The [Syntax Reference](#syntax-reference) below details each construct;
+[docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)
+is for callers that extend LHTML in Python.
+
+
+## Command Line
 
 ```bash
 lhtml input.l.html                    # Convert to stdout
@@ -136,64 +160,24 @@ cat input.l.html | lhtml -            # The standard input (alone; to stdout, or
 lhtml --version                       # Show the version (also lhtml.__version__)
 ```
 
-`python -m lhtml input.l.html` is the same command, for a Python where LHTML
-is installed with pip (not the one of a pipx installation). The details of
-the command - where files are written, the messages, the exit status - are
-in [Command line details](#command-line-details).
+With `-w`, the result is wrapped in a minimal HTML document (title
+`Webpage`, see `lhtml.wrap` in the [Python API Reference](#python-api-reference));
+`--title`, `--css` and `--js` (each repeatable but the title) give its
+title, stylesheets and scripts, and imply `-w`. Where files are written, the
+messages and the exit status: [Command line details](#command-line-details).
 
-With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`); `--title`, `--css` and `--js` (each repeatable but the title) give its title, stylesheets and scripts, and imply `-w`. From Python, `lhtml.wrap('<h1>Hello</h1>', title='My Page', css=['style.css'], js=['app.js'])` gives:
+**From source**, to work on LHTML, in a virtual environment:
 
-```html
-<!DOCTYPE html>
-
-<html lang="en">
-
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>My Page</title>
-	<link rel="stylesheet" type="text/css" href="style.css">
-	<script src="app.js" defer></script>
-</head>
-
-<body>
-<h1>Hello</h1>
-</body>
-
-</html>
+```bash
+git clone https://github.com/drohmer/lhtml.git
+cd lhtml
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"     # editable, with pytest; then: pytest test/
 ```
 
-### Python API
-
-In a virtual environment where LHTML is installed with pip (a pipx
-installation gives the command only), a text gives its HTML:
-
-```python
-import lhtml
-
-html = lhtml.run('= Hello World\nSome **bold** text.\n')
-print(html)
-```
-
-And the first page again, from Python, written to `page2.html`:
-
-```python
-import lhtml
-
-with open('page.l.html', encoding='utf-8') as f:
-    text = f.read()
-html = lhtml.run(text,
-                 macros={'box': {'class': 'box'}},    # custom :: tags, see Macros below
-                 line_breaks=False)                   # True: source line breaks as <br>
-
-page = lhtml.wrap(html, title='My first page')   # css=[...], js=[...]: stylesheets, scripts
-with open('page2.html', 'w', encoding='utf-8') as f:
-    f.write(page)
-```
-
-That is the whole API of a page. Custom tags written in Python, the macro
-functions and the document tree are in [docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md).
-Coming from LHTML 2: [docs/migration.md](https://github.com/drohmer/lhtml/blob/main/docs/migration.md).
+Dependencies (`pygments`, `pyyaml`) are installed automatically. Coming from
+LHTML 2: [docs/migration.md](https://github.com/drohmer/lhtml/blob/main/docs/migration.md).
 
 
 ## Syntax Reference
@@ -709,6 +693,28 @@ lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a 
 | `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
 | `lexers` | mapping | `{name: Pygments lexer class}`, languages of the code blocks of this call ([docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)) |
 | `title`, `css`, `js` | of `wrap` | The title, the stylesheets and the scripts (a name or a list) |
+
+`lhtml.wrap('<h1>Hello</h1>', title='My Page', css=['style.css'], js=['app.js'])` gives:
+
+```html
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>My Page</title>
+	<link rel="stylesheet" type="text/css" href="style.css">
+	<script src="app.js" defer></script>
+</head>
+
+<body>
+<h1>Hello</h1>
+</body>
+
+</html>
+```
 
 An argument spelled otherwise is a `TypeError`. LHTML reads no file:
 `lhtml.load_macros` is the caller reading its macro files (Pygments may: a
