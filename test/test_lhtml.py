@@ -376,11 +376,27 @@ class TestExamples:
             pytest.skip('examples/ not found')
         return files
 
+    def macros(self):
+        return lhtml.load_macros(os.path.join(EXAMPLES, 'macros.yaml'))
+
     def test_no_problem(self):
+        macros = self.macros()
         for f in self.files():
             with open(f, encoding='utf-8') as fid:
-                document = lhtml.parse(fid.read(), warn=False)
+                document = lhtml.parse(fid.read(), macros=macros, warn=False)
             assert document.problems == [], (f, [str(p) for p in document.problems])
+
+    def test_good_practice(self):
+        # a space is a gap, a look is a class of style.css: no spacing written by hand
+        for f in self.files():
+            with open(f, encoding='utf-8') as fid:
+                text = fid.read()
+            assert not re.search(r'\[\s*height\s*:', text), f
+            assert 'font-size' not in text and 'text-align' not in text, f
+        with open(os.path.join(EXAMPLES, 'style.css'), encoding='utf-8') as fid:
+            css = fid.read()
+        for name, spec in self.macros().items():
+            assert '.' + spec['class'].split()[0] in css, name
 
     def test_documented_output(self):
         # a section `## name.l.html` whose ```html block follows "generates:"

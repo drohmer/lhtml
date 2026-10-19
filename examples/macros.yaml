@@ -1,0 +1,7 @@
+# The macros of the examples: each names a role, its look is in style.css.
+macros:
+  gap:     {class: gap, empty: true, variant: [s, m, l], default: m}   # a vertical space
+  aside:   {class: aside}      # a block placed on a slide: aside::[top:150px; left:700px;]
+  center:  {class: center}     # centered content
+  caption: {class: caption}    # the caption of a figure or a video
+  path:    {class: path}       # the path of the code of a lab

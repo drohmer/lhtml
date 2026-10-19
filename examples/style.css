@@ -1,0 +1,11 @@
+/* The look of the macros of macros.yaml: one place to change it */
+body     { max-width: 60em; margin: 2em auto; font-family: sans-serif; }
+
+.gap-s   { height: 0.5em; }
+.gap-m   { height: 1em; }
+.gap-l   { height: 2em; }
+
+.aside   { position: absolute; }
+.center  { text-align: center; }
+.caption { font-size: 75%; color: gray; font-style: italic; }
+.path    { color: gray; font-style: italic; }

@@ -52,15 +52,17 @@ The README, read and run as a newcomer would, step by step:
 - A source for the command is `page.l.html`; a page of lhtml-site is a
   Jinja2 template `page.html.j2`, rendered by the generator, not by `lhtml`.
 
-- Two examples written as a course writes its pages, from the constructs
-  most used in three real projects (1019 pages): `examples/slide.l.html`
-  (a list, vertical spaces, a placed image, math, a centered video and its
-  caption) and `examples/lab_page.l.html` (instructions, math, a C++ code
-  block, a link, the expected result).
+- Two examples of what a course writes, from the constructs most used in
+  three real projects (1019 pages), written as recommended:
+  `examples/slide.l.html` (a list, vertical spaces, a placed image, math,
+  a centered video and its caption) and `examples/lab_page.l.html`
+  (instructions, math, a C++ code block, a link, the expected result). Each
+  role is a macro of `examples/macros.yaml` (`gap`, `aside`, `center`,
+  `caption`, `path`), its look in `examples/style.css`.
 
 ### Tests
-- The examples convert without a problem, and give the output that
-  `examples/README.md` shows.
+- The examples convert without a problem with their macros, give the output
+  that `examples/README.md` shows, and write no spacing or look by hand.
 
 ### Packaging
 - The sdist leaves out the caches of a test run made before the build
