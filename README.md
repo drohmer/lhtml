@@ -80,63 +80,42 @@ is for callers that extend LHTML in Python.
 
 ## Your first page
 
-A source file is usually named `page.l.html`, and `lhtml` writes `page.html`
-(any name works: `notes.txt` gives `notes.html`). In a site built with
-[lhtml-site](https://github.com/drohmer/lhtml-site), a page is instead a
-Jinja2 template written in LHTML, named `page.html.j2`: the generator
-renders it, and the command `lhtml` is not used (it would write
-`page.html.html`, its Jinja2 left as it is).
-
-**1.** Create `page.l.html`:
+**1.** Create a file `page.l.html`:
 
 ```
 = My first page
 
 Some **bold** and __italic__ text, and a link::https://example.org[link].
 
-div::(.note)[color:gray;]
-A gray block, closed by the line below.
+div::[color:gray;]
+A gray block.
 ::
-
-code::[python]
-print("Hello")
-code::[-]
 ```
 
-**2.** Make the stylesheet that colors the code blocks. Pygments, which LHTML
-uses, writes it; `pipx run` downloads Pygments into a temporary environment
-to run it (and may say that a `pygmentize` is already on your PATH: either
-one does):
+**2.** Convert it to a complete HTML page:
 
 ```bash
-pipx run --spec pygments pygmentize -S default -f html -a .code > code.css
+lhtml page.l.html --title "My first page" -o page.html
 ```
 
-In a virtual environment where LHTML is installed, `pygmentize -S default -f html -a .code > code.css` does the same.
-
-**3.** Convert it to a complete HTML page, with its title and that stylesheet:
-
-```bash
-lhtml page.l.html --title "My first page" --css code.css -o page.html
-```
-
-**4.** Open `page.html` in a browser (`open page.html` on macOS, `xdg-open
+**3.** Open `page.html` in a browser (`open page.html` on macOS, `xdg-open
 page.html` on Linux, `start page.html` on Windows).
 
-The page has the default look of the browser: add your own stylesheet with a
-second `--css style.css`, for instance:
+Then:
 
-```css
-body  { max-width: 40em; margin: 2em auto; font-family: sans-serif; }
-.note { border-left: 3px solid #aaa; padding-left: 1em; }
-```
-
-A stylesheet is linked as written (`href="code.css"`), relative to the page:
-a page written to another directory (`-o site/page.html`) needs its
-stylesheets there too. Without `--title`, `--css` or `-w`, `lhtml` writes
-the HTML of the content only, without `<html>`, `<head>` and `<body>`: the
-form to put in a template (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
-More complete sources are in the [examples](https://github.com/drohmer/lhtml/tree/main/examples/).
+- **A stylesheet**: `--css style.css` links it (as written, relative to the
+  page); it may be repeated. A code block needs one for its colors, see
+  [Code Blocks](#code-blocks).
+- **Only the content**: without `--title` (or `-w`), `lhtml` writes the HTML
+  of the content alone, without `<html>`, `<head>` and `<body>`: the form to
+  put in a template (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
+- **The names**: a source is usually named `page.l.html`, and `lhtml` writes
+  `page.html` (any name works: `notes.txt` gives `notes.html`). In a site
+  built with [lhtml-site](https://github.com/drohmer/lhtml-site), a page is
+  instead a Jinja2 template written in LHTML, `page.html.j2`, rendered by the
+  generator, not by `lhtml` (which would write `page.html.html`, its Jinja2
+  left as it is).
+- More complete sources are in the [examples](https://github.com/drohmer/lhtml/tree/main/examples/).
 
 
 ## Quick Start
@@ -207,7 +186,7 @@ html = lhtml.run(text,
                  macros={'box': {'class': 'box'}},    # custom :: tags, see Macros below
                  line_breaks=False)                   # True: source line breaks as <br>
 
-page = lhtml.wrap(html, title='My first page', css=['code.css'])   # js=[...]: scripts
+page = lhtml.wrap(html, title='My first page')   # css=[...], js=[...]: stylesheets, scripts
 with open('page2.html', 'w', encoding='utf-8') as f:
     f.write(page)
 ```
@@ -474,6 +453,8 @@ pipx run --spec pygments pygmentize -S default -f html -a .code > code.css
 ```
 
 `pygmentize -S default -f html -a .code > code.css` where Pygments is installed (a virtual environment with LHTML): a pipx installation gives the command `lhtml` only.
+
+Then link it to the page: `lhtml page.l.html --title "My page" --css code.css -o page.html`.
 
 
 ### Spacer

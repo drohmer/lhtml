@@ -13,8 +13,8 @@ The README, read and run as a newcomer would, step by step:
   `pipx run`); the library with pip, in a virtual environment (a bare `pip
   install` is refused by Homebrew and recent system Pythons); a program
   that depends on LHTML, such as lhtml-site, installs it on its own.
-- *Your first page*: a source, its code stylesheet, the command that writes
-  a complete page, opening it in a browser.
+- *Your first page*: a source without code, the command that writes a
+  complete page, opening it in a browser; then where to go next.
 - *In two minutes* is a table, source and result in two columns: the block
   it was, copied into a file, gave broken HTML.
 - The stylesheet of the code blocks with `pipx run --spec pygments
