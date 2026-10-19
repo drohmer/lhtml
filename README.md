@@ -81,7 +81,11 @@ is for callers that extend LHTML in Python.
 ## Your first page
 
 A source file is usually named `page.l.html`, and `lhtml` writes `page.html`
-(any name works: `notes.txt` gives `notes.html`).
+(any name works: `notes.txt` gives `notes.html`). In a site built with
+[lhtml-site](https://github.com/drohmer/lhtml-site), a page is instead a
+Jinja2 template written in LHTML, named `page.html.j2`: the generator
+renders it, and the command `lhtml` is not used (it would write
+`page.html.html`, its Jinja2 left as it is).
 
 **1.** Create `page.l.html`:
 

@@ -32,6 +32,8 @@ The README, read and run as a newcomer would, step by step:
   code block is the one construct closed by `code::[-]`; a stylesheet is
   linked relative to the page.
 - `examples/README.md` installs LHTML as the README does.
+- A source for the command is `page.l.html`; a page of lhtml-site is a
+  Jinja2 template `page.html.j2`, rendered by the generator, not by `lhtml`.
 
 ## [3.0.0] - 2026-10-18
 
