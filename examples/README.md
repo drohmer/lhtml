@@ -1,6 +1,6 @@
 # LHTML Examples
 
-Install LHTML (`pip install lhtml-markup`, or `pip install -e .` from the repository root), then run the examples from this directory:
+Install LHTML (`pipx install lhtml-markup` for the command, or `pip install lhtml-markup` in a virtual environment; see [Installation](../README.md#installation)), then run the examples from this directory:
 
 ```shell
 lhtml example_1.l.html                  # HTML on stdout

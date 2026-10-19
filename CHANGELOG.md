@@ -8,10 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 No change to the code.
 
 ### Documentation
-- The README installs the command `lhtml` with pipx (`pipx install
-  lhtml-markup`, `pipx run`), and the library with pip in the environment
-  of a project; a program that depends on LHTML, such as lhtml-site,
-  installs it on its own.
+The README, read and run as a newcomer would, step by step:
+- Installation: the command `lhtml` with pipx (`pipx install lhtml-markup`,
+  `pipx run`); the library with pip, in a virtual environment (a bare `pip
+  install` is refused by Homebrew and recent system Pythons); a program
+  that depends on LHTML, such as lhtml-site, installs it on its own.
+- *Your first page*: a source, its code stylesheet, the command that writes
+  a complete page, opening it in a browser.
+- *In two minutes* is a table, source and result in two columns: the block
+  it was, copied into a file, gave broken HTML.
+- The stylesheet of the code blocks with `pipx run --spec pygments
+  pygmentize`, since a pipx installation gives the command `lhtml` only;
+  `python -m lhtml` is for a Python where LHTML is installed with pip.
+- The Python examples run as written (`text` read from a file, the page
+  written, the Jinja result printed); the output of `wrap` is the real one.
+- The details of the command (destinations, messages, exit status) after
+  the syntax, in *Command line details*; the syntax removed in 3.0 in one
+  table, *Removed in 3.0*, instead of four sections; the `gap` macro in
+  *Macros*; the fallback text of a video and the missing `</div>` of a tag
+  never closed are stated.
+- Said where a newcomer expected otherwise: a blank line makes no
+  paragraph, and everything the table does not cover is written in HTML; a
+  code block is the one construct closed by `code::[-]`; a stylesheet is
+  linked relative to the page.
+- `examples/README.md` installs LHTML as the README does.
 
 ## [3.0.0] - 2026-10-18
 

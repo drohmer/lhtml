@@ -11,8 +11,8 @@ See the [examples](https://github.com/drohmer/lhtml/tree/main/examples/) and the
 
 ## Installation
 
-The command `lhtml`, with [pipx](https://pipx.pypa.io/) - installed in an
-environment of its own, and available everywhere:
+**The command `lhtml`**, with [pipx](https://pipx.pypa.io/): it is installed
+in an environment of its own, and available everywhere.
 
 ```bash
 pipx install lhtml-markup
@@ -21,66 +21,118 @@ pipx upgrade lhtml-markup        # later, to update it
 
 Or run it once without installing it: `pipx run --spec lhtml-markup lhtml page.l.html`.
 
-The library, to `import lhtml` in a project, with pip, in the environment of
-that project:
+**The library**, to `import lhtml` in a Python project, with pip, in a
+virtual environment of that project (Homebrew and recent system Pythons
+refuse a `pip install` outside one, with `externally-managed-environment`):
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install lhtml-markup
 ```
 
-A program that depends on LHTML installs it on its own: the site generator
-[lhtml-site](https://github.com/drohmer/lhtml-site) needs no separate
-installation of LHTML (and `pipx install lhtml-site` does not give the
-command `lhtml`).
+This installs the command `lhtml` too, inside that environment.
 
-Or from source:
+**From source**, in a virtual environment as well:
 
 ```bash
 git clone https://github.com/drohmer/lhtml.git
 cd lhtml
-pip install .
-```
-
-For development:
-
-```bash
-pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate
+pip install .                    # or, to work on LHTML: pip install -e ".[dev]" (adds pytest)
 ```
 
 Dependencies (`pygments`, `pyyaml`) are installed automatically.
 
+To build a whole website or slides, the generator
+[lhtml-site](https://github.com/drohmer/lhtml-site) (LHTML with Jinja2
+templates, themes and a menu) installs LHTML on its own: `pipx install
+lhtml-site` needs no separate installation of LHTML, and gives the command
+`lhtml-site`, not `lhtml`.
+
 
 ## In two minutes
 
-```
-= Title                          <h1>Title</h1>
-== Section                       <h2>Section</h2>
-* item                           a list (** for a nested one)
-**bold** and __italic__          <strong>bold</strong> and <em>italic</em>
-`code`                           inline code, never read as LHTML
-link::https://example.org[text]  <a href="https://example.org">text</a>
-img::photo.jpg[width:300px;]     <img style="width:300px;" ...>
-div::(.note)[color:gray;]        a block with a class and a style ...
-Some text                        ... that holds what follows ...
-::                               ... until its ::
-code::[python]                   a highlighted code block, until code::[-]
-x = 1
-code::[-]
-<b>raw HTML</b>                  kept as it is; so are \(math\) and {{ jinja }}
-```
+Each line of LHTML on the left, what it gives on the right:
 
-```bash
-lhtml page.l.html                # the HTML on stdout
-lhtml page.l.html -o page.html   # to a file
-```
+| LHTML | gives |
+|-------|-------|
+| `= Title` | `<h1>Title</h1>` |
+| `== Section` | `<h2>Section</h2>` (and so on to `======`) |
+| `* item` | a list (`** item` for a nested one) |
+| `**bold** and __italic__` | `<strong>bold</strong> and <em>italic</em>` |
+| `` `code` `` | inline code, never read as LHTML |
+| `link::https://example.org[text]` | `<a href="https://example.org">text</a>` |
+| `img::photo.jpg[width:300px;]` | `<img style="width:300px;" src="photo.jpg" alt="photo.jpg">` |
+| `div::(.note)[color:gray;]`, lines, then `::` | `<div class="note" style="color:gray;">`, the lines, `</div>` |
+| `code::[python]`, lines, then `code::[-]` | the lines as a highlighted Python code block |
+| `<b>raw HTML</b>` | kept as it is; so are `\(math\)` and `{{ jinja }}` |
 
-```python
-import lhtml
-html = lhtml.run(text)
-```
+Everything else is HTML, written as it is: a paragraph `<p>`, a numbered
+list `<ol>`, a table, a quote. In particular a blank line does not make a
+paragraph, as in HTML: write `<p>`, or render the line breaks of the source
+with `-b` (see [Line breaks](#line-breaks)).
 
 The rest of this page details each construct; [docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)
 is for callers that extend LHTML in Python.
+
+
+## Your first page
+
+A source file is usually named `page.l.html`, and `lhtml` writes `page.html`
+(any name works: `notes.txt` gives `notes.html`).
+
+**1.** Create `page.l.html`:
+
+```
+= My first page
+
+Some **bold** and __italic__ text, and a link::https://example.org[link].
+
+div::(.note)[color:gray;]
+A gray block, closed by the line below.
+::
+
+code::[python]
+print("Hello")
+code::[-]
+```
+
+**2.** Make the stylesheet that colors the code blocks. Pygments, which LHTML
+uses, writes it; `pipx run` downloads Pygments into a temporary environment
+to run it (and may say that a `pygmentize` is already on your PATH: either
+one does):
+
+```bash
+pipx run --spec pygments pygmentize -S default -f html -a .code > code.css
+```
+
+In a virtual environment where LHTML is installed, `pygmentize -S default -f html -a .code > code.css` does the same.
+
+**3.** Convert it to a complete HTML page, with its title and that stylesheet:
+
+```bash
+lhtml page.l.html --title "My first page" --css code.css -o page.html
+```
+
+**4.** Open `page.html` in a browser (`open page.html` on macOS, `xdg-open
+page.html` on Linux, `start page.html` on Windows).
+
+The page has the default look of the browser: add your own stylesheet with a
+second `--css style.css`, for instance:
+
+```css
+body  { max-width: 40em; margin: 2em auto; font-family: sans-serif; }
+.note { border-left: 3px solid #aaa; padding-left: 1em; }
+```
+
+A stylesheet is linked as written (`href="code.css"`), relative to the page:
+a page written to another directory (`-o site/page.html`) needs its
+stylesheets there too. Without `--title`, `--css` or `-w`, `lhtml` writes
+the HTML of the content only, without `<html>`, `<head>` and `<body>`: the
+form to put in a template (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
+More complete sources are in the [examples](https://github.com/drohmer/lhtml/tree/main/examples/).
 
 
 ## Quick Start
@@ -98,44 +150,15 @@ lhtml a.l.html b.l.html               # Several files: a.html, b.html next to so
 lhtml a.l.html b.l.html -o build/     # Several files into a directory
 lhtml a.l.html b.l.html -o build/ -v  # ... naming each file written (-q: no summary)
 cat input.l.html | lhtml -            # The standard input (alone; to stdout, or -o a file)
-python -m lhtml input.l.html          # Alternative invocation
 lhtml --version                       # Show the version (also lhtml.__version__)
 ```
 
-Without `-o`, one input is written to stdout, and several inputs are each
-written next to their source (`page.l.html` to `page.html`). With `-o`, one
-input is written to that file, several into that directory; two inputs that
-would be written to the same file are refused before anything is written.
+`python -m lhtml input.l.html` is the same command, for a Python where LHTML
+is installed with pip (not the one of a pipx installation). The details of
+the command - where files are written, the messages, the exit status - are
+in [Command line details](#command-line-details).
 
-- stdout holds the HTML only, stderr every message: `lhtml page.l.html > page.html` writes a clean file.
-- The destinations are checked before any file is written: an input missing, two inputs written to one file (or to names that differ by case only, or to two names of one file), an output that is an input (or a symbolic or hard link to one), an output under a file: an error each, and nothing is written.
-- Then each file is converted and written; one that fails does not stop the others. Writing files ends with a summary (`2 converted · 1 warning`).
-- Exit status: 0; 1 when a file is not converted or not written; 2 for a wrong use of the command (`lhtml --help` says so too).
-- Files are read and written as UTF-8 (a BOM is accepted).
-- LHTML reads no file but its input and the macro files given with `--macros`, and no front matter: its options come from the command line, or from the caller of `lhtml.run()`.
-
-A problem is one line, `file:line:column: level: message`, which editors and
-terminals recognize. In a terminal, the line of the source follows, the
-place underlined, and the level is colored (never only colored: it is
-written; `NO_COLOR` turns colors off, `FORCE_COLOR` on):
-
-```
-page.l.html:3:1: warning: div:: is never closed
-  3 │ div::(.note)
-    │ ^^^^^^^^^^^^
-
-2 converted · 1 warning
-```
-
-Without a terminal (a log, an editor), the same problem is one line, its
-quote included: `page.l.html:3:1: warning: div:: is never closed (near 'div::(.note)')`.
-A message reads `subject: problem; what to do (near 'source')`; a name close
-to a known one is suggested (`code::[pyhton]: unknown language, shown as
-plain text; did you mean 'python'?`), and one mistake gives one warning (an
-old closer `span::[-]` does not also warn the element it was meant to
-close).
-
-With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`); `--title`, `--css` and `--js` (each repeatable but the title) give its title, stylesheets and scripts, and imply `-w`. From Python, `lhtml.wrap(html, title='My Page', css=['style.css'], js=['app.js'])` gives:
+With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title `Webpage`); `--title`, `--css` and `--js` (each repeatable but the title) give its title, stylesheets and scripts, and imply `-w`. From Python, `lhtml.wrap('<h1>Hello</h1>', title='My Page', css=['style.css'], js=['app.js'])` gives:
 
 ```html
 <!DOCTYPE html>
@@ -152,8 +175,6 @@ With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title
 
 <body>
 <h1>Hello</h1>
-
-
 </body>
 
 </html>
@@ -161,16 +182,30 @@ With `-w`, the result is wrapped in a minimal HTML document, `lhtml.wrap` (title
 
 ### Python API
 
+In a virtual environment where LHTML is installed with pip (a pipx
+installation gives the command only), a text gives its HTML:
+
 ```python
 import lhtml
 
 html = lhtml.run('= Hello World\nSome **bold** text.\n')
+print(html)
+```
 
+And the first page again, from Python, written to `page2.html`:
+
+```python
+import lhtml
+
+with open('page.l.html', encoding='utf-8') as f:
+    text = f.read()
 html = lhtml.run(text,
                  macros={'box': {'class': 'box'}},    # custom :: tags, see Macros below
-                 line_breaks=True)                    # source line breaks as <br>
+                 line_breaks=False)                   # True: source line breaks as <br>
 
-page = lhtml.wrap(html, title='My Page', css=['style.css'], js=['script.js'])
+page = lhtml.wrap(html, title='My first page', css=['code.css'])   # js=[...]: scripts
+with open('page2.html', 'w', encoding='utf-8') as f:
+    f.write(page)
 ```
 
 That is the whole API of a page. Custom tags written in Python, the macro
@@ -191,7 +226,9 @@ Coming from LHTML 2: [docs/migration.md](https://github.com/drohmer/lhtml/blob/m
 Output:
 ```html
 <h1>Main Title</h1>
+
 <h2>Subtitle</h2>
+
 <h3>Level 3</h3>
 ```
 
@@ -264,13 +301,13 @@ The core of LHTML. The general syntax is:
 tagName::(.classes #id)[cssStyle]{htmlAttributes} content ::
 ```
 
-All bracket groups are optional. If `tagName` is omitted, defaults to `div`.
+All bracket groups are optional. If `tagName` is omitted, defaults to `div`. A bare `::` closes the last opened tag.
 
 Tag names start with a letter and may contain letters, digits, `_` and `-` (useful for custom tags). A tag is only recognized when it is not glued to a preceding word: `std::chrono::seconds`, `obj.link::x` or the Python slice `a[::2]` are left untouched.
 
 A closing `::` may be directly followed by punctuation or HTML (`**span::[c] x ::**`, `important ::,`). A marker is exactly two colons: a run of three or more (`:::`, `::::`) is text. A `::` between two HTML tags (as in pre-highlighted code `<span>::</span>`) is left untouched.
 
-A tag that is opened but never closed, or a `::` that closes nothing, produces an `LHTMLWarning` quoting the beginning of the tag. An unmatched `::` is kept as text in the output.
+A tag that is opened but never closed, or a `::` that closes nothing, produces a warning quoting the beginning of the tag (printed by the command; from Python, an `LHTMLWarning`, see the [Python API Reference](#python-api-reference)). A tag never closed is not closed in the output either: `div::` gives an opening `<div>` without its `</div>`. An unmatched `::` is kept as text in the output.
 
 Elements nest inside headings, list items, bold and italic: one opened there and not closed there is closed at its end, with a warning, and a `::` closes the last open element only when both are in the same heading, item, bold or italic (or both outside). In `div:: a **x :: y** b ::` the `::` inside the bold closes nothing (a warning, it stays as text) and the last one closes the div. A `link::` whose label would cross the end of a heading, an item or a bold (`**x link::u[b** c]`) is left as text, with a warning.
 
@@ -328,7 +365,7 @@ Content
 Classes and ID may also be chained without spaces: `::(.classA.classB#myId)`
 gives the same attributes (since 2.5.1).
 
-#### Self-Closing (inline)
+#### Closed on the same line
 
 End the content with `::` on the same line:
 
@@ -340,13 +377,6 @@ Output:
 ```html
 <div style="color:blue;"> short text </div>
 ```
-
-#### Closing Tags
-
-A bare `::` closes the last opened tag. `::name[-]` and `::[-]` were removed
-in 3.0 and raise `LHTMLParseError`. On a named tag, `[-]` is a style
-(`span::[-]` is `<span style="-">`, as in LHTML 2), with a warning, since it
-was most likely meant as a closing tag.
 
 ### Links
 
@@ -389,7 +419,16 @@ video::assets/clip.mp4[width:600px;]
 videoplay::assets/clip.mp4[width:600px;]
 ```
 
-`videoplay` adds `autoplay loop muted playsinline` attributes (`playsinline`: on an iPhone, the video plays in the page instead of full screen). A poster is an attribute: `video::clip.mp4{poster="clip.jpg"}`. LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
+`videoplay` adds `autoplay loop muted playsinline` attributes (`playsinline`: on an iPhone, the video plays in the page instead of full screen). A poster is an attribute: `video::clip.mp4{poster="clip.jpg"}`. The output is a `<video>` with a `<source>`, and a text shown by a browser that cannot play it:
+
+```html
+<video style="width:600px;">
+	<source src="assets/clip.mp4" type="video/mp4">
+	 Cannot play video assets/clip.mp4
+</video>
+```
+
+ LHTML probes no file: the sources of a video are the one written, unless the caller passes a `media` resolver to `lhtml.run()`, which returns the sources to offer (transcoded variants, for instance):
 
 ```python
 def media(src):
@@ -417,13 +456,20 @@ Output (Pygments HTML inside `<div class="code">`):
 </pre></div>
 ```
 
+A code block is the one construct closed by `code::[-]` rather than `::`:
+its lines are never read as LHTML, so a `::` in the code (`std::vector`)
+cannot close it. (The `[-]` closers of the other tags were removed in 3.0,
+see [Removed in 3.0](#removed-in-30).)
+
 Syntax highlighting is powered by Pygments: any language supported by Pygments can be used, case-insensitively. An empty language (`code::[]`) renders plain text; an unknown language renders plain text with a warning. The built-in `c++` language is C++ with the types of the [CGP library](https://github.com/drohmer/cgp) highlighted; other languages can be added (see [Custom Code Lexers](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)).
 
 The colors come from a Pygments stylesheet, which you must include in your page. Generate one for the `.code` class (any [Pygments style](https://pygments.org/styles/) can replace `default`):
 
 ```bash
-pygmentize -S default -f html -a .code > code.css
+pipx run --spec pygments pygmentize -S default -f html -a .code > code.css
 ```
+
+`pygmentize -S default -f html -a .code > code.css` where Pygments is installed (a virtual environment with LHTML): a pipx installation gives the command `lhtml` only.
 
 
 ### Spacer
@@ -437,28 +483,9 @@ Output:
 <div style="height:1em;"></div>
 ```
 
-For spaces of several heights, a `gap` macro with a class per height keeps
-them in the stylesheet, one place to change them, instead of
-`::[height:25px;]::` written by hand on each page:
-
-```yaml
-macros:
-  gap: {class: gap, empty: true, variant: [s, m, l], default: m}
-```
-
-```css
-.gap-s { height: 0.5em; }  .gap-m { height: 1em; }  .gap-l { height: 2em; }
-```
-
-`gap::` is a medium space, `gap::l` a large one (`<div class="gap gap-l"></div>`).
-
-
-### Verbatim
-
-`verbatim::[]` was removed in 3.0 and raises `LHTMLParseError`. A code block
-(`code::[text]` ... `code::[-]`) shows text as it is; raw HTML is written
-directly. A `::#` or `verbatim::[]` inside an attribute group or inline code
-is text.
+For spaces of several heights, rather than `::[height:25px;]::` written by
+hand on each page, a `gap` macro keeps them in the stylesheet, one place to
+change them (see [Macros](#macros-custom-tags-from-a-configuration) below).
 
 
 ### Line breaks
@@ -473,21 +500,6 @@ Other paragraph   Other paragraph
 ```
 
 Images and videos are inline: images written one per line are stacked (write them on the same line to keep them side by side). Lines that start or end with a block element (headings, lists, `div::`, block-level HTML tags such as `<div>`, `<p>`, `<li>`, code blocks, `<script>`, display math, ...) are structure: they never get a `<br>` and blank lines next to them are ignored. The content of code blocks, scripts, comments and math is never modified, nor are the line breaks a tag writes in its own HTML: a style written on two lines (`span::[color:red;\nfont-size:90%]`), a link label on two lines (`link::`; raw HTML `<a>` is text), the lines of a `video::`.
-
-
-### Comments
-
-`::#` comments were removed in 3.0 and raise `LHTMLParseError`: write an HTML
-comment `<!-- ... -->` (kept in the page) or, through Jinja, `{# ... #}`
-(removed). `link::#intro[...]` (a link to an anchor) was never a comment.
-
-
-### File Inclusion
-
-`include::` was removed in 3.0: LHTML reads no file. Include before calling
-LHTML, with Jinja (`{% include "header.html" %}`) for instance. An `include::`
-where LHTML 2 would have expanded one, in the text or in a code block, raises
-`LHTMLParseError` naming the file, rather than being left as text.
 
 
 ### Macros (custom tags from a configuration)
@@ -528,6 +540,13 @@ Output:
 <div class="gap gap-l"></div>
 <span class="credit"> Image: Wikimedia Commons </span>
 <iframe class="demo" src="assets/demo/index.html" frameborder="0"></iframe>
+```
+
+`gap` gives one class per height, set in the stylesheet: `gap::` is a medium
+space, `gap::l` a large one.
+
+```css
+.gap-s { height: 0.5em; }  .gap-m { height: 1em; }  .gap-l { height: 2em; }
 ```
 
 | Field | Description |
@@ -590,9 +609,63 @@ The options are named arguments of `lhtml.run()` (see the
 [Python API reference](#python-api-reference)).
 
 
+### Removed in 3.0
+
+For a source written for LHTML 2 (all the details: [docs/migration.md](https://github.com/drohmer/lhtml/blob/main/docs/migration.md)).
+Each of these raises `LHTMLParseError`, which names the replacement:
+
+| LHTML 2 | LHTML 3 |
+|---------|---------|
+| `::name[-]`, `::[-]` (closing tags; `code::[-]` still closes a code block) | a bare `::` |
+| `verbatim::[]` | a code block `code::[text]` ... `code::[-]`, or raw HTML |
+| `::#` comments | an HTML comment `<!-- ... -->` (kept in the page), or with Jinja `{# ... #}` (removed) |
+| `include::file` | include before calling LHTML, with Jinja for instance (`{% include "header.html" %}`): LHTML reads no file |
+
+On a named tag, `[-]` is a style (`span::[-]` is `<span style="-">`, as in
+LHTML 2), with a warning, since it was most likely meant as a closing tag. A
+`::#` or `verbatim::[]` inside an attribute group or inline code is text, and
+`link::#intro[...]` (a link to an anchor) was never a comment.
+
+
+## Command line details
+
+Without `-o`, one input is written to stdout, and several inputs are each
+written next to their source (`page.l.html` to `page.html`). With `-o`, one
+input is written to that file, several into that directory; two inputs that
+would be written to the same file are refused before anything is written.
+
+- stdout holds the HTML only, stderr every message: `lhtml page.l.html > page.html` writes a clean file.
+- The destinations are checked before any file is written: an input missing, two inputs written to one file (or to names that differ by case only, or to two names of one file), an output that is an input (or a symbolic or hard link to one), an output under a file: an error each, and nothing is written.
+- Then each file is converted and written; one that fails does not stop the others. Writing files ends with a summary (`2 converted · 1 warning`).
+- Exit status: 0; 1 when a file is not converted or not written; 2 for a wrong use of the command (`lhtml --help` says so too).
+- Files are read and written as UTF-8 (a BOM is accepted).
+- LHTML reads no file but its input and the macro files given with `--macros`, and no front matter: its options come from the command line, or from the caller of `lhtml.run()`.
+
+A problem is one line, `file:line:column: level: message`, which editors and
+terminals recognize. In a terminal, the line of the source follows, the
+place underlined, and the level is colored (never only colored: it is
+written; `NO_COLOR` turns colors off, `FORCE_COLOR` on):
+
+```
+page.l.html:3:1: warning: div:: is never closed
+  3 │ div::(.note)
+    │ ^^^^^^^^^^^^
+
+2 converted · 1 warning
+```
+
+Without a terminal (a log, an editor), the same problem is one line, its
+quote included: `page.l.html:3:1: warning: div:: is never closed (near 'div::(.note)')`.
+A message reads `subject: problem; what to do (near 'source')`; a name close
+to a known one is suggested (`code::[pyhton]: unknown language, shown as
+plain text; did you mean 'python'?`), and one mistake gives one warning (an
+old closer `span::[-]` does not also warn the element it was meant to
+close).
+
+
 ## Using LHTML with Jinja2
 
-LHTML leaves Jinja2 untouched, so a template can be written in LHTML: convert it to HTML first, then render it with Jinja2 (`pip install jinja2`).
+LHTML leaves Jinja2 untouched, so a template can be written in LHTML: convert it to HTML first, then render it with Jinja2 (`pip install jinja2`, in the virtual environment where LHTML is installed).
 
 `blog.l.html`:
 ```
@@ -615,6 +688,7 @@ with open('blog.l.html', encoding='utf-8') as f:
 
 html = template.render(page={'title': 'Blog'},
                        posts=[{'url': 'first.html', 'title': 'First post', 'summary': 'Hello.'}])
+print(html)
 ```
 
 `lhtml.run()` produces the Jinja2 template:
@@ -660,6 +734,10 @@ The problems of a text are `LHTMLWarning` warnings, each with its `line`
 and `column`. A caller that collects them parses and renders itself:
 
 ```python
+import lhtml
+
+text = 'div::(.note)\nnever closed\n'
+macros = {'box': {'class': 'box'}}
 document = lhtml.parse(text, macros=macros, warn=False)   # warn=False: kept, not warned
 html = lhtml.render(document, line_breaks=True)
 for problem in document.problems:                         # in source order
