@@ -3,6 +3,16 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.1] - 2026-10-19
+
+No change to the code.
+
+### Documentation
+- The README installs the command `lhtml` with pipx (`pipx install
+  lhtml-markup`, `pipx run`), and the library with pip in the environment
+  of a project; a program that depends on LHTML, such as lhtml-site,
+  installs it on its own.
+
 ## [3.0.0] - 2026-10-18
 
 In short: LHTML reads no file but its input; a text is parsed into a
@@ -533,6 +543,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - Headings without parentheses (`= Title`).
 - `::#` comments are removed on every line.
 
+[3.0.1]: https://github.com/drohmer/lhtml/releases/tag/v3.0.1
 [3.0.0]: https://github.com/drohmer/lhtml/releases/tag/v3.0.0
 [2.5.1]: https://github.com/drohmer/lhtml/releases/tag/v2.5.1
 [2.5.0]: https://github.com/drohmer/lhtml/releases/tag/v2.5.0

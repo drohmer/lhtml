@@ -11,11 +11,27 @@ See the [examples](https://github.com/drohmer/lhtml/tree/main/examples/) and the
 
 ## Installation
 
-From PyPI:
+The command `lhtml`, with [pipx](https://pipx.pypa.io/) - installed in an
+environment of its own, and available everywhere:
+
+```bash
+pipx install lhtml-markup
+pipx upgrade lhtml-markup        # later, to update it
+```
+
+Or run it once without installing it: `pipx run --spec lhtml-markup lhtml page.l.html`.
+
+The library, to `import lhtml` in a project, with pip, in the environment of
+that project:
 
 ```bash
 pip install lhtml-markup
 ```
+
+A program that depends on LHTML installs it on its own: the site generator
+[lhtml-site](https://github.com/drohmer/lhtml-site) needs no separate
+installation of LHTML (and `pipx install lhtml-site` does not give the
+command `lhtml`).
 
 Or from source:
 
