@@ -363,6 +363,39 @@ class TestLabWebsite:
 
 
 # ---------------------------------------------------------------------------
+# The examples of examples/: no problem, and the output their README shows
+# ---------------------------------------------------------------------------
+
+EXAMPLES = os.path.join(os.path.dirname(__file__), '..', 'examples')
+
+
+class TestExamples:
+    def files(self):
+        files = sorted(glob.glob(os.path.join(EXAMPLES, '*.l.html')))
+        if not files:
+            pytest.skip('examples/ not found')
+        return files
+
+    def test_no_problem(self):
+        for f in self.files():
+            with open(f, encoding='utf-8') as fid:
+                document = lhtml.parse(fid.read(), warn=False)
+            assert document.problems == [], (f, [str(p) for p in document.problems])
+
+    def test_documented_output(self):
+        # a section `## name.l.html` whose ```html block follows "generates:"
+        self.files()
+        with open(os.path.join(EXAMPLES, 'README.md'), encoding='utf-8') as fid:
+            readme = fid.read()
+        shown = re.findall(r'^## (\S+\.l\.html)\n.*?generates:\n\n```html\n(.*?)```', readme, re.S | re.M)
+        assert shown, 'no documented output in examples/README.md'
+        for name, html in shown:
+            with open(os.path.join(EXAMPLES, name), encoding='utf-8') as fid:
+                got = lhtml.run(fid.read())
+            assert got.split() == html.split(), name
+
+
+# ---------------------------------------------------------------------------
 # Regression tests for bugs fixed in 2.3.0
 # ---------------------------------------------------------------------------
 

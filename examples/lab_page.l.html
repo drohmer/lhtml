@@ -1,0 +1,33 @@
+= Simulation - Particles
+
+::[color:gray;]
+__Path of the code: [05_particles]__
+::
+
+::[height:1em;]::
+
+The objective is to model particles falling under gravity. <br>
+Each particle has a position \(p_i\) and a speed \(v_i\).
+
+::[height:2em;]::
+
+* **Fill the function `update_speed`** (file `src/simulation/simulation.cpp`) that applies the gravity:
+** \(v = v + \Delta t \,F/m\)
+** __The mass is the variable `m` of each particle.__
+
+code::[c++]
+void update_speed(particle_structure& p, float dt)
+{
+    vec3 const g = {0.0f, 0.0f, -9.81f};
+    p.v = p.v + dt * g;
+}
+code::[-]
+
+::[height:1em;]::
+
+* Note: the functions of link::https://graphicscomputing.fr/cgp/documentation/sitemap/vec.html[vec3] are listed in its documentation.
+
+::[text-align:center;]
+videoplay::assets/video.mp4[width:100%; max-width:300px;] <br>
+__Expected result__
+::

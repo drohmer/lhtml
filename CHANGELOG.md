@@ -52,6 +52,16 @@ The README, read and run as a newcomer would, step by step:
 - A source for the command is `page.l.html`; a page of lhtml-site is a
   Jinja2 template `page.html.j2`, rendered by the generator, not by `lhtml`.
 
+- Two examples written as a course writes its pages, from the constructs
+  most used in three real projects (1019 pages): `examples/slide.l.html`
+  (a list, vertical spaces, a placed image, math, a centered video and its
+  caption) and `examples/lab_page.l.html` (instructions, math, a C++ code
+  block, a link, the expected result).
+
+### Tests
+- The examples convert without a problem, and give the output that
+  `examples/README.md` shows.
+
 ### Packaging
 - The sdist leaves out the caches of a test run made before the build
   (`__pycache__`, `*.pyc`, `.pytest_cache`), in `MANIFEST.in`.
