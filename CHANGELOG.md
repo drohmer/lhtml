@@ -3,6 +3,17 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.2] - 2026-10-28
+
+### Fixed
+- `lhtml.zones(text, code=...)`, the zones of a page of another markup (the
+  fenced blocks of Markdown): once no block follows a place, it is not
+  sought again from each zone after it. Each search read the rest of the
+  text, so a page of HTML without a fenced block was read in quadratic
+  time (4000 entries, 24 000 tags: 17.8 s, now 0.06 s); a site generator no
+  longer needs an empty block at the end of each page to avoid it.
+  `lhtml.run` and `lhtml.parse` were not affected.
+
 ## [3.0.1] - 2026-10-19
 
 No change to the code.
@@ -598,6 +609,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - Headings without parentheses (`= Title`).
 - `::#` comments are removed on every line.
 
+[3.0.2]: https://github.com/drohmer/lhtml/releases/tag/v3.0.2
 [3.0.1]: https://github.com/drohmer/lhtml/releases/tag/v3.0.1
 [3.0.0]: https://github.com/drohmer/lhtml/releases/tag/v3.0.0
 [2.5.1]: https://github.com/drohmer/lhtml/releases/tag/v2.5.1
