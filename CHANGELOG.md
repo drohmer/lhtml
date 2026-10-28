@@ -3,6 +3,24 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.3] - 2026-10-28
+
+The HTML and the problems are the same as in 3.0.2 (the tests, realistic
+pages, 6000 random documents compared).
+
+### Fixed
+- Tags glued in one word before a bracket never closed
+  (`span::/span::/...(`, `a::b,a::b,...[`): each `::` read the text again
+  up to the same bracket, in quadratic time (2000 tags: 3.1 s, now 0.02 s;
+  a page of 56 KB took 48 s). A later `::` of the word reaches the same
+  bracket: it gets the same warning without reading it again.
+
+### Performance
+- The formatter of the code blocks is made once, not once per block: a
+  lab page of 1000 small blocks is converted in 0.07 s instead of 0.17 s.
+- The brackets of a page are matched visiting its brackets and quotes
+  alone: 8 to 12% faster on a realistic page.
+
 ## [3.0.2] - 2026-10-28
 
 ### Fixed
@@ -609,6 +627,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - Headings without parentheses (`= Title`).
 - `::#` comments are removed on every line.
 
+[3.0.3]: https://github.com/drohmer/lhtml/releases/tag/v3.0.3
 [3.0.2]: https://github.com/drohmer/lhtml/releases/tag/v3.0.2
 [3.0.1]: https://github.com/drohmer/lhtml/releases/tag/v3.0.1
 [3.0.0]: https://github.com/drohmer/lhtml/releases/tag/v3.0.0
