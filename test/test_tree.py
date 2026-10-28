@@ -192,6 +192,15 @@ class TestDepth:
         quiet(lhtml.run, 'span::[ x ' * 20000)
         assert time.perf_counter() - start < 3
 
+    def test_glued_tags_before_an_unclosed_bracket_take_linear_time(self):
+        # each :: of the word reads to the same bracket: read once, each warned as before
+        import time
+        for text in ('span::/' * 8000 + '(', 'a::b,' * 8000 + '['):
+            start = time.perf_counter()
+            document = lhtml.parse(text, warn=False)
+            assert time.perf_counter() - start < 2, text[:10]
+            assert len(document.problems) == 8000
+
 
 class TestTags:
 

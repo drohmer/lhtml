@@ -11,7 +11,7 @@ import bisect
 import re
 from dataclasses import dataclass, field
 
-from .tag_parser import adjust_bare_tag, bare_tag, extract_bracket_elements, is_tag_boundary, tag_name_before
+from .tag_parser import Unclosed, adjust_bare_tag, bare_tag, extract_bracket_elements, is_tag_boundary, tag_name_before
 from .code import known_language, unknown_language_message
 from .errors import LHTMLParseError, quote, warn
 from .patterns import (
@@ -210,6 +210,7 @@ def process_protect_attributes(text, stores):
     text = HEADING.sub(_heading, text)
 
     parts, prev, read = [], 0, 0        # read: the end of the last element (its :: are its word, as in parse)
+    unclosed = Unclosed()
     for m in TAG_MARKER.finditer(text):
         if m.start() < max(prev, read):
             continue
@@ -222,7 +223,7 @@ def process_protect_attributes(text, stores):
             continue
         if element is None:
             try:
-                element = extract_bracket_elements(text, tag, m.start() - len(tag), m.end())
+                element = unclosed.extract(text, tag, m.start() - len(tag), m.end())
             except LHTMLParseError:
                 continue
             if not tag and not adjust_bare_tag(text, m, element):

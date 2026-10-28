@@ -122,4 +122,11 @@ def highlight(code: str, language: str, *, lexers: Mapping[str, type] | None = N
     Pygments (`lexers` {name: lexer class} first, then lhtml.LEXERS). An
     unknown language is plain text (parse warns where the block is)."""
     lexer = _lexer(language, checked_lexers(lexers)) or TextLexer(**LEXER_OPTIONS)
-    return pygments.highlight(code, lexer, HtmlFormatter(linenos=False, cssclass='code'))
+    return pygments.highlight(code, lexer, _formatter())
+
+
+@functools.cache
+def _formatter():
+    """The formatter of the code blocks, made once: making one costs more
+    than highlighting a short block (it keeps nothing of a block it writes)."""
+    return HtmlFormatter(linenos=False, cssclass='code')

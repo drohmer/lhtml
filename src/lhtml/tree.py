@@ -58,7 +58,7 @@ from .patterns import (
 from .code import checked_lexers
 from .process import ProtectionStores, code_language, normalize_input, process_prepare
 from .tag_parser import (
-    adjust_bare_tag, bare_tag, bracket_matches, extract_bracket_elements, is_closing_tag, is_tag_boundary, refuse_explicit_closing,
+    Unclosed, adjust_bare_tag, bare_tag, bracket_matches, is_closing_tag, is_tag_boundary, refuse_explicit_closing,
     tag_name_before,
 )
 
@@ -113,6 +113,7 @@ class _Parser:
         self.prepared = ''          # the source, its zones LHTML does not read hidden (parse)
         self.read = []              # (span, Written) of each tag read where it is (lhtml.read_tags)
         self._brackets = {}         # the matched brackets of each text read (the page, each label group)
+        self._unclosed = Unclosed()  # the last bracket never closed: not read again from each :: before it
 
     # -- positions --------------------------------------------------------
 
@@ -366,7 +367,7 @@ class _Parser:
             try:
                 if flat not in self._brackets:
                     self._brackets[flat] = bracket_matches(flat)
-                element = extract_bracket_elements(flat, tag, tag_start, m.end(), matches=self._brackets[flat])
+                element = self._unclosed.extract(flat, tag, tag_start, m.end(), matches=self._brackets[flat])
             except LHTMLParseError as e:
                 warn(f'{tag}:: {e}: it is left as text (near {self._quote(text, tag_start, m.end() + 30)!r})',
                       (line, column - len(tag) if column else None))

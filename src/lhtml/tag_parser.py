@@ -58,6 +58,7 @@ class _Quotes:
 
 _VALUE_BEFORE = re.compile(r'[^\s"\'=<>/{}]=[ \t]*\Z')     # {title="..."}: a name, then its =
 _CSS_STRING_BEFORE = re.compile(r'[:(,][ \t]*\Z')     # [content:"]"], [font-family:'A', 'B']
+_BRACKET_OR_QUOTE = re.compile(r'[(){}\[\]"\']')
 
 
 def bracket_matches(text):
@@ -73,26 +74,27 @@ def bracket_matches(text):
     apostrophe elsewhere is text (l'eau)."""
     matches, stacks = {}, {ch: [] for ch in PAIRS}
     closing = {close: ch for ch, close in PAIRS.items()}
-    quotes = None
-    i = 0
-    while i < len(text):
+    quotes, skip = None, 0
+    for m in _BRACKET_OR_QUOTE.finditer(text):     # the other characters change nothing
+        i = m.start()
+        if i < skip:                    # in a quoted string
+            continue
         ch = text[i]
-        if ch in '"\'' and (stacks['{'] or stacks['[']):
-            inner = max((k for k in ('{', '[') if stacks[k]), key=lambda k: stacks[k][-1])
-            before = text[max(0, i - 64):i]
-            if (_VALUE_BEFORE if inner == '{' else _CSS_STRING_BEFORE).search(before):
-                quotes = quotes or _Quotes(text)
-                # a bracket left open in a paragraph before (prose: [0, 1)) holds no string
-                end = quotes.closing(ch, i, across_lines=inner == '{') \
-                    if quotes.same_paragraph(stacks[inner][-1], i) else None
-                if end is not None:
-                    i = end + 1
-                    continue
-        if ch in PAIRS:
+        if ch in '"\'':
+            if stacks['{'] or stacks['[']:
+                inner = max((k for k in ('{', '[') if stacks[k]), key=lambda k: stacks[k][-1])
+                before = text[max(0, i - 64):i]
+                if (_VALUE_BEFORE if inner == '{' else _CSS_STRING_BEFORE).search(before):
+                    quotes = quotes or _Quotes(text)
+                    # a bracket left open in a paragraph before (prose: [0, 1)) holds no string
+                    end = quotes.closing(ch, i, across_lines=inner == '{') \
+                        if quotes.same_paragraph(stacks[inner][-1], i) else None
+                    if end is not None:
+                        skip = end + 1
+        elif ch in PAIRS:
             stacks[ch].append(i)
-        elif ch in closing and stacks[closing[ch]]:
+        elif stacks[closing[ch]]:
             matches[stacks[closing[ch]].pop()] = i
-        i += 1
     return matches
 
 
@@ -186,7 +188,9 @@ def extract_bracket_elements(text, tag, tag_start, index_start, after_text=False
                 matches = _matches(text)
             j = matches.get(i)
             if j is None:
-                raise LHTMLParseError(f'{ch!r} has no closing {close!r}')
+                error = LHTMLParseError(f'{ch!r} has no closing {close!r}')
+                error.read = (index_start, i, groups)   # what was read to it (Unclosed)
+                raise error
             j += 1
             groups.append((ch + close, i + 1, j - 1))
             group_after_text = group_after_text or seen_text
@@ -211,6 +215,31 @@ def extract_bracket_elements(text, tag, tag_start, index_start, after_text=False
     if tag == 'link':                   # its labels as its label is written, an empty one too
         element.brackets = ' '.join(text[start:end] for kind, start, end in groups if kind == '[]')
     return element
+
+
+class Unclosed:
+    """extract_bracket_elements on the ::s of a text in order, the last
+    bracket without its closing one remembered: a later :: whose word starts
+    where the failed one read, outside its groups, reads the same characters
+    to the same bracket, and raises the same error without reading them again
+    (span::/span::/...( is read in linear time)."""
+
+    def __init__(self):
+        self.failed = None              # (text, error, read from, the bracket, the starts of its groups)
+
+    def extract(self, text, tag, tag_start, index_start, matches=None):
+        failed = self.failed
+        if failed is not None and failed[0] is text and failed[2] <= index_start <= failed[3]:
+            k = bisect.bisect_right(failed[4], index_start) - 1
+            if k < 0 or index_start > failed[1].read[2][k][2]:      # not inside a group: the same end
+                raise LHTMLParseError(str(failed[1]))
+        try:
+            return extract_bracket_elements(text, tag, tag_start, index_start, matches=matches)
+        except LHTMLParseError as error:
+            read = getattr(error, 'read', None)
+            if read is not None:
+                self.failed = (text, error, read[0], read[1], [start for _, start, _ in read[2]])
+            raise
 
 
 # ---------------------------------------------------------------------------
