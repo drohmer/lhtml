@@ -1075,6 +1075,15 @@ class TestReadingASource:
         assert [z.kind for z in lhtml.zones('```\n<b>\n```\n<i>', code=fences)] == ['code', 'tag']
         assert [z.kind for z in lhtml.zones('= T\n<b>', start=4)] == ['tag']
 
+    def test_zones_of_another_markup_without_its_blocks_take_linear_time(self):
+        # no fenced block after a place: not sought again from each zone after it
+        import time
+        fences = re.compile(r'(?m:^```[^\n]*\n.*?^```$)', re.DOTALL)
+        text = '<div class="e"><span>f</span> <code>v</code> t</div>\n' * 4000
+        start = time.perf_counter()
+        assert len(lhtml.zones(text, code=fences)) == 24000
+        assert time.perf_counter() - start < 2
+
     def test_read_tag(self):
         found = lhtml.read_tag('x includeadv::{root: a, file: b} y', 2)
         assert (found.start, found.end) == (2, 32)

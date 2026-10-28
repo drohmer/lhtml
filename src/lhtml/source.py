@@ -76,11 +76,14 @@ def _matches(text, url_tags, code, start):
             yield m.group('code') is not None, m
         return
     search, position, block, zone = zone_search(_without_code(url_tags), text), start, None, None
+    blocks_left = zones_left = True     # a search that found none finds none further on: not run again
     while position <= len(text):
-        if block is None or block.start() < position:
+        if blocks_left and (block is None or block.start() < position):
             block = code.search(text, position)
-        if zone is None or zone.start() < position:
+            blocks_left = block is not None
+        if zones_left and (zone is None or zone.start() < position):
             zone = search(position)
+            zones_left = zone is not None
         if block is None and zone is None:
             return
         is_block = block is not None and (zone is None or block.start() <= zone.start())

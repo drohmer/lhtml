@@ -19,7 +19,7 @@ passes of LHTML 2 and of the 3.0 development versions, which wrote '<h1>',
 '<strong>' into the text instead (the tree replaced them on 2026-10-17 with the same HTML on the
 tests, a corpus of five projects and 80 000 fuzzed documents). Each
 character keeps its origin, the source or an event; the tree is built from
-the events. A tag builds the nodes of its element (export_html.Tag), the
+the events. A tag builds the nodes of its element (tags.Tag), the
 label of a link is its children, and the placeholders of the zones are
 gone from the tree: `render` writes the HTML from the fields of the nodes
 alone (nodes.py).
@@ -793,11 +793,11 @@ class _Parser:
 # The public functions
 # ---------------------------------------------------------------------------
 
-# a word glued to a :: that ends its line or is followed by a space: a closing :: meant
 # a heading written with a style or attributes: no heading
 _HEADING_GROUP = re.compile(r'^=+[\[{].*', re.MULTILINE)
 # the marks of bold and italic left after their stages, and the blank lines between paragraphs
 _MARK = re.compile(r'\*\*|__|\n[ \t]*\n')
+# a word glued to a :: that ends its line or is followed by a space: a closing :: meant
 _GLUED_CLOSE = re.compile(r'(?<![\w:-])([A-Za-z][\w-]*)::(?=[ \t]*(?:\n|$))', re.MULTILINE)
 
 _KINDS = {Heading: 'heading', List: 'list', Item: 'list item', Strong: 'bold', Emphasis: 'italic'}
