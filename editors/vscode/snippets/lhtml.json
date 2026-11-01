@@ -1,0 +1,61 @@
+{
+  "Block (div)": {
+    "prefix": "div::",
+    "body": ["div::(${1:.class})[${2:style}]", "$0", "::"],
+    "description": "A div with a class and a style, closed by ::"
+  },
+  "Anonymous block": {
+    "prefix": "::[",
+    "body": ["::[${1:padding:8px; background:#f6f6f6;}]", "$0", "::"],
+    "description": "A styled div with no tag name"
+  },
+  "Span": {
+    "prefix": "span::",
+    "body": ["span::[${1:color:#b4232c;}] ${2:text} ::"],
+    "description": "A span closed on the same line"
+  },
+  "Two columns": {
+    "prefix": "cols",
+    "body": [
+      "::[display:flex; gap:${1:12px};]",
+      "::[flex:1;]",
+      "${2:Left}",
+      "::",
+      "::[flex:1;]",
+      "${3:Right}",
+      "::",
+      "::"
+    ],
+    "description": "Two columns side by side"
+  },
+  "Link": {
+    "prefix": "link::",
+    "body": ["link::${1:https://example.org}[${2:text}]"],
+    "description": "A link"
+  },
+  "Image": {
+    "prefix": "img::",
+    "body": ["img::${1:assets/photo.jpg}[${2:width:400px;}]"],
+    "description": "An image with a style"
+  },
+  "Video": {
+    "prefix": "video::",
+    "body": ["video::${1:assets/clip.mp4}[${2:width:600px;}]"],
+    "description": "A video with controls"
+  },
+  "Video that plays by itself": {
+    "prefix": "videoplay::",
+    "body": ["videoplay::${1:assets/clip.mp4}[${2:width:600px;}]"],
+    "description": "A video in autoplay, loop, muted"
+  },
+  "Code block": {
+    "prefix": "code::",
+    "body": ["code::[${1:python}]", "$0", "code::[-]"],
+    "description": "A highlighted code block, closed by code::[-]"
+  },
+  "Jinja for loop": {
+    "prefix": "{% for",
+    "body": ["{% for ${1:item} in ${2:items} %}", "$0", "{% endfor %}"],
+    "description": "A Jinja loop"
+  }
+}

@@ -841,6 +841,14 @@ modules inside the package (`lhtml.patterns`, `lhtml.process`,
 - **Composable**: LHTML works seamlessly with Jinja2 templates, making it suitable for static site generators.
 
 
+## Editor support
+
+[editors/vscode](editors/vscode) is an extension for Visual Studio Code: highlighting of the LHTML
+marks (and of the HTML, CSS, Jinja and code blocks around them), folding of the `::` blocks, and
+snippets. It applies to `*.l.html` files and to the `index.html.j2` pages of an lhtml-site project;
+its README tells how to install it.
+
+
 ## License
 
 MIT, see [LICENSE.md](https://github.com/drohmer/lhtml/blob/main/LICENSE.md).

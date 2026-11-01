@@ -1,0 +1,90 @@
+{
+  "name": "lhtml",
+  "displayName": "LHTML",
+  "description": "Syntax highlighting, folding and snippets for LHTML, the light markup over HTML (and the pages of lhtml-site).",
+  "version": "0.1.0",
+  "publisher": "drohmer",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "homepage": "https://scholartools.fr/lhtml/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drohmer/lhtml",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/drohmer/lhtml/issues"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "lhtml",
+    "lhtml-site",
+    "html",
+    "markup",
+    "slides",
+    "jinja"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lhtml",
+        "aliases": [
+          "LHTML",
+          "lhtml"
+        ],
+        "extensions": [
+          ".lhtml"
+        ],
+        "filenamePatterns": [
+          "*.l.html",
+          "**/src/**/index.html.j2"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/file.svg",
+          "dark": "./images/file.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lhtml",
+        "scopeName": "text.html.lhtml",
+        "path": "./syntaxes/lhtml.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.property-list.css.lhtml": "css",
+          "meta.embedded.block.python": "python",
+          "meta.embedded.block.cpp": "cpp",
+          "meta.embedded.block.c": "c",
+          "meta.embedded.block.js": "javascript",
+          "meta.embedded.block.ts": "typescript",
+          "meta.embedded.block.shell": "shellscript",
+          "meta.embedded.block.json": "json",
+          "meta.embedded.block.yaml": "yaml",
+          "meta.embedded.block.html": "html",
+          "meta.embedded.block.css": "css",
+          "meta.embedded.block.java": "java",
+          "meta.embedded.block.rust": "rust",
+          "meta.embedded.block.go": "go",
+          "meta.embedded.block.tex": "latex",
+          "meta.embedded.block.hlsl": "hlsl",
+          "meta.embedded.block.sql": "sql",
+          "meta.embedded.block.xml": "xml",
+          "meta.embedded.block.markdown": "markdown"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "lhtml",
+        "path": "./snippets/lhtml.json"
+      }
+    ]
+  }
+}

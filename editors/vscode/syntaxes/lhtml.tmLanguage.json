@@ -1,0 +1,1515 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "LHTML",
+  "scopeName": "text.html.lhtml",
+  "patterns": [
+    {
+      "include": "#lhtml"
+    },
+    {
+      "include": "text.html.basic"
+    }
+  ],
+  "injections": {
+    "L:text.html.lhtml meta.tag -comment": {
+      "patterns": [
+        {
+          "include": "#jinja"
+        }
+      ]
+    }
+  },
+  "repository": {
+    "lhtml": {
+      "patterns": [
+        {
+          "include": "#code-block"
+        },
+        {
+          "include": "#jinja"
+        },
+        {
+          "include": "#html-comment"
+        },
+        {
+          "include": "#heading"
+        },
+        {
+          "include": "#list-item"
+        },
+        {
+          "include": "#inline"
+        }
+      ]
+    },
+    "inline": {
+      "patterns": [
+        {
+          "include": "#jinja"
+        },
+        {
+          "include": "#inline-code"
+        },
+        {
+          "include": "#math"
+        },
+        {
+          "include": "#media"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#spacer"
+        },
+        {
+          "include": "#tag"
+        },
+        {
+          "include": "#close"
+        },
+        {
+          "include": "#bold"
+        },
+        {
+          "include": "#italic"
+        }
+      ]
+    },
+    "code-block": {
+      "patterns": [
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(python|py))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.python",
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(c\\+\\+|cpp|cxx))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.cpp",
+          "patterns": [
+            {
+              "include": "source.cpp"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(c))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.c",
+          "patterns": [
+            {
+              "include": "source.c"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(javascript|js))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.js",
+          "patterns": [
+            {
+              "include": "source.js"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(typescript|ts))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.ts",
+          "patterns": [
+            {
+              "include": "source.ts"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(bash|sh|shell|zsh|console))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.shell",
+          "patterns": [
+            {
+              "include": "source.shell"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(json))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.json",
+          "patterns": [
+            {
+              "include": "source.json"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(yaml|yml))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.yaml",
+          "patterns": [
+            {
+              "include": "source.yaml"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(html))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.html",
+          "patterns": [
+            {
+              "include": "text.html.basic"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(css))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.css",
+          "patterns": [
+            {
+              "include": "source.css"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(java))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.java",
+          "patterns": [
+            {
+              "include": "source.java"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(rust|rs))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.rust",
+          "patterns": [
+            {
+              "include": "source.rust"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(go))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.go",
+          "patterns": [
+            {
+              "include": "source.go"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(latex|tex))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.tex",
+          "patterns": [
+            {
+              "include": "text.tex.latex"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(glsl|hlsl))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.hlsl",
+          "patterns": [
+            {
+              "include": "source.hlsl"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(sql))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.sql",
+          "patterns": [
+            {
+              "include": "source.sql"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(xml))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.xml",
+          "patterns": [
+            {
+              "include": "text.xml"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)(?i:(markdown|md))(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "meta.embedded.block.html",
+          "patterns": [
+            {
+              "include": "text.html.markdown"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(code)(::)(\\[)([^\\]\\n]*)(\\])\\s*$",
+          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "entity.name.type.language.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "4": {
+              "name": "punctuation.definition.block.lhtml"
+            },
+            "5": {
+              "name": "punctuation.definition.block.lhtml"
+            }
+          },
+          "name": "markup.fenced_code.block.lhtml",
+          "contentName": "markup.raw.block.lhtml"
+        }
+      ]
+    },
+    "heading": {
+      "begin": "^(={1,6})(\\([^)\\n]*\\))?(?=\\s)",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.heading.lhtml"
+        },
+        "2": {
+          "name": "meta.selector.lhtml",
+          "patterns": [
+            {
+              "include": "#selector"
+            }
+          ]
+        }
+      },
+      "name": "markup.heading.lhtml",
+      "contentName": "entity.name.section.lhtml",
+      "patterns": [
+        {
+          "include": "#inline"
+        },
+        {
+          "include": "text.html.basic"
+        }
+      ]
+    },
+    "list-item": {
+      "match": "^(\\*+)(?=\\s)",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.list.begin.lhtml"
+        }
+      },
+      "name": "markup.list.unnumbered.lhtml"
+    },
+    "bold": {
+      "begin": "\\*\\*(?=\\S)",
+      "end": "\\*\\*|$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.bold.lhtml"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.bold.lhtml"
+        }
+      },
+      "name": "markup.bold.lhtml",
+      "patterns": [
+        {
+          "include": "#inline-no-bold"
+        },
+        {
+          "include": "text.html.basic"
+        }
+      ]
+    },
+    "italic": {
+      "begin": "(?<![\\w])__(?=\\S)",
+      "end": "__(?![\\w])|$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.italic.lhtml"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.italic.lhtml"
+        }
+      },
+      "name": "markup.italic.lhtml",
+      "patterns": [
+        {
+          "include": "#inline-no-italic"
+        },
+        {
+          "include": "text.html.basic"
+        }
+      ]
+    },
+    "inline-no-bold": {
+      "patterns": [
+        {
+          "include": "#jinja"
+        },
+        {
+          "include": "#inline-code"
+        },
+        {
+          "include": "#math"
+        },
+        {
+          "include": "#media"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#tag"
+        },
+        {
+          "include": "#close"
+        },
+        {
+          "include": "#italic"
+        }
+      ]
+    },
+    "inline-no-italic": {
+      "patterns": [
+        {
+          "include": "#jinja"
+        },
+        {
+          "include": "#inline-code"
+        },
+        {
+          "include": "#math"
+        },
+        {
+          "include": "#media"
+        },
+        {
+          "include": "#link"
+        },
+        {
+          "include": "#tag"
+        },
+        {
+          "include": "#close"
+        },
+        {
+          "include": "#bold"
+        }
+      ]
+    },
+    "inline-code": {
+      "match": "(`)([^`\\n]+)(`)",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.raw.lhtml"
+        },
+        "3": {
+          "name": "punctuation.definition.raw.lhtml"
+        }
+      },
+      "name": "markup.inline.raw.string.lhtml"
+    },
+    "math": {
+      "patterns": [
+        {
+          "begin": "\\\\\\(",
+          "end": "\\\\\\)",
+          "name": "string.other.math.lhtml",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.math.begin.lhtml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.math.end.lhtml"
+            }
+          }
+        },
+        {
+          "begin": "\\\\\\[",
+          "end": "\\\\\\]",
+          "name": "string.other.math.lhtml",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.math.begin.lhtml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.math.end.lhtml"
+            }
+          }
+        },
+        {
+          "begin": "\\$\\$",
+          "end": "\\$\\$",
+          "name": "string.other.math.lhtml",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.math.begin.lhtml"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.math.end.lhtml"
+            }
+          }
+        }
+      ]
+    },
+    "media": {
+      "match": "(?<![\\w:.\\]])(img|video|videoplay)(::)((?:\\{\\{.*?\\}\\}|[^\\s\\[\\{(]|\\((?![.#])[^)\\s]*\\))+)?(\\([^)\\n]*\\))?(\\[(?:\"[^\"\\n]*\"|[^\\]\\n])*\\])?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
+      "captures": {
+        "1": {
+          "name": "entity.name.tag.lhtml"
+        },
+        "2": {
+          "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+        },
+        "3": {
+          "name": "markup.underline.link.lhtml",
+          "patterns": [
+            {
+              "include": "#jinja"
+            }
+          ]
+        },
+        "4": {
+          "name": "meta.selector.lhtml",
+          "patterns": [
+            {
+              "include": "#selector"
+            }
+          ]
+        },
+        "5": {
+          "name": "meta.property-list.css.lhtml",
+          "patterns": [
+            {
+              "include": "#style"
+            }
+          ]
+        },
+        "6": {
+          "name": "meta.attributes.lhtml",
+          "patterns": [
+            {
+              "include": "#attributes"
+            }
+          ]
+        }
+      }
+    },
+    "link": {
+      "patterns": [
+        {
+          "begin": "(?<![\\w:.\\]])(link)(::)((?:\\{\\{.*?\\}\\}|[^\\s\\[\\{(]|\\((?![.#])[^)\\s]*\\))+)(\\([^)\\n]*\\))?(\\[)",
+          "end": "(\\])(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?|$",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "markup.underline.link.lhtml",
+              "patterns": [
+                {
+                  "include": "#jinja"
+                }
+              ]
+            },
+            "4": {
+              "name": "meta.selector.lhtml",
+              "patterns": [
+                {
+                  "include": "#selector"
+                }
+              ]
+            },
+            "5": {
+              "name": "punctuation.definition.string.begin.lhtml"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.string.end.lhtml"
+            },
+            "2": {
+              "name": "meta.attributes.lhtml",
+              "patterns": [
+                {
+                  "include": "#attributes"
+                }
+              ]
+            }
+          },
+          "contentName": "string.other.link.title.lhtml",
+          "patterns": [
+            {
+              "include": "#inline"
+            }
+          ]
+        },
+        {
+          "match": "(?<![\\w:.\\]])(link)(::)((?:\\{\\{.*?\\}\\}|[^\\s\\[\\{(]|\\((?![.#])[^)\\s]*\\))+)(\\([^)\\n]*\\))?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "markup.underline.link.lhtml",
+              "patterns": [
+                {
+                  "include": "#jinja"
+                }
+              ]
+            },
+            "4": {
+              "name": "meta.selector.lhtml",
+              "patterns": [
+                {
+                  "include": "#selector"
+                }
+              ]
+            },
+            "5": {
+              "name": "meta.attributes.lhtml",
+              "patterns": [
+                {
+                  "include": "#attributes"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "spacer": {
+      "match": "(?<![\\w:])(::)(nl)\\b",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+        },
+        "2": {
+          "name": "entity.name.tag.lhtml"
+        }
+      }
+    },
+    "tag": {
+      "patterns": [
+        {
+          "match": "(?<![\\w:.\\]])([A-Za-z][\\w-]*)(::)(?=[\\s(\\[{]|$)(\\([^)\\n]*\\))?(\\[(?:\"[^\"\\n]*\"|[^\\]\\n])*\\])?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
+          "captures": {
+            "1": {
+              "name": "entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "3": {
+              "name": "meta.selector.lhtml",
+              "patterns": [
+                {
+                  "include": "#selector"
+                }
+              ]
+            },
+            "4": {
+              "name": "meta.property-list.css.lhtml",
+              "patterns": [
+                {
+                  "include": "#style"
+                }
+              ]
+            },
+            "5": {
+              "name": "meta.attributes.lhtml",
+              "patterns": [
+                {
+                  "include": "#attributes"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "match": "(?<![\\w:.\\]])(::)(?=[\\[\\({])(\\([^)\\n]*\\))?(\\[(?:\"[^\"\\n]*\"|[^\\]\\n])*\\])?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            },
+            "2": {
+              "name": "meta.selector.lhtml",
+              "patterns": [
+                {
+                  "include": "#selector"
+                }
+              ]
+            },
+            "3": {
+              "name": "meta.property-list.css.lhtml",
+              "patterns": [
+                {
+                  "include": "#style"
+                }
+              ]
+            },
+            "4": {
+              "name": "meta.attributes.lhtml",
+              "patterns": [
+                {
+                  "include": "#attributes"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "close": {
+      "match": "(?<![\\w:\\[])::(?![\\w:])",
+      "name": "punctuation.definition.tag.end.lhtml entity.name.tag.lhtml"
+    },
+    "selector": {
+      "patterns": [
+        {
+          "match": "\\.[\\w-]+",
+          "name": "entity.other.attribute-name.class.css"
+        },
+        {
+          "match": "#[\\w-]+",
+          "name": "entity.other.attribute-name.id.css"
+        },
+        {
+          "match": "[()]",
+          "name": "punctuation.section.group.lhtml"
+        }
+      ]
+    },
+    "style": {
+      "patterns": [
+        {
+          "match": "^\\[|\\]$",
+          "name": "punctuation.section.property-list.lhtml"
+        },
+        {
+          "include": "#jinja"
+        },
+        {
+          "include": "source.css#rule-list-innards"
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "match": "^\\{|\\}$",
+          "name": "punctuation.section.attributes.lhtml"
+        },
+        {
+          "include": "#jinja"
+        },
+        {
+          "match": "[\\w:.-]+(?==)",
+          "name": "entity.other.attribute-name.html"
+        },
+        {
+          "match": "(?<=\\s|\\{)[\\w:.-]+(?=\\s|\\}|$)",
+          "name": "entity.other.attribute-name.html"
+        },
+        {
+          "match": "\"[^\"]*\"|\\'[^\\']*\\'",
+          "name": "string.quoted.lhtml"
+        },
+        {
+          "match": "=",
+          "name": "punctuation.separator.key-value.html"
+        }
+      ]
+    },
+    "html-comment": {
+      "begin": "<!--",
+      "end": "-->",
+      "name": "comment.block.html",
+      "captures": {
+        "0": {
+          "name": "punctuation.definition.comment.html"
+        }
+      }
+    },
+    "jinja": {
+      "patterns": [
+        {
+          "begin": "\\{#",
+          "end": "#\\}",
+          "name": "comment.block.jinja",
+          "captures": {
+            "0": {
+              "name": "punctuation.definition.comment.jinja"
+            }
+          }
+        },
+        {
+          "begin": "\\{%-?",
+          "end": "-?%\\}",
+          "name": "meta.embedded.block.jinja",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.begin.jinja"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.end.jinja"
+            }
+          },
+          "patterns": [
+            {
+              "match": "\\b(if|elif|else|endif|for|endfor|in|not|and|or|is|set|endset|macro|endmacro|call|endcall|block|endblock|extends|include|import|from|as|with|endwith|raw|endraw|filter|endfilter)\\b",
+              "name": "keyword.control.jinja"
+            },
+            {
+              "include": "#jinja-expression"
+            }
+          ]
+        },
+        {
+          "begin": "\\{\\{-?",
+          "end": "-?\\}\\}",
+          "name": "meta.embedded.inline.jinja",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.begin.jinja"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.end.jinja"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#jinja-expression"
+            }
+          ]
+        }
+      ]
+    },
+    "jinja-expression": {
+      "patterns": [
+        {
+          "match": "\"[^\"]*\"|\\'[^\\']*\\'",
+          "name": "string.quoted.jinja"
+        },
+        {
+          "match": "\\b\\d+(\\.\\d+)?\\b",
+          "name": "constant.numeric.jinja"
+        },
+        {
+          "match": "\\b(true|false|none|True|False|None)\\b",
+          "name": "constant.language.jinja"
+        },
+        {
+          "match": "(\\|)\\s*([A-Za-z_]\\w*)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.filter.jinja"
+            },
+            "2": {
+              "name": "support.function.filter.jinja"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_]\\w*)(?=\\s*\\()",
+          "name": "entity.name.function.jinja"
+        },
+        {
+          "match": "\\b(in|not|and|or|is|if|else)\\b",
+          "name": "keyword.operator.jinja"
+        },
+        {
+          "match": "[A-Za-z_]\\w*",
+          "name": "variable.other.jinja"
+        }
+      ]
+    }
+  }
+}
