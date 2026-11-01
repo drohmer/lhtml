@@ -35,7 +35,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/drohmer/lhtml"
-Documentation = "https://github.com/drohmer/lhtml/blob/main/docs/advanced.md"
+Documentation = "https://scholartools.fr/lhtml/"
 Repository = "https://github.com/drohmer/lhtml"
 Issues = "https://github.com/drohmer/lhtml/issues"
 Changelog = "https://github.com/drohmer/lhtml/blob/main/CHANGELOG.md"
