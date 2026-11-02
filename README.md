@@ -20,7 +20,8 @@ See the [examples](https://github.com/drohmer/lhtml/tree/main/examples/) and the
 ## Installation
 
 The package `lhtml-markup` is on PyPI, the catalog of Python packages; pipx
-and pip are two tools that install it from there. **pipx** suits the
+and pip are two tools that install it from there (with its dependencies,
+`pygments` and `pyyaml`). **pipx** suits the
 command `lhtml`, **pip** the library used in a Python project. Pick the path
 you need: each ends with a page you can open.
 
@@ -59,7 +60,7 @@ Then:
 
 - **A stylesheet**: `--css style.css` links it (as written, relative to the
   page); it may be repeated. A code block needs one for its colors, see
-  [Code Blocks](#code-blocks).
+  [Code blocks](#code-blocks).
 - **Only the content**: without `--title` (or `-w`), `lhtml` writes the HTML
   of the content alone, without `<html>`, `<head>` and `<body>`: the form to
   put in a template (see [Using LHTML with Jinja2](#using-lhtml-with-jinja2)).
@@ -104,7 +105,7 @@ with open("page.html", "w", encoding="utf-8") as f:
 `python hello.py` writes `page.html`, to open in a browser. `lhtml.run`
 converts a text, `lhtml.wrap` makes it a complete page (`css=[...]`,
 `js=[...]`: its stylesheets and scripts): that is the whole API of a page, see
-the [Python API Reference](#python-api-reference). The environment has the
+the [Python API reference](#python-api-reference). The environment has the
 command `lhtml` too, and `python -m lhtml` is the same command.
 
 ### When something goes wrong
@@ -123,66 +124,61 @@ command `lhtml` too, and `python -m lhtml` is the same command.
 
 Each line of LHTML on the left, what it gives on the right:
 
-| LHTML | gives |
-|-------|-------|
-| `= Title` | `<h1>Title</h1>` |
-| `== Section` | `<h2>Section</h2>` (and so on to `======`; more `=` stay text, with a warning) |
-| `* item` | a list (`** item` for a nested one) |
-| `**bold** and __italic__` | `<strong>bold</strong> and <em>italic</em>` |
-| `` `code` `` | inline code, never read as LHTML |
-| `link::https://example.org[text]` | `<a href="https://example.org">text</a>` |
-| `img::photo.jpg[width:300px;]` | `<img style="width:300px;" src="photo.jpg" alt="photo.jpg">` |
-| `div::(.note)[color:gray;]`, lines, then `::` | `<div class="note" style="color:gray;">`, the lines, `</div>` |
-| `code::[python]`, lines, then `code::[-]` | the lines as a highlighted Python code block |
-| `<b>raw HTML</b>` | kept as it is; so are `\(math\)` and `{{ jinja }}` |
+| LHTML | gives | Details |
+|-------|-------|---------|
+| `= Title` | `<h1>Title</h1>` | [Headings](#headings) |
+| `== Section` | `<h2>Section</h2>` (and so on to `======`; more `=` stay text, with a warning) | [Headings](#headings) |
+| `* item` | a list (`** item` for a nested one) | [Lists](#lists) |
+| `**bold** and __italic__` | `<strong>bold</strong> and <em>italic</em>` | [Inline formatting](#inline-formatting) |
+| `` `code` `` | inline code, never read as LHTML | [Inline formatting](#inline-formatting) |
+| `div::[color:gray;]`, lines, then `::` | `<div style="color:gray;">`, the lines, `</div>` | [Blocks and styles](#blocks-and-styles) |
+| `div::(.note #intro)` (also after `=`, `link::`, `img::`...) | `<div class="note" id="intro">` | [Classes and ids](#classes-and-ids) |
+| `link::https://example.org[text]` | `<a href="https://example.org">text</a>` | [Links](#links) |
+| `img::photo.jpg[width:300px;]` | `<img style="width:300px;" src="photo.jpg" alt="photo.jpg">` | [Images](#images) |
+| `code::[python]`, lines, then `code::[-]` | the lines as a highlighted Python code block | [Code blocks](#code-blocks) |
+| `<b>raw HTML</b>` | kept as it is; so are `\(math\)` and `{{ jinja }}` | [Design principles](#design-principles) |
+| `note:: text ::`, with `-m macros.yaml` | `<div class="note"> text </div>`: a tag of your own, declared in YAML | [Macros](#macros) |
 
 Everything else is HTML, written as it is: a paragraph `<p>`, a numbered
 list `<ol>`, a table, a quote. In particular a blank line does not make a
 paragraph, as in HTML: write `<p>`, or render the line breaks of the source
 with `-b` (see [Line breaks](#line-breaks)).
 
-The [Syntax Reference](#syntax-reference) below details each construct;
+The [Syntax reference](#syntax-reference) below details each construct;
 [docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)
 is for callers that extend LHTML in Python.
 
 
-## Command Line
+## Command line
 
 ```bash
-lhtml input.l.html                    # Convert to stdout
-lhtml input.l.html -o output.html     # Convert to file
-lhtml input.l.html -w                 # Wrap in full HTML document (--wrap)
-lhtml input.l.html --title Notes --css style.css   # A document, its title and stylesheets (--js: scripts)
-lhtml input.l.html -b                 # Render source line breaks as <br> (--line-breaks)
-lhtml input.l.html -m macros.yaml     # Declare macros, custom :: tags (--macros)
-lhtml a.l.html b.l.html               # Several files: a.html, b.html next to sources
-lhtml a.l.html b.l.html -o build/     # Several files into a directory
-lhtml a.l.html b.l.html -o build/ -v  # ... naming each file written (-q: no summary)
-cat input.l.html | lhtml -            # The standard input (alone; to stdout, or -o a file)
-lhtml --version                       # Show the version (also lhtml.__version__)
+lhtml page.l.html                         # to stdout
+lhtml page.l.html -o page.html            # to a file
+lhtml page.l.html --title Notes --css style.css -o page.html   # a complete page
+lhtml a.l.html b.l.html -o build/         # several files, into a directory
+cat page.l.html | lhtml -                 # the standard input
 ```
 
-With `-w`, the result is wrapped in a minimal HTML document (title
-`Webpage`, see `lhtml.wrap` in the [Python API Reference](#python-api-reference));
-`--title`, `--css` and `--js` (each repeatable but the title) give its
-title, stylesheets and scripts, and imply `-w`. Where files are written, the
-messages and the exit status: [Command line details](#command-line-details).
+| Option | Effect | Default |
+|--------|--------|---------|
+| `input ...` | The files to convert; `-` for the standard input (alone) | |
+| `-o`, `--output OUTPUT` | The output file (one input), or directory (several inputs, or a trailing `/`) | stdout for one input; several are written next to their sources (`a.l.html` to `a.html`) |
+| `-w`, `--wrap` | Wrap the HTML in a document (`<!DOCTYPE html>`, `<head>`, `<body>`), as `lhtml.wrap` (see the [Python API reference](#python-api-reference)) | the content alone, to put in a template |
+| `--title TITLE` | The title of the document (implies `-w`) | `Webpage` |
+| `--css URL` | A stylesheet of the document, linked as written (implies `-w`); may be repeated | none |
+| `--js URL` | A script of the document (implies `-w`); may be repeated | none |
+| `-b`, `--line-breaks` | Render the line breaks of the source as `<br>` (see [Line breaks](#line-breaks)) | as in HTML: no effect |
+| `-m`, `--macros FILE` | A YAML file of macros, custom `::` tags (see [Macros](#macros)); may be repeated, later files win | none |
+| `-v`, `--verbose` | Name each file written | |
+| `-q`, `--quiet` | No summary (`2 converted · 1 warning`) | a summary when files are written |
+| `-V`, `--version` | Show the version and exit (from Python: `lhtml.__version__`) | |
+| `-h`, `--help` | Show the help, its exit statuses and examples, and exit | |
 
-**From source**, to work on LHTML, in a virtual environment:
-
-```bash
-git clone https://github.com/drohmer/lhtml.git
-cd lhtml
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"     # editable, with pytest; then: pytest test/
-```
-
-Dependencies (`pygments`, `pyyaml`) are installed automatically. Coming from
-LHTML 2: [docs/migration.md](https://github.com/drohmer/lhtml/blob/main/docs/migration.md).
+Where files are written, the messages and the exit status:
+[Command line details](#command-line-details).
 
 
-## Syntax Reference
+## Syntax reference
 
 ### Headings
 
@@ -242,7 +238,7 @@ Back to top level
 Each `*` adds one level (`***` is level 3). A list ends at the first line that is not an item. A nested list with no item before it to hold it (a list that starts at `**`, or a jump of two levels) gets an item of its own.
 
 
-### Inline Formatting
+### Inline formatting
 
 ```
 This is **bold** text.
@@ -262,9 +258,9 @@ A bold and an italic nest, they do not cross: in `**b __c** d__` the italic is l
 Inline code is literal: `<` and `>` are escaped (so `` `std::vector<float>` `` displays correctly), and nothing in it is interpreted - not `**`, `__`, `code::`, nor any tag (`` `link::x` `` stays text; write `<code class="code-inline">link::url[name]</code>` for a link in code). Existing entities such as `&lt;` are kept.
 
 
-### Tag Elements (the `::` system)
+### Blocks and styles
 
-The core of LHTML. The general syntax is:
+The `::` system, the core of LHTML. The general syntax is:
 
 ```
 tagName::(.classes #id)[cssStyle]{htmlAttributes} content ::
@@ -272,7 +268,7 @@ tagName::(.classes #id)[cssStyle]{htmlAttributes} content ::
 
 All bracket groups are optional. If `tagName` is omitted, defaults to `div`. A bare `::` closes the last opened tag.
 
-#### Div / Span with Styles
+#### Div and span with styles
 
 ```
 div::[color:red; font-size:120%;]
@@ -291,7 +287,7 @@ This text is big and red.
 <span class="highlight" style="font-weight:bold;"> inline content </span>
 ```
 
-#### Anonymous Div (no tag name)
+#### Anonymous div (no tag name)
 
 ```
 ::[padding:10px; background:#eee;]
@@ -305,24 +301,6 @@ Output:
 Content in a styled div.
 </div>
 ```
-
-#### Classes, IDs, and Inline Attributes
-
-```
-::(.classA .classB #myId)[margin:10px;]{data-role="main"}
-Content
-::
-```
-
-Output:
-```html
-<div class="classA classB" id="myId" style="margin:10px;" data-role="main">
-Content
-</div>
-```
-
-Classes and ID may also be chained without spaces: `::(.classA.classB#myId)`
-gives the same attributes (since 2.5.1).
 
 #### Closed on the same line
 
@@ -361,7 +339,7 @@ Output:
 - **Unclosed or unmatched**: a tag that is opened but never closed, or a
   `::` that closes nothing, produces a warning quoting the beginning of the tag
   (printed by the command; from Python, an `LHTMLWarning`, see the
-  [Python API Reference](#python-api-reference)). A tag never closed is not
+  [Python API reference](#python-api-reference)). A tag never closed is not
   closed in the output either: `div::` gives an opening `<div>` without its
   `</div>`. An unmatched `::` is kept as text in the output.
 - **Nesting**: elements nest inside headings, list items, bold and italic.
@@ -375,6 +353,30 @@ Output:
   `column` where it is in the text given to `lhtml.run` (`None` when not
   known). The command line prints each problem as
   `file:line:column: level: message`.
+
+
+### Classes and ids
+
+The group `(...)` gives classes (`.name`) and an id (`#name`) to an element:
+a block or a span, a heading (`=(.highlight #intro) Title`), a link
+(`link::page.html(.nav)[Home]`), an image, a macro. With a style `[...]` and
+other attributes `{...}`:
+
+```
+::(.classA .classB #myId)[margin:10px;]{data-role="main"}
+Content
+::
+```
+
+Output:
+```html
+<div class="classA classB" id="myId" style="margin:10px;" data-role="main">
+Content
+</div>
+```
+
+Classes and the id may also be chained without spaces: `::(.classA.classB#myId)`
+gives the same attributes (since 2.5.1).
 
 
 ### Links
@@ -458,7 +460,7 @@ html = lhtml.run(text, media=media)
 An empty list keeps the source as written.
 
 
-### Code Blocks
+### Code blocks
 
 ````
 code::[python]
@@ -486,7 +488,7 @@ Syntax highlighting is powered by Pygments:
   plain text with a warning;
 - the built-in `c++` language is C++ with the types of the
   [CGP library](https://github.com/drohmer/cgp) highlighted;
-- other languages can be added (see [Custom Code Lexers](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)).
+- other languages can be added (see [Custom code lexers](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#custom-code-lexers)).
 
 The colors come from a Pygments stylesheet, which you must include in your page. Generate one for the `.code` class (any [Pygments style](https://pygments.org/styles/) can replace `default`):
 
@@ -512,7 +514,7 @@ Output:
 
 For spaces of several heights, rather than `::[height:25px;]::` written by
 hand on each page, a `gap` macro keeps them in the stylesheet, one place to
-change them (see [Macros](#macros-custom-tags-from-a-configuration) below).
+change them (see [Macros](#macros) below).
 
 
 ### Line breaks
@@ -541,7 +543,7 @@ With `-b`:
   (`link::`; raw HTML `<a>` is text), the lines of a `video::`.
 
 
-### Macros (custom tags from a configuration)
+### Macros
 
 A macro is a named `::` tag declared in YAML (or a dict): a shortcut for an
 HTML element with default classes and attributes. The styling stays
@@ -749,7 +751,7 @@ print(html)
 Jinja2 expressions can also be used in URLs (`img::{{ base }}/photo.jpg`) and in tag groups (`div::[color:{{ color }};]`).
 
 
-## Python API Reference
+## Python API reference
 
 ```python
 lhtml.run(text, *, macros=None, tags=None, line_breaks=False, media=None, lexers=None)  # -> HTML
@@ -759,7 +761,7 @@ lhtml.load_macros(source)       # definitions from a YAML file, a mapping, or a 
 
 | Argument | Type | Description |
 |----------|------|-------------|
-| `macros` | mapping | The definitions of the macros (see [Macros](#macros-custom-tags-from-a-configuration)); `lhtml.load_macros` reads files |
+| `macros` | mapping | The definitions of the macros (see [Macros](#macros)); `lhtml.load_macros` reads files |
 | `tags` | mapping | Tags written in Python, `{name: lhtml.Tag}` ([docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md)) |
 | `line_breaks` | boolean | Render source line breaks as `<br>` |
 | `media` | callable | `media(src) -> [(url, mime type)]`, the sources of a video |
@@ -793,23 +795,11 @@ An argument spelled otherwise is a `TypeError`. LHTML reads no file:
 code block in a language it does not know makes it look for its plugins,
 once per name).
 
-The problems of a text are `LHTMLWarning` warnings, each with its `line`
-and `column`. A caller that collects them parses and renders itself:
-
-```python
-import lhtml
-
-text = 'div::(.note)\nnever closed\n'
-macros = {'box': {'class': 'box'}}
-document = lhtml.parse(text, macros=macros, warn=False)   # warn=False: kept, not warned
-html = lhtml.render(document, line_breaks=True)
-for problem in document.problems:                         # in source order
-    print(problem.line, problem.column, problem)
-```
-
-Each parse keeps its own problems, in threads too (no global state is
-changed). An `LHTMLError` stops the parse: its `line`, `column`, `path`
-(a macros file) say where, and its `problems` holds those found before it.
+The problems of a text are `LHTMLWarning` warnings (Python's `warnings`),
+each with its `line` and `column`; an `LHTMLError` stops the conversion. A
+caller that collects the problems, or changes the document before its HTML
+is written, calls `lhtml.parse` and `lhtml.render` itself: see
+[Parse, render, and the problems](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#parse-render-and-the-problems).
 `lhtml.highlight(code, language)` gives the HTML of a code block, as
 `code::[language]` renders it.
 
@@ -825,7 +815,7 @@ modules inside the package (`lhtml.patterns`, `lhtml.process`,
 `lhtml.tree`...) are its implementation and may change in any release.
 
 
-## Design Principles
+## Design principles
 
 - **HTML-first**: Raw HTML is never modified. Only LHTML syntax triggers
   conversions; text between HTML tags is still processed. Never transformed:
@@ -843,10 +833,28 @@ modules inside the package (`lhtml.patterns`, `lhtml.process`,
 
 ## Editor support
 
-[editors/vscode](editors/vscode) is an extension for Visual Studio Code: highlighting of the LHTML
+[editors/vscode](https://github.com/drohmer/lhtml/tree/main/editors/vscode) is an extension for Visual Studio Code: highlighting of the LHTML
 marks (and of the HTML, CSS, Jinja and code blocks around them), folding of the `::` blocks, and
 snippets. It applies to `*.l.html` files and to the `index.html.j2` pages of an lhtml-site project;
-its README tells how to install it.
+[its README](https://github.com/drohmer/lhtml/blob/main/editors/vscode/README.md) tells how
+to install it.
+
+
+## Development
+
+To work on LHTML, from its repository, in a virtual environment:
+
+```bash
+git clone https://github.com/drohmer/lhtml.git
+cd lhtml
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"     # editable, with pytest
+python -m pytest -q
+```
+
+The layout of the code, module by module, is in
+[docs/advanced.md](https://github.com/drohmer/lhtml/blob/main/docs/advanced.md#layout-of-the-code).
 
 
 ## License

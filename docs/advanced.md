@@ -1,8 +1,33 @@
 # LHTML: advanced use
 
-The [README](../README.md) covers the syntax and `lhtml.run(text)`. This page is for
-callers that extend LHTML or read its documents: the macro functions, custom
-tags written in Python, the document tree, the lexers, and the layout of the code.
+The README covers the [syntax](../README.md#syntax-reference) and the
+[Python API](../README.md#python-api-reference) of a page, `lhtml.run(text)` and
+`lhtml.wrap`. This page is for callers that extend LHTML or read its documents: the
+problems of a parse, the macro functions, custom tags written in Python, the document
+tree, the lexers, and the layout of the code.
+
+## Parse, render, and the problems
+
+`lhtml.run` is `lhtml.parse`, then `lhtml.render`. The problems of a text are
+`LHTMLWarning` warnings, each with its `line` and `column`. A caller that collects
+them parses and renders itself:
+
+```python
+import lhtml
+
+text = 'div::(.note)\nnever closed\n'
+macros = {'box': {'class': 'box'}}
+document = lhtml.parse(text, macros=macros, warn=False)   # warn=False: kept, not warned
+html = lhtml.render(document, line_breaks=True)
+for problem in document.problems:                         # in source order
+    print(problem.line, problem.column, problem)
+```
+
+Each parse keeps its own problems, in threads too (no global state is
+changed). An `LHTMLError` stops the parse: its `line`, `column`, `path`
+(a macros file) say where, and its `problems` holds those found before it.
+Between the two, the document is a tree that a caller may read and change:
+[The document tree](#the-document-tree).
 
 ## Macro functions
 
@@ -14,7 +39,7 @@ info = lhtml.describe_macro('box', macros['box'])    # what a definition renders
 
 ## Custom tags, the document tree, lexers
 
-### Custom Tags
+### Custom tags
 
 Give new `::` tags to `lhtml.run`, added to the built-in ones (`lhtml.TAGS`,
 a read-only mapping name -> `lhtml.Tag`) and to the macros; a tag given
@@ -145,10 +170,11 @@ Every node but the document has its place: `span`, the offsets of its source in 
 given to `parse` (end excluded; a `\r\n` or a BOM counted), and `line`,
 `column` of its start (1-based); a node a tag built has the place of its
 element, a node made by the caller none. `document.problems` holds the
-problems, in source order (`parse(text, warn=False)`: kept, not warned). The nodes nest, nothing crosses (see the `::`
-elements in the [README](../README.md)). The tree is walked and rendered
-without recursion: a document may nest deeper than Python's recursion
-limit, whatever its nodes.
+problems, in source order (`parse(text, warn=False)`: kept, not warned).
+The nodes nest, nothing crosses (see the
+[precise rules of the tags](../README.md#precise-rules-of-the-tags) in the README).
+The tree is walked and rendered without recursion: a document may nest
+deeper than Python's recursion limit, whatever its nodes.
 
 ### Reading a source as LHTML reads it
 
@@ -197,7 +223,7 @@ the end of the word, take the time of their lengths). A
 `start` outside the text is a `ValueError`; a name that does not start
 there (`pan::` in `span::`) gives `None`.
 
-### Custom Code Lexers
+### Custom code lexers
 
 A call may name its own languages, `{name: Pygments lexer class}`, looked
 up before `lhtml.LEXERS`, then the lexers of Pygments; no other call sees
@@ -243,4 +269,5 @@ test/                  # pytest suite and .l.html / -out.html reference pairs
 examples/              # Example sources (see examples/README.md)
 ```
 
-Run the tests with `pytest` (after `pip install -e ".[dev]"`).
+The [examples](../examples/README.md) are sources with their output. Install from a clone and
+run the tests as the [README](../README.md#development) says (`python -m pytest -q`).
