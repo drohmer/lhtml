@@ -2,7 +2,7 @@
   "name": "lhtml",
   "displayName": "LHTML",
   "description": "Syntax highlighting, folding and snippets for LHTML, the light markup over HTML (and the pages of lhtml-site).",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "drohmer",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -76,7 +76,9 @@
           "meta.embedded.block.hlsl": "hlsl",
           "meta.embedded.block.sql": "sql",
           "meta.embedded.block.xml": "xml",
-          "meta.embedded.block.markdown": "markdown"
+          "meta.embedded.block.markdown": "markdown",
+          "source.css": "css",
+          "source.js": "javascript"
         }
       }
     ],

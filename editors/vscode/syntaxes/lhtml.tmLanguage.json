@@ -11,7 +11,7 @@
     }
   ],
   "injections": {
-    "L:text.html.lhtml meta.tag -comment": {
+    "L:text.html.lhtml (meta.tag | meta.property-list.css.lhtml) -comment": {
       "patterns": [
         {
           "include": "#jinja"
@@ -79,8 +79,8 @@
     "code-block": {
       "patterns": [
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(python|py))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(python|py))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -96,6 +96,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -124,8 +131,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(c\\+\\+|cpp|cxx))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(c\\+\\+|cpp|cxx))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -141,6 +148,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -169,8 +183,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(c))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(c))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -186,6 +200,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -214,8 +235,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(javascript|js))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(javascript|js))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -231,6 +252,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -259,8 +287,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(typescript|ts))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(typescript|ts))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -276,6 +304,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -304,8 +339,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(bash|sh|shell|zsh|console))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(bash|sh|shell|zsh|console))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -321,6 +356,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -349,8 +391,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(json))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(json))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -366,6 +408,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -394,8 +443,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(yaml|yml))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(yaml|yml))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -411,6 +460,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -439,8 +495,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(html))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(html))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -456,6 +512,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -484,8 +547,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(css))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(css))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -501,6 +564,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -529,8 +599,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(java))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(java))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -546,6 +616,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -574,8 +651,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(rust|rs))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(rust|rs))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -591,6 +668,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -619,8 +703,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(go))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(go))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -636,6 +720,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -664,8 +755,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(latex|tex))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(latex|tex))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -681,6 +772,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -709,8 +807,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(glsl|hlsl))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(glsl|hlsl))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -726,6 +824,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -754,8 +859,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(sql))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(sql))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -771,6 +876,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -799,8 +911,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(xml))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(xml))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -816,6 +928,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -844,8 +963,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)(?i:(markdown|md))(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?i:(markdown|md))\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -861,6 +980,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -881,7 +1007,7 @@
             }
           },
           "name": "markup.fenced_code.block.lhtml",
-          "contentName": "meta.embedded.block.html",
+          "contentName": "meta.embedded.block.markdown",
           "patterns": [
             {
               "include": "text.html.markdown"
@@ -889,8 +1015,8 @@
           ]
         },
         {
-          "begin": "^\\s*(code)(::)(\\[)([^\\]\\n]*)(\\])\\s*$",
-          "end": "^\\s*(code)(::)(\\[)(-)(\\])",
+          "begin": "^\\s*(code)(::)(\\[)\\s*(?!-\\])([^\\[\\]\\n]*?)\\s*(\\])((?:\\([^()\\n]*\\)|\\[[^\\[\\]\\n]*\\]|\\{[^{}\\n]*\\})*)",
+          "end": "(code)(::)(\\[)(-)(\\])",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -906,6 +1032,13 @@
             },
             "5": {
               "name": "punctuation.definition.block.lhtml"
+            },
+            "6": {
+              "patterns": [
+                {
+                  "include": "#groups"
+                }
+              ]
             }
           },
           "endCaptures": {
@@ -931,7 +1064,7 @@
       ]
     },
     "heading": {
-      "begin": "^(={1,6})(\\([^)\\n]*\\))?(?=\\s)",
+      "begin": "^(={1,6})(\\([^)\\n]*\\))?(?= )",
       "end": "$",
       "beginCaptures": {
         "1": {
@@ -958,7 +1091,7 @@
       ]
     },
     "list-item": {
-      "match": "^(\\*+)(?=\\s)",
+      "match": "^(\\*+)(?= )",
       "captures": {
         "1": {
           "name": "punctuation.definition.list.begin.lhtml"
@@ -1069,7 +1202,7 @@
       ]
     },
     "inline-code": {
-      "match": "(`)([^`\\n]+)(`)",
+      "match": "(`)([^`\\n]*)(`)",
       "captures": {
         "1": {
           "name": "punctuation.definition.raw.lhtml"
@@ -1111,27 +1244,13 @@
               "name": "punctuation.definition.math.end.lhtml"
             }
           }
-        },
-        {
-          "begin": "\\$\\$",
-          "end": "\\$\\$",
-          "name": "string.other.math.lhtml",
-          "beginCaptures": {
-            "0": {
-              "name": "punctuation.definition.math.begin.lhtml"
-            }
-          },
-          "endCaptures": {
-            "0": {
-              "name": "punctuation.definition.math.end.lhtml"
-            }
-          }
         }
       ]
     },
     "media": {
-      "match": "(?<![\\w:.\\]])(img|video|videoplay)(::)((?:\\{\\{.*?\\}\\}|[^\\s\\[\\{(]|\\((?![.#])[^)\\s]*\\))+)?(\\([^)\\n]*\\))?(\\[(?:\"[^\"\\n]*\"|[^\\]\\n])*\\])?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
-      "captures": {
+      "begin": "(?<![\\w:.\\]])(img|video|videoplay)(::)((?:\\{\\{.*?\\}\\}|(?!(?:\\*\\*|__)(?![^\\s\\[\\](){}<>\"`]))[^\\s\\[\\](){}<>\"`]|\\((?![.#])[^\\s()\\[\\]{}<>\"`]*\\))+)?",
+      "end": "(?=[^(\\[{])|$",
+      "beginCaptures": {
         "1": {
           "name": "entity.name.tag.lhtml"
         },
@@ -1145,38 +1264,19 @@
               "include": "#jinja"
             }
           ]
-        },
-        "4": {
-          "name": "meta.selector.lhtml",
-          "patterns": [
-            {
-              "include": "#selector"
-            }
-          ]
-        },
-        "5": {
-          "name": "meta.property-list.css.lhtml",
-          "patterns": [
-            {
-              "include": "#style"
-            }
-          ]
-        },
-        "6": {
-          "name": "meta.attributes.lhtml",
-          "patterns": [
-            {
-              "include": "#attributes"
-            }
-          ]
         }
-      }
+      },
+      "patterns": [
+        {
+          "include": "#groups"
+        }
+      ]
     },
     "link": {
       "patterns": [
         {
-          "begin": "(?<![\\w:.\\]])(link)(::)((?:\\{\\{.*?\\}\\}|[^\\s\\[\\{(]|\\((?![.#])[^)\\s]*\\))+)(\\([^)\\n]*\\))?(\\[)",
-          "end": "(\\])(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?|$",
+          "begin": "(?<![\\w:.\\]])(link)(::)((?:\\{\\{.*?\\}\\}|(?!(?:\\*\\*|__)(?![^\\s\\[\\](){}<>\"`]))[^\\s\\[\\](){}<>\"`]|\\((?![.#])[^\\s()\\[\\]{}<>\"`]*\\))+)(\\([^)\\n]*\\))?(\\[)",
+          "end": "(\\])(\\{(?:\\{\\{.*?\\}\\}|\"[^\"\\n]*\"|\\'[^\\'\\n]*\\'|[^}\\n])*\\})?|$",
           "beginCaptures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -1221,11 +1321,20 @@
           "patterns": [
             {
               "include": "#inline"
+            },
+            {
+              "begin": "\\[",
+              "end": "\\]|$",
+              "patterns": [
+                {
+                  "include": "#inline"
+                }
+              ]
             }
           ]
         },
         {
-          "match": "(?<![\\w:.\\]])(link)(::)((?:\\{\\{.*?\\}\\}|[^\\s\\[\\{(]|\\((?![.#])[^)\\s]*\\))+)(\\([^)\\n]*\\))?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
+          "match": "(?<![\\w:.\\]])(link)(::)((?:\\{\\{.*?\\}\\}|(?!(?:\\*\\*|__)(?![^\\s\\[\\](){}<>\"`]))[^\\s\\[\\](){}<>\"`]|\\((?![.#])[^\\s()\\[\\]{}<>\"`]*\\))+)(\\([^)\\n]*\\))?(\\{(?:\\{\\{.*?\\}\\}|\"[^\"\\n]*\"|\\'[^\\'\\n]*\\'|[^}\\n])*\\})?",
           "captures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -1262,7 +1371,7 @@
       ]
     },
     "spacer": {
-      "match": "(?<![\\w:])(::)(nl)\\b",
+      "match": "(?<![\\w:])(::)(nl)(?![\\w-])",
       "captures": {
         "1": {
           "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
@@ -1275,7 +1384,7 @@
     "tag": {
       "patterns": [
         {
-          "match": "(?<![\\w:.\\]])([A-Za-z][\\w-]*)(::)(?=[\\s(\\[{]|$)(\\([^)\\n]*\\))?(\\[(?:\"[^\"\\n]*\"|[^\\]\\n])*\\])?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
+          "match": "(?<![\\w:.\\]])([A-Za-z][\\w-]*)(::)([\\w-]+)(::)(?![\\w:])",
           "captures": {
             "1": {
               "name": "entity.name.tag.lhtml"
@@ -1284,67 +1393,48 @@
               "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
             },
             "3": {
-              "name": "meta.selector.lhtml",
-              "patterns": [
-                {
-                  "include": "#selector"
-                }
-              ]
+              "name": "variable.parameter.lhtml"
             },
             "4": {
-              "name": "meta.property-list.css.lhtml",
-              "patterns": [
-                {
-                  "include": "#style"
-                }
-              ]
-            },
-            "5": {
-              "name": "meta.attributes.lhtml",
-              "patterns": [
-                {
-                  "include": "#attributes"
-                }
-              ]
+              "name": "punctuation.definition.tag.end.lhtml entity.name.tag.lhtml"
             }
           }
         },
         {
-          "match": "(?<![\\w:.\\]])(::)(?=[\\[\\({])(\\([^)\\n]*\\))?(\\[(?:\"[^\"\\n]*\"|[^\\]\\n])*\\])?(\\{(?:\"[^\"\\n]*\"|[^}\\n])*\\})?",
-          "captures": {
+          "begin": "(?<![\\w:.\\]])([A-Za-z][\\w-]*)(::)(?=[\\s(\\[{]|$)",
+          "end": "(?=[^(\\[{])|$",
+          "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+              "name": "entity.name.tag.lhtml"
             },
             "2": {
-              "name": "meta.selector.lhtml",
-              "patterns": [
-                {
-                  "include": "#selector"
-                }
-              ]
-            },
-            "3": {
-              "name": "meta.property-list.css.lhtml",
-              "patterns": [
-                {
-                  "include": "#style"
-                }
-              ]
-            },
-            "4": {
-              "name": "meta.attributes.lhtml",
-              "patterns": [
-                {
-                  "include": "#attributes"
-                }
-              ]
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
             }
-          }
+          },
+          "patterns": [
+            {
+              "include": "#groups"
+            }
+          ]
+        },
+        {
+          "begin": "(?<![\\w:.\\]])(::)(?=[\\[\\({])",
+          "end": "(?=[^(\\[{])|$",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.tag.lhtml entity.name.tag.lhtml"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#groups"
+            }
+          ]
         }
       ]
     },
     "close": {
-      "match": "(?<![\\w:\\[])::(?![\\w:])",
+      "match": "(?<![\\w:\\[>])::(?![\\w:])|(?<=>)::(?![\\w:<])",
       "name": "punctuation.definition.tag.end.lhtml entity.name.tag.lhtml"
     },
     "selector": {
@@ -1363,26 +1453,8 @@
         }
       ]
     },
-    "style": {
-      "patterns": [
-        {
-          "match": "^\\[|\\]$",
-          "name": "punctuation.section.property-list.lhtml"
-        },
-        {
-          "include": "#jinja"
-        },
-        {
-          "include": "source.css#rule-list-innards"
-        }
-      ]
-    },
     "attributes": {
       "patterns": [
-        {
-          "match": "^\\{|\\}$",
-          "name": "punctuation.section.attributes.lhtml"
-        },
         {
           "include": "#jinja"
         },
@@ -1508,6 +1580,64 @@
         {
           "match": "[A-Za-z_]\\w*",
           "name": "variable.other.jinja"
+        }
+      ]
+    },
+    "groups": {
+      "patterns": [
+        {
+          "match": "\\([^)\\n]*\\)",
+          "captures": {
+            "0": {
+              "name": "meta.selector.lhtml",
+              "patterns": [
+                {
+                  "include": "#selector"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "match": "(\\[)((?:\"[^\"\\n]*\"|\\[[^\\[\\]\\n]*\\]|[^\\]\\n])*)(\\])",
+          "name": "meta.property-list.css.lhtml",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.property-list.lhtml"
+            },
+            "2": {
+              "patterns": [
+                {
+                  "include": "#jinja"
+                },
+                {
+                  "include": "source.css#rule-list-innards"
+                }
+              ]
+            },
+            "3": {
+              "name": "punctuation.section.property-list.lhtml"
+            }
+          }
+        },
+        {
+          "match": "(\\{)((?:\\{\\{.*?\\}\\}|\"[^\"\\n]*\"|\\'[^\\'\\n]*\\'|[^}\\n])*)(\\})",
+          "name": "meta.attributes.lhtml",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.attributes.lhtml"
+            },
+            "2": {
+              "patterns": [
+                {
+                  "include": "#attributes"
+                }
+              ]
+            },
+            "3": {
+              "name": "punctuation.section.attributes.lhtml"
+            }
+          }
         }
       ]
     }
