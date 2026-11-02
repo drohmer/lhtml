@@ -3,7 +3,10 @@
 [![Tests](https://github.com/drohmer/lhtml/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/drohmer/lhtml/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/lhtml-markup)](https://pypi.org/project/lhtml-markup/)
 
-**Documentation, with a tutorial and live examples: https://scholartools.fr/lhtml/** (English, français)
+**Documentation: https://scholartools.fr/lhtml/** (English, français). Start with
+[Use LHTML alone](https://scholartools.fr/lhtml/02_learn/00_alone/) (the `lhtml` command and
+Python), then [Learn LHTML](https://scholartools.fr/lhtml/02_learn/), the syntax page by page with
+live examples.
 
 LHTML is a markup language that simplifies HTML authoring with embedded CSS styling. It is designed to be **HTML-first**: raw HTML passes through untouched, and only a few shorthand symbols (`::`, `*`, `=`, `**`, `__`) trigger conversions.
 
