@@ -8,7 +8,7 @@ import re
 # Compiled regex patterns
 # ---------------------------------------------------------------------------
 
-HEADING          = re.compile(r'^(=+)(?:\((.*?)\))? (.*?)$', re.MULTILINE)
+HEADING          = re.compile(r'^(={1,6})(?:\((.*?)\))? (.*?)$', re.MULTILINE)   # <h1> to <h6>
 BOLD             = re.compile(r'\*\*(.*?)\*\*')
 ITALIC           = re.compile(r'__(.*?)__')
 # include:: was removed in 3.0; still recognized, to be refused by name

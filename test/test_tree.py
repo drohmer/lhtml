@@ -956,6 +956,7 @@ class TestAuthorsGroup4:
         assert self.said('=[color:red] Titre\nx') == [
             '=[color:red] Titre: a heading takes (.class #id) only, it is left as text']
         assert self.said('=(.c) Titre') == []
+        assert self.said('======= Seven\nx') == ['======= Seven: a heading has 1 to 6 =, it is left as text']
 
     def test_bold_or_italic_across_lines(self):
         assert self.said('**a\nb** c') == [

@@ -79,6 +79,12 @@ class TestHeadings:
     def test_h3(self):
         assert '<h3>Deep</h3>' in lhtml.run('\n=== Deep\n')
 
+    def test_six_is_the_deepest(self):
+        assert '<h6>Six</h6>' in lhtml.run('\n====== Six\n')
+        with pytest.warns(lhtml.LHTMLWarning, match='a heading has 1 to 6 =, it is left as text'):
+            r = lhtml.run('\n======= Seven\n')
+        assert '<h7' not in r and '======= Seven' in r
+
     def test_with_class(self):
         r = lhtml.run('\n=(.myClass) Styled\n')
         assert '<h1 class="myClass">Styled</h1>' in r

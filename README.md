@@ -126,7 +126,7 @@ Each line of LHTML on the left, what it gives on the right:
 | LHTML | gives |
 |-------|-------|
 | `= Title` | `<h1>Title</h1>` |
-| `== Section` | `<h2>Section</h2>` (and so on to `======`) |
+| `== Section` | `<h2>Section</h2>` (and so on to `======`; more `=` stay text, with a warning) |
 | `* item` | a list (`** item` for a nested one) |
 | `**bold** and __italic__` | `<strong>bold</strong> and <em>italic</em>` |
 | `` `code` `` | inline code, never read as LHTML |

@@ -3,6 +3,12 @@
 All notable changes to LHTML (`lhtml-markup` on PyPI) are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- A heading of more than six `=` (`======= Seven`) gave `<h7>`, which is
+  no HTML: it stays text, with a warning.
+
 ## [3.0.3] - 2026-10-28
 
 The HTML and the problems are the same as in 3.0.2 (the tests, realistic

@@ -179,6 +179,9 @@ class _Parser:
         for m in _HEADING_GROUP.finditer(text.chars):      # =[style] T, ={id="x"} T: text
             warn(f'{self._quote(text, m.start(), m.end())}: a heading takes (.class #id) only, it is '
                  f'left as text', self._place_of(text, m.start()))
+        for m in _HEADING_DEEP.finditer(text.chars):       # ======= T: no <h7> in HTML
+            warn(f'{self._quote(text, m.start(), m.end())}: a heading has 1 to 6 =, it is left as text',
+                 self._place_of(text, m.start()))
 
         def pieces(m):
             level = len(m.group(1))
@@ -796,6 +799,8 @@ class _Parser:
 
 # a heading written with a style or attributes: no heading
 _HEADING_GROUP = re.compile(r'^=+[\[{].*', re.MULTILINE)
+# a heading of more than six =: no heading
+_HEADING_DEEP = re.compile(r'^={7,}(?:\(.*?\))? .*', re.MULTILINE)
 # the marks of bold and italic left after their stages, and the blank lines between paragraphs
 _MARK = re.compile(r'\*\*|__|\n[ \t]*\n')
 # a word glued to a :: that ends its line or is followed by a space: a closing :: meant
