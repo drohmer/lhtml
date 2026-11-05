@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-11-05
+
+The first version on PyPI since 3.0.1: it also brings the changes of 3.0.2
+and 3.0.3, tagged but not published.
+
 ### Fixed
 - A heading of more than six `=` (`======= Seven`) gave `<h7>`, which is
   no HTML: it stays text, with a warning.
@@ -633,6 +638,7 @@ the nodes (`lhtml.nodes`), `LEXERS`, the macro functions and the errors.
 - Headings without parentheses (`= Title`).
 - `::#` comments are removed on every line.
 
+[3.0.4]: https://github.com/drohmer/lhtml/releases/tag/v3.0.4
 [3.0.3]: https://github.com/drohmer/lhtml/releases/tag/v3.0.3
 [3.0.2]: https://github.com/drohmer/lhtml/releases/tag/v3.0.2
 [3.0.1]: https://github.com/drohmer/lhtml/releases/tag/v3.0.1

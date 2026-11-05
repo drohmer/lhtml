@@ -17,7 +17,7 @@ Usage:
 run is documented in pipeline.py.
 """
 
-__version__ = '3.0.3'
+__version__ = '3.0.4'
 
 from .errors import (
     LHTMLError, LHTMLParseError,
